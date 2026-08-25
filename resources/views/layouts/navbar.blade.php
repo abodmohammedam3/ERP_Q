@@ -43,11 +43,20 @@
                     </div>
                 </div>
 
-                {{-- الإشعارات --}}
+               {{-- الإشعارات --}}
                 <div class="dropdown">
-                    <button type="button" class="btn btn-dark border border-secondary position-relative rounded-circle d-flex align-items-center justify-content-center p-2" data-bs-toggle="dropdown" aria-expanded="false" aria-label="الإشعارات">
-                        <i class="bi bi-bell fs-5"></i>
-                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger border border-dark" style="font-size: 0.6rem;">
+                    <button 
+                        type="button" 
+                        class="btn btn-dark border border-secondary position-relative d-flex align-items-center justify-content-center rounded-circle" 
+                        style="width: 40px; height: 40px;" {{-- تحديد مقاس ثابت لجعله دائرة مثالية --}}
+                        data-bs-toggle="dropdown" 
+                        aria-expanded="false" 
+                        aria-label="الإشعارات"
+                    >
+                        <i class="bi bi-bell fs-5"></i> {{-- حجم الأيقونة كبير وواضح --}}
+                        
+                        {{-- الشارة --}}
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger border border-dark" style="font-size: 0.65rem;">
                             3
                         </span>
                     </button>

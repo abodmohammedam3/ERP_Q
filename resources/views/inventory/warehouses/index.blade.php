@@ -4,185 +4,61 @@
 
 @section('content')
 
-
 <div class="container-fluid py-3">
+    
     {{-- عنوان الشاشة --}}
-<div class="d-flex justify-content-between align-items-center mb-3">
-
-    <div>
-        <h4 class="mb-1">
-            <i class="bi bi-building"></i>
-            المخازن
-        </h4>
-
-        <small class="text-muted">
-            إدارة المخازن المرتبطة بالنظام
-        </small>
-    </div>
-
-    <div>
-        <button type="button" class="btn btn-primary">
-            <i class="bi bi-plus-lg"></i>
-            إضافة مخزن
-        </button>
-    </div>
-
-</div>
-
-
-{{-- شريط البحث --}}
-<div class="card mb-3">
-
-    <div class="card-body">
-
-        <div class="row g-2 align-items-end">
-
-            <div class="col-md-6">
-
-                <label class="form-label">
-                    البحث
-                </label>
-
-                <input
-                    type="text"
-                    class="form-control"
-                    placeholder="ابحث باسم المخزن..."
-                >
-
-            </div>
-
-            <div class="col-md-auto">
-
-                <button type="button" class="btn btn-secondary">
-                    <i class="bi bi-search"></i>
-                    بحث
-                </button>
-
-            </div>
-
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="mb-1">
+                <i class="bi bi-building"></i> المخازن
+            </h4>
+            <small class="text-muted">إدارة المخازن المرتبطة بالنظام</small>
         </div>
 
-    </div>
-
-</div>
-
-
-{{-- جدول المخازن --}}
-<div class="card">
-
-    <div class="card-header d-flex justify-content-between align-items-center">
-
-        <span>
-            <i class="bi bi-list-ul"></i>
-            قائمة المخازن
-        </span>
-
-        <span class="badge bg-secondary">
-            {{ isset($stocks) ? $stocks->count() : 0 }}
-        </span>
-
-    </div>
-
-    <div class="card-body p-0">
-
-        <div class="table-responsive">
-
-            <table class="table table-hover table-bordered mb-0 align-middle">
-
-                <thead class="table-light">
-
-                    <tr>
-
-                        <th class="text-center">
-                            #
-                        </th>
-
-                        <th>
-                            اسم المخزن
-                        </th>
-
-                        <th>
-                            الحساب المرتبط
-                        </th>
-
-                        <th class="text-center" style="width: 180px;">
-                            الإجراءات
-                        </th>
-
-                    </tr>
-
-                </thead>
-
-                <tbody>
-
-                    @forelse($stocks ?? [] as $stock)
-
-                        <tr>
-
-                            <td class="text-center">
-                                {{ $stock->StockID }}
-                            </td>
-
-                            <td>
-                                {{ $stock->StockName2 }}
-                            </td>
-
-                            <td>
-                                {{ $stock->account->accName ?? 'غير مرتبط' }}
-                            </td>
-
-                            <td class="text-center">
-
-                                <button
-                                    type="button"
-                                    class="btn btn-sm btn-outline-primary"
-                                    title="تعديل"
-                                >
-                                    <i class="bi bi-pencil"></i>
-                                    تعديل
-                                </button>
-
-                                <button
-                                    type="button"
-                                    class="btn btn-sm btn-outline-danger"
-                                    title="حذف"
-                                >
-                                    <i class="bi bi-trash"></i>
-                                    حذف
-                                </button>
-
-                            </td>
-
-                        </tr>
-
-                    @empty
-
-                        <tr>
-
-                            <td
-                                colspan="4"
-                                class="text-center text-muted py-5"
-                            >
-
-                                <i class="bi bi-building fs-2 d-block mb-2"></i>
-
-                                لا توجد مخازن مسجلة
-
-                            </td>
-
-                        </tr>
-
-                    @endforelse
-
-                </tbody>
-
-            </table>
-
+        <div>
+            <button type="button" class="btn btn-primary" onclick="openStockModal()">
+                <i class="bi bi-plus-lg"></i> إضافة مخزن
+            </button>
         </div>
-
     </div>
 
+    <!-- استدعاء ملف البحث وملف الجدول -->
+    @include('inventory.warehouses.search')
+    @include('inventory.warehouses.table')
+
 </div>
+
+<!-- النافذة المنبثقة (Modal) لإضافة/تعديل مخزن -->
+<div class="modal fade" id="stockModal" tabindex="-1" aria-labelledby="stockModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="stockModalLabel">إضافة مخزن جديد</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="stockForm">
+                    <input type="hidden" id="stockID">
+                    
+                    <div class="mb-3">
+                        <label for="stockName" class="form-label">اسم المخزن <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="stockName" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="stockAccount" class="form-label">الحساب المرتبط</label>
+                        <input type="text" class="form-control" id="stockAccount" placeholder="مثال: حساب المخزون الرئيسي">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button type="button" class="btn btn-primary" onclick="saveStock()">حفظ البيانات</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 
 
 @endsection

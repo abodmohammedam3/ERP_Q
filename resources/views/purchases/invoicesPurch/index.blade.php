@@ -13,19 +13,22 @@
         </div>
 
         <div class="btn-group" role="group">
-            <button type="button" class="btn btn-primary">
+            <button type="button" class="btn btn-primary" onclick="resetInvoice()">
                 <i class="bi bi-plus-lg"></i>
                 فاتورة جديدة
             </button>
 
-            <button type="button" class="btn btn-outline-secondary">
+            <button type="button" class="btn btn-outline-secondary" onclick="searchInvoice()">
                 <i class="bi bi-search"></i>
                 بحث
             </button>
         </div>
     </div>
-@include('purchases.invoicesPurch.haed')
-@include('purchases.invoicesPurch.detals')
+
+    @include('purchases.invoicesPurch.haed')
+    @include('purchases.invoicesPurch.detals')
+
+</div>
 
 
 @endsection

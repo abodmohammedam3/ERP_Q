@@ -65,6 +65,17 @@
 
     {{-- JavaScript الخاص بالنظام --}}
     <script src="{{ asset('js/ricept.js') }}"></script>
+    <script src="{{ asset('js/purchase_invoice.js') }}"></script>
+    <script src="{{ asset('js/supplier.js') }}"></script>
+    <script src="{{ asset('js/sales_invoice.js') }}"></script>
+    <script src="{{ asset('js/customer.js') }}"></script>
+    <script src="{{ asset('js/warehouses.js') }}"></script>
+    <script src="{{ asset('js/movement.js') }}"></script>
+
+
+
+
+
 
 </body>
 

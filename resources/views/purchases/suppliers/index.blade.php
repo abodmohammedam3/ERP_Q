@@ -1,41 +1,43 @@
 @extends('layouts.app')
 
-@section('title', 'الأصناف')
+@section('title', 'الموردون')
 
 @section('content')
 
 <div class="container-fluid py-3">
 
-    {{-- عنوان الشاشة --}}
     <div class="d-flex justify-content-between align-items-center mb-3">
 
         <div>
+
             <h4 class="mb-1">
-                <i class="bi bi-box-seam"></i>
-                الأصناف
+                <i class="bi bi-truck"></i>
+                الموردون
             </h4>
 
             <small class="text-muted">
-                إدارة الأصناف المسجلة في النظام
+                إدارة الموردين المسجلين في النظام
             </small>
+
         </div>
 
         <button type="button" class="btn btn-primary">
+
             <i class="bi bi-plus-lg"></i>
-            إضافة صنف
+            إضافة مورد
+
         </button>
 
     </div>
 
 
-    {{-- البحث --}}
     <div class="card mb-3">
 
         <div class="card-body">
 
             <div class="row g-2 align-items-end">
 
-                <div class="col-md-6">
+                <div class="col-md-5">
 
                     <label class="form-label">
                         البحث
@@ -44,8 +46,32 @@
                     <input
                         type="text"
                         class="form-control"
-                        placeholder="ابحث باسم الصنف..."
+                        placeholder="اسم المورد أو رقم الهاتف..."
                     >
+
+                </div>
+
+                <div class="col-md-3">
+
+                    <label class="form-label">
+                        الحالة
+                    </label>
+
+                    <select class="form-select">
+
+                        <option value="">
+                            جميع الحالات
+                        </option>
+
+                        <option value="1">
+                            متوقف
+                        </option>
+
+                        <option value="0">
+                            نشط
+                        </option>
+
+                    </select>
 
                 </div>
 
@@ -67,19 +93,12 @@
     </div>
 
 
-    {{-- جدول الأصناف --}}
     <div class="card">
 
-        <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="card-header">
 
-            <span>
-                <i class="bi bi-list-ul"></i>
-                قائمة الأصناف
-            </span>
-
-            <span class="badge bg-secondary">
-                {{ isset($items) ? $items->count() : 0 }}
-            </span>
+            <i class="bi bi-list-ul"></i>
+            قائمة الموردين
 
         </div>
 
@@ -98,10 +117,22 @@
                             </th>
 
                             <th>
-                                اسم الصنف
+                                اسم المورد
                             </th>
 
-                            <th class="text-center" style="width: 180px;">
+                            <th>
+                                الهاتف
+                            </th>
+
+                            <th >
+                                المنطقة
+                            </th>
+
+                            <th class="text-center">
+                                الحالة
+                            </th>
+
+                            <th class="text-center">
                                 الإجراءات
                             </th>
 
@@ -111,16 +142,42 @@
 
                     <tbody>
 
-                        @forelse($items ?? [] as $item)
+                        @forelse($suppliers ?? [] as $supplier)
 
-                            <tr>
+                            <tr  class="text-center">
 
                                 <td class="text-center">
-                                    {{ $item->itemID }}
+                                    {{ $supplier->suplierID }}
                                 </td>
 
                                 <td>
-                                    {{ $item->itemName2 }}
+                                    {{ $supplier->supName2 }}
+                                </td>
+
+                                <td>
+                                    {{ $supplier->supPhone2 }}
+                                </td>
+
+                                <td>
+                                    {{ $supplier->supArea2 }}
+                                </td>
+
+                                <td class="text-center">
+
+                                    @if($supplier->supStoped2)
+
+                                        <span class="badge bg-danger">
+                                            متوقف
+                                        </span>
+
+                                    @else
+
+                                        <span class="badge bg-success">
+                                            نشط
+                                        </span>
+
+                                    @endif
+
                                 </td>
 
                                 <td class="text-center">
@@ -150,13 +207,13 @@
                             <tr>
 
                                 <td
-                                    colspan="3"
+                                    colspan="6"
                                     class="text-center text-muted py-5"
                                 >
 
-                                    <i class="bi bi-box-seam fs-2 d-block mb-2"></i>
+                                    <i class="bi bi-truck fs-2 d-block mb-2"></i>
 
-                                    لا توجد أصناف مسجلة
+                                    لا يوجد موردون مسجلون
 
                                 </td>
 

@@ -1,41 +1,43 @@
 @extends('layouts.app')
 
-@section('title', 'الأصناف')
+@section('title', 'الصناديق')
 
 @section('content')
 
 <div class="container-fluid py-3">
 
-    {{-- عنوان الشاشة --}}
     <div class="d-flex justify-content-between align-items-center mb-3">
 
         <div>
+
             <h4 class="mb-1">
-                <i class="bi bi-box-seam"></i>
-                الأصناف
+                <i class="bi bi-safe2"></i>
+                الصناديق
             </h4>
 
             <small class="text-muted">
-                إدارة الأصناف المسجلة في النظام
+                إدارة الصناديق النقدية المرتبطة بالنظام
             </small>
+
         </div>
 
         <button type="button" class="btn btn-primary">
+
             <i class="bi bi-plus-lg"></i>
-            إضافة صنف
+            إضافة صندوق
+
         </button>
 
     </div>
 
 
-    {{-- البحث --}}
     <div class="card mb-3">
 
         <div class="card-body">
 
             <div class="row g-2 align-items-end">
 
-                <div class="col-md-6">
+                <div class="col-md-5">
 
                     <label class="form-label">
                         البحث
@@ -44,8 +46,32 @@
                     <input
                         type="text"
                         class="form-control"
-                        placeholder="ابحث باسم الصنف..."
+                        placeholder="ابحث باسم الصندوق..."
                     >
+
+                </div>
+
+                <div class="col-md-3">
+
+                    <label class="form-label">
+                        العملة
+                    </label>
+
+                    <select class="form-select">
+
+                        <option value="">
+                            جميع العملات
+                        </option>
+
+                        @foreach($coins ?? [] as $coin)
+
+                            <option value="{{ $coin->coinsID }}">
+                                {{ $coin->coinsCode2 ?? $coin->coinsCode3 }}
+                            </option>
+
+                        @endforeach
+
+                    </select>
 
                 </div>
 
@@ -67,19 +93,12 @@
     </div>
 
 
-    {{-- جدول الأصناف --}}
     <div class="card">
 
-        <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="card-header">
 
-            <span>
-                <i class="bi bi-list-ul"></i>
-                قائمة الأصناف
-            </span>
-
-            <span class="badge bg-secondary">
-                {{ isset($items) ? $items->count() : 0 }}
-            </span>
+            <i class="bi bi-list-ul"></i>
+            قائمة الصناديق
 
         </div>
 
@@ -98,10 +117,18 @@
                             </th>
 
                             <th>
-                                اسم الصنف
+                                اسم الصندوق
                             </th>
 
-                            <th class="text-center" style="width: 180px;">
+                            <th>
+                                العملة
+                            </th>
+
+                            <th>
+                               سعر الصرف
+                            </th>
+
+                            <th class="text-center">
                                 الإجراءات
                             </th>
 
@@ -111,16 +138,24 @@
 
                     <tbody>
 
-                        @forelse($items ?? [] as $item)
+                        @forelse($boxes ?? [] as $box)
 
-                            <tr>
+                            <tr  class="text-center">
 
                                 <td class="text-center">
-                                    {{ $item->itemID }}
+                                    {{ $box->boxID }}
                                 </td>
 
                                 <td>
-                                    {{ $item->itemName2 }}
+                                    {{ $box->boxName2 }}
+                                </td>
+
+                                <td>
+                                    {{ $box->coin->coinsCode2 ?? $box->coin->coinsCode3 ?? 'غير محددة' }}
+                                </td>
+
+                                <td>
+                                    {{ $box->account->accName ?? 'غير مرتبط' }}
                                 </td>
 
                                 <td class="text-center">
@@ -150,13 +185,13 @@
                             <tr>
 
                                 <td
-                                    colspan="3"
+                                    colspan="5"
                                     class="text-center text-muted py-5"
                                 >
 
-                                    <i class="bi bi-box-seam fs-2 d-block mb-2"></i>
+                                    <i class="bi bi-safe2 fs-2 d-block mb-2"></i>
 
-                                    لا توجد أصناف مسجلة
+                                    لا توجد صناديق مسجلة
 
                                 </td>
 

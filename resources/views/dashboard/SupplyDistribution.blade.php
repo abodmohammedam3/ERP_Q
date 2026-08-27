@@ -28,7 +28,7 @@
 
                             <thead class="table-light">
 
-                                <tr>
+                                <tr  class="text-center">
 
                                     <th>رقم الحركة</th>
 
@@ -106,7 +106,7 @@
 
                             <thead class="table-light">
 
-                                <tr>
+                                <tr  class="text-center">
 
                                     <th> التاجر</th>
 
@@ -115,6 +115,8 @@
                                     <th>الحركة</th>
 
                                     <th>النوع</th>
+
+                                    <th>الرمز</th>
 
                                     <th>الوحدة</th>
 

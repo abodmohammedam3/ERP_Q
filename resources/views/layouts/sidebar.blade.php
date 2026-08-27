@@ -153,7 +153,7 @@
                 class="btn btn-dark w-100 d-flex align-items-center justify-content-between text-end rounded-2 px-3 py-2 mb-1 border-0"
                 data-bs-toggle="collapse"
                 data-bs-target="#salesMenu"
-                aria-expanded="{{ request()->routeIs('invoices.*') ? 'true' : 'false' }}"
+                aria-expanded="{{ request()->routeIs('invoices.*','customers.*') ? 'true' : 'false' }}"
                 aria-controls="salesMenu"
             >
 
@@ -173,7 +173,7 @@
 
 
             <div
-                class="collapse {{ request()->routeIs('invoices.*') ? 'show' : '' }}"
+                class="collapse {{ request()->routeIs('invoices.*','customers.*') ? 'show' : '' }}"
                 id="salesMenu"
             >
 
@@ -197,7 +197,7 @@
                     </a>
 
                     <a
-                        href="#"
+                        href="{{ route('customers.index') }}"
                         class="d-flex align-items-center gap-3 text-white-50 text-decoration-none rounded-2 px-3 py-2"
                     >
                         <i class="bi bi-people"></i>
@@ -215,7 +215,7 @@
                 class="btn btn-dark w-100 d-flex align-items-center justify-content-between text-end rounded-2 px-3 py-2 mb-1 border-0"
                 data-bs-toggle="collapse"
                 data-bs-target="#purchasesMenu"
-                aria-expanded="{{ request()->routeIs('invoicesPurch.*') ? 'true' : 'false' }}"
+                aria-expanded="{{ request()->routeIs('invoicesPurch.*','suppliers') ? 'true' : 'false' }}"
                 aria-controls="purchasesMenu"
             >
 
@@ -235,7 +235,7 @@
 
 
             <div
-                class="collapse {{ request()->routeIs('invoicesPurch.*') ? 'show' : '' }}"
+                class="collapse {{ request()->routeIs('invoicesPurch.*','suppliers') ? 'show' : '' }}"
                 id="purchasesMenu"
             >
 
@@ -259,7 +259,7 @@
                     </a>
 
                     <a
-                        href="#"
+                        href="{{ route('suppliers.index') }}"
                         class="d-flex align-items-center gap-3 text-white-50 text-decoration-none rounded-2 px-3 py-2"
                     >
                         <i class="bi bi-person-lines-fill"></i>
@@ -271,23 +271,158 @@
             </div>
 
 
-            {{-- ================= المخزون ================= --}}
-            <a
-                href="#"
-                class="d-flex align-items-center gap-3 text-white text-decoration-none rounded-2 px-3 py-2 mb-1"
+             {{-- ================= المخازن ================= --}}
+            <button
+                type="button"
+                class="btn btn-dark w-100 d-flex align-items-center justify-content-between text-end rounded-2 px-3 py-2 mb-1 border-0"
+                data-bs-toggle="collapse"
+                data-bs-target="#inventoryMenu"
+                aria-expanded="{{ request()->routeIs('warehouses.*','movements.*') ? 'true' : 'false' }}"
+                aria-controls="inventoryMenu"
             >
-                <i class="bi bi-box-seam fs-5"></i>
-                <span class="fw-medium">المخزون</span>
+
+                <span class="d-flex align-items-center gap-3">
+
+                    <i class="bi bi-cart-check fs-5"></i>
+
+                    <span class="fw-medium">
+                        المخزن
+                    </span>
+
+                </span>
+
+                <i class="bi bi-chevron-down small"></i>
+
+            </button>
+
+
+            <div
+                class="collapse {{ request()->routeIs('warehouses.*','movements.*') ? 'show' : '' }}"
+                id="inventoryMenu"
+            >
+
+                <div class="border-end border-secondary me-3 pe-2 mb-2">
+
+                    <a
+                        href="{{ route('warehouses.index') }}"
+                        class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
+                        {{ request()->routeIs('warehouses.*') ? 'bg-success text-white' : 'text-white-50' }}"
+                    >
+                        <i class="bi bi-receipt"></i>
+                        <span>المخازن</span>
+                    </a>
+
+                    <a
+                        href="{{ route('movements.index') }}"
+                        class="d-flex align-items-center gap-3 text-white-50 text-decoration-none rounded-2 px-3 py-2
+                        {{ request()->routeIs('movements.*') ? 'bg-success text-white' : 'text-white-50' }}"
+                    >
+                        <i class="bi bi-arrow-return-right"></i>
+                        <span>حركات المخزون</span>
+                    </a>
+
+                  
+                </div>
+
+            </div>
+
+             {{-- ================= الاصناف ================= --}}
+            <button
+                type="button"
+                class="btn btn-dark w-100 d-flex align-items-center justify-content-between text-end rounded-2 px-3 py-2 mb-1 border-0"
+                data-bs-toggle="collapse"
+                data-bs-target="#itemsMenu"
+                aria-expanded="{{ request()->routeIs('items.*','types.*') ? 'true' : 'false' }}"
+                aria-controls="inventoryMenu"
+            >
+
+                <span class="d-flex align-items-center gap-3">
+
+                    <i class="bi bi-cart-check fs-5"></i>
+
+                    <span class="fw-medium">
+                        الاصناف 
+                    </span>
+
+                </span>
+
+                <i class="bi bi-chevron-down small"></i>
+
+            </button>
+
+
+            <div
+                class="collapse {{ request()->routeIs('items.*','types.*') ? 'show' : '' }}"
+                id="itemsMenu"
+            >
+
+                <div class="border-end border-secondary me-3 pe-2 mb-2">
+
+                    <a
+                        href="{{ route('items.index') }}"
+                        class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
+                        {{ request()->routeIs('items.*') ? 'bg-success text-white' : 'text-white-50' }}"
+                    >
+                        <i class="bi bi-receipt"></i>
+                        <span>الصنف</span>
+                    </a>
+
+                    <a
+                        href="{{ route('types.index') }}"
+                        class="d-flex align-items-center gap-3 text-white-50 text-decoration-none rounded-2 px-3 py-2
+                        {{ request()->routeIs('types.*') ? 'bg-success text-white' : 'text-white-50' }}"
+                    >
+                        <i class="bi bi-arrow-return-right"></i>
+                        <span>نوع الصنف</span>
+                    </a>
+
+                  
+                </div>
+
+            </div>
+
+             {{-- البنوك --}}
+            <a
+                href="{{ route('banks.index') }}"
+                class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2 mb-1
+                {{ request()->is('banks') ? 'bg-success text-white' : 'text-white' }}"
+            >
+
+                <i class="bi bi-speedometer2 fs-5"></i>
+
+                <span class="fw-medium">
+                    البنوك  
+                </span>
+
             </a>
 
-
-            {{-- ================= الأصناف ================= --}}
+             {{-- الوحدات --}}
             <a
-                href="#"
-                class="d-flex align-items-center gap-3 text-white text-decoration-none rounded-2 px-3 py-2 mb-1"
+                href="{{ route('units.index') }}"
+                class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2 mb-1
+                {{ request()->is('units') ? 'bg-success text-white' : 'text-white' }}"
             >
-                <i class="bi bi-boxes fs-5"></i>
-                <span class="fw-medium">الأصناف</span>
+
+                <i class="bi bi-speedometer2 fs-5"></i>
+
+                <span class="fw-medium">
+                    الوحدات  
+                </span>
+
+            </a>
+             {{-- الصناديق --}}
+            <a
+                href="{{ route('boxes.index') }}"
+                class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2 mb-1
+                {{ request()->is('boxes') ? 'bg-success text-white' : 'text-white' }}"
+            >
+
+                <i class="bi bi-speedometer2 fs-5"></i>
+
+                <span class="fw-medium">
+                    الصناديق  
+                </span>
+
             </a>
 
 
@@ -351,7 +486,7 @@
         </div>
 
 
-        {{-- حالة النظام والمستخدم --}}
+        <!-- {{-- حالة النظام والمستخدم --}}
         <div class="mt-auto border-top border-secondary p-3">
 
             <div class="d-flex align-items-center gap-2">
@@ -377,7 +512,7 @@
 
             </div>
 
-        </div>
+        </div> -->
 
     </div>
 

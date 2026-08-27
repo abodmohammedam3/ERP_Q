@@ -27,13 +27,15 @@
 
                     <thead class="table-light">
 
-                        <tr>
+                        <tr  class="text-center">
 
-                            <th>#</th>
+                            <th>الرقم</th>
 
                             <th>الصنف</th>
 
                             <th>النوع</th>
+
+                            <th>الرمز</th>
 
                             <th>المخزن</th>
 

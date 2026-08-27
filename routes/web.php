@@ -19,3 +19,39 @@ Route::get('/invoices', function () {
 Route::get('/invoicesPurch', function () {
     return view('purchases.invoicesPurch.index');
 })->name('invoicesPurch.index');
+
+Route::get('/warehouses', function () {
+    return view('inventory.warehouses.index');
+})->name('warehouses.index');
+
+Route::get('/movements', function () {
+    return view('inventory.movements.index');
+})->name('movements.index');
+
+Route::get('/customers', function () {
+    return view('sales.customers.index');
+})->name('customers.index');
+
+Route::get('/suppliers', function () {
+    return view('purchases.suppliers.index');
+})->name('suppliers.index');
+
+Route::get('/items', function () {
+    return view('items.index');
+})->name('items.index');
+
+Route::get('/types', function () {
+    return view('items.types.index');
+})->name('types.index');
+
+Route::get('/banks', function () {
+    return view('banks.index');
+})->name('banks.index');
+
+Route::get('/units', function () {
+    return view('units.index');
+})->name('units.index');
+
+Route::get('/boxes', function () {
+    return view('boxes.index');
+})->name('boxes.index');

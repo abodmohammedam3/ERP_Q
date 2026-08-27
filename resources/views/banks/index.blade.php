@@ -1,34 +1,36 @@
 @extends('layouts.app')
 
-@section('title', 'الأصناف')
+@section('title', 'البنوك')
 
 @section('content')
 
 <div class="container-fluid py-3">
 
-    {{-- عنوان الشاشة --}}
     <div class="d-flex justify-content-between align-items-center mb-3">
 
         <div>
+
             <h4 class="mb-1">
-                <i class="bi bi-box-seam"></i>
-                الأصناف
+                <i class="bi bi-bank"></i>
+                البنوك
             </h4>
 
             <small class="text-muted">
-                إدارة الأصناف المسجلة في النظام
+                إدارة البنوك المسجلة في النظام
             </small>
+
         </div>
 
         <button type="button" class="btn btn-primary">
+
             <i class="bi bi-plus-lg"></i>
-            إضافة صنف
+            إضافة بنك
+
         </button>
 
     </div>
 
 
-    {{-- البحث --}}
     <div class="card mb-3">
 
         <div class="card-body">
@@ -44,7 +46,7 @@
                     <input
                         type="text"
                         class="form-control"
-                        placeholder="ابحث باسم الصنف..."
+                        placeholder="ابحث باسم البنك..."
                     >
 
                 </div>
@@ -67,19 +69,12 @@
     </div>
 
 
-    {{-- جدول الأصناف --}}
     <div class="card">
 
-        <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="card-header">
 
-            <span>
-                <i class="bi bi-list-ul"></i>
-                قائمة الأصناف
-            </span>
-
-            <span class="badge bg-secondary">
-                {{ isset($items) ? $items->count() : 0 }}
-            </span>
+            <i class="bi bi-list-ul"></i>
+            قائمة البنوك
 
         </div>
 
@@ -91,17 +86,17 @@
 
                     <thead class="table-light">
 
-                        <tr  class="text-center">
+                        <tr>
 
                             <th class="text-center">
-                                الرقم
+                                #
                             </th>
 
                             <th>
-                                اسم الصنف
+                                اسم البنك
                             </th>
 
-                            <th class="text-center" style="width: 180px;">
+                            <th class="text-center">
                                 الإجراءات
                             </th>
 
@@ -111,16 +106,16 @@
 
                     <tbody>
 
-                        @forelse($items ?? [] as $item)
+                        @forelse($banks ?? [] as $bank)
 
                             <tr>
 
                                 <td class="text-center">
-                                    {{ $item->itemID }}
+                                    {{ $bank->bankID }}
                                 </td>
 
                                 <td>
-                                    {{ $item->itemName2 }}
+                                    {{ $bank->bankName2 }}
                                 </td>
 
                                 <td class="text-center">
@@ -154,9 +149,9 @@
                                     class="text-center text-muted py-5"
                                 >
 
-                                    <i class="bi bi-box-seam fs-2 d-block mb-2"></i>
+                                    <i class="bi bi-bank fs-2 d-block mb-2"></i>
 
-                                    لا توجد أصناف مسجلة
+                                    لا توجد بنوك مسجلة
 
                                 </td>
 

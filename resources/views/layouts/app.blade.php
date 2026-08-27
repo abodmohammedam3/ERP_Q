@@ -71,6 +71,10 @@
     <script src="{{ asset('js/customer.js') }}"></script>
     <script src="{{ asset('js/warehouses.js') }}"></script>
     <script src="{{ asset('js/movement.js') }}"></script>
+    <script src="{{ asset('js/items.js') }}"></script>
+    <script src="{{ asset('js/type.js') }}"></script>
+
+
 
 
 

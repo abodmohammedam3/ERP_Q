@@ -8,172 +8,54 @@
 
     {{-- عنوان الشاشة --}}
     <div class="d-flex justify-content-between align-items-center mb-3">
-
         <div>
             <h4 class="mb-1">
-                <i class="bi bi-box-seam"></i>
-                الأصناف
+                <i class="bi bi-box-seam"></i> الأصناف
             </h4>
-
-            <small class="text-muted">
-                إدارة الأصناف المسجلة في النظام
-            </small>
+            <small class="text-muted">إدارة الأصناف المسجلة في النظام</small>
         </div>
 
-        <button type="button" class="btn btn-primary">
-            <i class="bi bi-plus-lg"></i>
-            إضافة صنف
-        </button>
-
+        <div class="btn-group">
+            <button type="button" class="btn btn-outline-secondary" onclick="printItems()">
+                <i class="bi bi-printer"></i> طباعة
+            </button>
+            <button type="button" class="btn btn-primary" onclick="openItemModal()">
+                <i class="bi bi-plus-lg"></i> إضافة صنف
+            </button>
+        </div>
     </div>
 
-
-    {{-- البحث --}}
-    <div class="card mb-3">
-
-        <div class="card-body">
-
-            <div class="row g-2 align-items-end">
-
-                <div class="col-md-6">
-
-                    <label class="form-label">
-                        البحث
-                    </label>
-
-                    <input
-                        type="text"
-                        class="form-control"
-                        placeholder="ابحث باسم الصنف..."
-                    >
-
-                </div>
-
-                <div class="col-md-auto">
-
-                    <button type="button" class="btn btn-secondary">
-
-                        <i class="bi bi-search"></i>
-                        بحث
-
-                    </button>
-
-                </div>
-
-            </div>
-
-        </div>
-
-    </div>
-
-
-    {{-- جدول الأصناف --}}
-    <div class="card">
-
-        <div class="card-header d-flex justify-content-between align-items-center">
-
-            <span>
-                <i class="bi bi-list-ul"></i>
-                قائمة الأصناف
-            </span>
-
-            <span class="badge bg-secondary">
-                {{ isset($items) ? $items->count() : 0 }}
-            </span>
-
-        </div>
-
-        <div class="card-body p-0">
-
-            <div class="table-responsive">
-
-                <table class="table table-hover table-bordered mb-0 align-middle">
-
-                    <thead class="table-light">
-
-                        <tr  class="text-center">
-
-                            <th class="text-center">
-                                الرقم
-                            </th>
-
-                            <th>
-                                اسم الصنف
-                            </th>
-
-                            <th class="text-center" style="width: 180px;">
-                                الإجراءات
-                            </th>
-
-                        </tr>
-
-                    </thead>
-
-                    <tbody>
-
-                        @forelse($items ?? [] as $item)
-
-                            <tr>
-
-                                <td class="text-center">
-                                    {{ $item->itemID }}
-                                </td>
-
-                                <td>
-                                    {{ $item->itemName2 }}
-                                </td>
-
-                                <td class="text-center">
-
-                                    <button
-                                        type="button"
-                                        class="btn btn-sm btn-outline-primary"
-                                    >
-                                        <i class="bi bi-pencil"></i>
-                                        تعديل
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        class="btn btn-sm btn-outline-danger"
-                                    >
-                                        <i class="bi bi-trash"></i>
-                                        حذف
-                                    </button>
-
-                                </td>
-
-                            </tr>
-
-                        @empty
-
-                            <tr>
-
-                                <td
-                                    colspan="3"
-                                    class="text-center text-muted py-5"
-                                >
-
-                                    <i class="bi bi-box-seam fs-2 d-block mb-2"></i>
-
-                                    لا توجد أصناف مسجلة
-
-                                </td>
-
-                            </tr>
-
-                        @endforelse
-
-                    </tbody>
-
-                </table>
-
-            </div>
-
-        </div>
-
-    </div>
+    <!-- استدعاء ملفات البحث والجدول -->
+    @include('items.search')
+    @include('items.table')
 
 </div>
+
+<!-- النافذة المنبثقة (Modal) لإضافة/تعديل صنف -->
+<div class="modal fade" id="itemModal" tabindex="-1" aria-labelledby="itemModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="itemModalLabel">إضافة صنف جديد</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="itemForm">
+                    <input type="hidden" id="itemID">
+                    
+                    <div class="mb-3">
+                        <label for="itemName" class="form-label">اسم الصنف <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="itemName" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button type="button" class="btn btn-primary" onclick="saveItem()">حفظ البيانات</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 
 @endsection

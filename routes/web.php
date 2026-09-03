@@ -1,5 +1,8 @@
 <?php
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\accounting\CharAccountController;
+
+
 Route::get('/', function () {
     return view('dashboard.index');
 });
@@ -7,54 +10,86 @@ Route::get('/', function () {
 Route::get('/dashboard', function () {
     return view('dashboard.index');
 });
-Route::get('/chartOfAccounts', function () {
-    return view('accounting.chartOfAccounts.index');
-})->name('chartOfAccounts.index');
+// دوال دليل الحسابات
 
-Route::get('/receiptVouchers', function () {
-    return view('accounting.receiptVouchers.index');
-})->name('receiptVouchers.index');
+Route::get(
+    '/settings/accounting/chartOfAccounts',
+    [CharAccountController::class, 'index']
+)->name('chartOfAccounts.index');
 
-Route::get('/invoices', function () {
-    return view('sales.invoices.index');
-})->name('invoices.index');
+Route::get(
+    '/settings/accounting/chartOfAccounts/list',
+    [CharAccountController::class, 'list']
+)->name('chartOfAccounts.list');
 
-Route::get('/invoicesPurch', function () {
-    return view('purchases.invoicesPurch.index');
-})->name('invoicesPurch.index');
+Route::post(
+    '/settings/accounting/chartOfAccounts',
+    [CharAccountController::class, 'store']
+)->name('chartOfAccounts.store');
 
-Route::get('/warehouses', function () {
-    return view('inventory.warehouses.index');
-})->name('warehouses.index');
+Route::get(
+    '/settings/accounting/chartOfAccounts/{account}',
+    [CharAccountController::class, 'edit']
+)->name('chartOfAccounts.edit');
 
-Route::get('/movements', function () {
-    return view('inventory.movements.index');
-})->name('movements.index');
+Route::put(
+    '/settings/accounting/chartOfAccounts/{account}',
+    [CharAccountController::class, 'update']
+)->name('chartOfAccounts.update');
+/////////////////////////////////////////////////////////////
 
-Route::get('/customers', function () {
-    return view('sales.customers.index');
-})->name('customers.index');
+Route::get('/setting/accounting/boxes', function () {
+    return view('setting.accounting.boxes.index');
+})->name('boxes.index');
 
-Route::get('/suppliers', function () {
-    return view('purchases.suppliers.index');
-})->name('suppliers.index');
-
-Route::get('/items', function () {
-    return view('items.index');
-})->name('items.index');
-
-Route::get('/types', function () {
-    return view('items.types.index');
-})->name('types.index');
-
-Route::get('/banks', function () {
-    return view('banks.index');
+Route::get('/setting/accounting/banks', function () {
+    return view('setting.accounting.banks.index');
 })->name('banks.index');
 
-Route::get('/units', function () {
-    return view('units.index');
-})->name('units.index');
+Route::get('/setting/accounting/currenc', function () {
+    return view('setting.accounting.currenc.index');
+})->name('currenc.index');
 
-Route::get('/boxes', function () {
-    return view('boxes.index');
-})->name('boxes.index');
+Route::get('/setting/accounting/openingBalances', function () {
+    return view('setting.accounting.openingBalances.index');
+})->name('openingBalances.index');
+
+Route::get('/setting/suppliers', function () {
+    return view('setting.suppliers.index');
+})->name('suppliers.index');
+
+Route::get('/setting/customers', function () {
+    return view('setting.customers.index');
+})->name('customers.index');
+
+Route::get('/setting/inventory/warehouses', function () {
+    return view('setting.inventory.warehouses.index');
+})->name('warehouses.index');
+
+Route::get('/setting/inventory/units', function () {
+    return view('setting.inventory.units.index');
+})->name('unites.index');
+
+Route::get('/setting/inventory/types', function () {
+    return view('setting.inventory.types.index');
+})->name('types.index');
+
+Route::get('/setting/inventory/items', function () {
+    return view('setting.inventory.items.index');
+})->name('items.index');
+
+Route::get('/operation/sales/invoices', function () {
+    return view('operation.sales.invoices.index');
+})->name('sales.index');
+
+Route::get('/operation/purchases/invoicesPurch', function () {
+    return view('operation.purchases.invoicesPurch.index');
+})->name('invoicesPurch.index');
+
+Route::get('/operation/accounting/paymentVouchers', function () {
+    return view('operation.accounting.paymentVouchers.index');
+})->name('paymentVouchers.index');
+
+Route::get('/operation/accounting/receiptVouchers', function () {
+    return view('operation.accounting.receiptVouchers.index');
+})->name('receiptVouchers.index');

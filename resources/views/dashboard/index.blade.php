@@ -41,8 +41,8 @@
     @include('dashboard.SystemIndicators')
     @include('dashboard.summaryOperations')
     @include('dashboard.SupplyDistribution')
-    @include('dashboard.Inventory')
-    @include('dashboard.SystemAlerts')
+    {{-- @include('dashboard.Inventory') --}}
+    {{-- @include('dashboard.SystemAlerts') --}}
 
 </div>                
 @endsection

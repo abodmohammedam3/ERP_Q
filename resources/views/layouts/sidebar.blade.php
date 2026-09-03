@@ -333,9 +333,18 @@
                     </div>
 
                     {{-- حركة المخزون --}}
-                    <a href="#" class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2 text-white-50">
-                        <i class="bi bi-boxes"></i> <span>حركة المخزون</span>
-                    </a>
+                     <a
+                            href="{{ route('movements.index') }}"
+                            class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
+                            {{ request()->routeIs('movements.*')
+                                ? 'bg-success text-white'
+                                : 'text-white-50' }}"
+                        >
+                    <i class="bi bi-boxes"></i>
+                    <span>
+                        حركة المخزون
+                    </span>
+                </a>
 
                 </div>
             </div>

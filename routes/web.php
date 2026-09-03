@@ -93,3 +93,8 @@ Route::get('/operation/accounting/paymentVouchers', function () {
 Route::get('/operation/accounting/receiptVouchers', function () {
     return view('operation.accounting.receiptVouchers.index');
 })->name('receiptVouchers.index');
+
+Route::get('/operation/movements', function () {
+    return view('operation.movements.index');
+})->name('movements.index');
+

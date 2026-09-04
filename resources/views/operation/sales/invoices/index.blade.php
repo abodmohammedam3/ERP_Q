@@ -64,14 +64,14 @@
     <!-- رأس الفاتورة -->
     <!-- ========================= -->
 
-    @include('sales.invoices.header')
+    @include('operation.sales.invoices.header')
 
 
     <!-- ========================= -->
     <!-- تفاصيل الفاتورة -->
     <!-- ========================= -->
 
-    @include('sales.invoices.detalis')
+    @include('operation.sales.invoices.detalis')
 
 </div>
 
@@ -80,14 +80,14 @@
     <!-- نافذة البحث عن فاتورة البيع -->
 <!-- ===================================================== -->
 
-    @include('sales.invoices.search')
+    @include('operation.sales.invoices.search')
 
 
 <!-- ===================================================== -->
 <!-- نافذة اختيار العميل -->
 <!-- ===================================================== -->
 
-    @include('models.customer')
+    @include('operation.models.customer')
 
 
 <!-- ===================================================== -->
@@ -95,34 +95,34 @@
 <!-- ===================================================== -->
 
 
-     @include('models.currency')
+     @include('operation.models.currency')
 
 <!-- ===================================================== -->
 <!-- نافذة اختيار الصنف -->
 <!-- ===================================================== -->
 
-     @include('models.item')
+     @include('operation.models.item')
 
 
 <!-- ===================================================== -->
 <!-- نافذة اختيار النوع -->
 <!-- ===================================================== -->
 
-     @include('models.type')
+     @include('operation.models.type')
 
 
 <!-- ===================================================== -->
 <!-- نافذة اختيار المخزن -->
 <!-- ===================================================== -->
 
-     @include('models.warehouses')
+     @include('operation.models.warehouses')
 
 
 <!-- ===================================================== -->
 <!-- نافذة اختيار الوحدة -->
 <!-- ===================================================== -->
 
-     @include('models.unit')
+     @include('operation.models.unit')
 
 
 @endsection
@@ -135,20 +135,20 @@
     {{-- JavaScript - فاتورة البيع --}}
     {{-- ================================================= --}}
 
-    <script src="{{ asset('js/sales/invoice/sales_invoice_state.js') }}"></script>
-    <script src="{{ asset('js/sales/invoice/sales_invoice_init.js') }}"></script>
-    <script src="{{ asset('js/sales/invoice/sales_invoice_mode.js') }}"></script>
-    <script src="{{ asset('js/sales/invoice/sales_invoice_form.js') }}"></script>
-    <script src="{{ asset('js/sales/invoice/sales_invoice_payment.js') }}"></script>
-    <script src="{{ asset('js/sales/invoice/sales_invoice_totals.js') }}"></script>
-    <script src="{{ asset('js/sales/invoice/sales_invoice_rows.js') }}"></script>
-    <script src="{{ asset('js/sales/invoice/sales_invoice_customer.js') }}"></script>
-    <script src="{{ asset('js/sales/invoice/sales_invoice_currency.js') }}"></script>
-    <script src="{{ asset('js/sales/invoice/sales_invoice_item.js') }}"></script>
-    <script src="{{ asset('js/sales/invoice/sales_invoice_type.js') }}"></script>
-    <script src="{{ asset('js/sales/invoice/sales_invoice_unit.js') }}"></script>
-    <script src="{{ asset('js/sales/invoice/sales_invoice_warehouse.js') }}"></script>
-    <script src="{{ asset('js/sales/invoice/sales_invoice_search.js') }}"></script>
-    <script src="{{ asset('js/sales/invoice/sales_invoice.js') }}"></script>
+    <script src="{{ asset('js/invoice/sales_invoice_state.js') }}"></script>
+    <script src="{{ asset('js/invoice/sales_invoice_init.js') }}"></script>
+    <script src="{{ asset('js/invoice/sales_invoice_mode.js') }}"></script>
+    <script src="{{ asset('js/invoice/sales_invoice_form.js') }}"></script>
+    <script src="{{ asset('js/invoice/sales_invoice_payment.js') }}"></script>
+    <script src="{{ asset('js/invoice/sales_invoice_totals.js') }}"></script>
+    <script src="{{ asset('js/invoice/sales_invoice_rows.js') }}"></script>
+    <script src="{{ asset('js/invoice/sales_invoice_customer.js') }}"></script>
+    <script src="{{ asset('js/invoice/sales_invoice_currency.js') }}"></script>
+    <script src="{{ asset('js/invoice/sales_invoice_item.js') }}"></script>
+    <script src="{{ asset('js/invoice/sales_invoice_type.js') }}"></script>
+    <script src="{{ asset('js/invoice/sales_invoice_unit.js') }}"></script>
+    <script src="{{ asset('js/invoice/sales_invoice_warehouse.js') }}"></script>
+    <script src="{{ asset('js/invoice/sales_invoice_search.js') }}"></script>
+    <script src="{{ asset('js/invoice/sales_invoice.js') }}"></script>
 
 @endpush

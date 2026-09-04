@@ -4,276 +4,65 @@
 
 @section('content')
 
-<div class="container-fluid py-3"><!-- ========================= -->
-<!-- عنوان الشاشة والأزرار -->
-<!-- ========================= -->
+<div class="container-fluid py-3">
 
-<div class="d-flex justify-content-between align-items-center mb-3">
+    <!-- عنوان الشاشة والأزرار -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
 
-    <div>
-        <h4 class="mb-1">فاتورة شراء</h4>
+        <div>
+            <h4 class="mb-1">فاتورة شراء</h4>
+        </div>
+
+        <div class="btn-group" role="group">
+
+            <button
+                type="button"
+                class="btn btn-primary"
+                id="btnNewInvoice"
+                onclick="resetInvoice()"
+            >
+                <i class="bi bi-plus-lg"></i>
+                إضافة فاتورة
+            </button>
+
+            <button
+                type="button"
+                class="btn btn-outline-secondary"
+                id="btnSearchInvoice"
+                onclick="searchInvoice()"
+            >
+                <i class="bi bi-search"></i>
+                بحث
+            </button>
+
+        </div>
+
     </div>
 
-    <div class="btn-group" role="group">
 
-        <button
-            type="button"
-            class="btn btn-primary"
-            id="btnNewInvoice"
-            onclick="resetInvoice()"
-        >
-            <i class="bi bi-plus-lg"></i>
-            إضافة فاتورة
-        </button>
+    <!-- رأس الفاتورة -->
+    @include('operation.purchases.invoicesPurch.haed')
 
-        <button
-            type="button"
-            class="btn btn-outline-secondary"
-            id="btnSearchInvoice"
-            onclick="searchInvoice()"
-        >
-            <i class="bi bi-search"></i>
-            بحث
-        </button>
 
-    </div>
+    <!-- تفاصيل الفاتورة -->
+    @include('operation.purchases.invoicesPurch.detals')
 
 </div>
 
 
-<!-- ========================= -->
-<!-- رأس الفاتورة -->
-<!-- ========================= -->
+<!-- ===================================================== -->
+<!-- نافذة البحث عن الفاتورة -->
+<!-- ===================================================== -->
 
-@include('operation.purchases.invoicesPurch.haed')
-
-
-<!-- ========================= -->
-<!-- تفاصيل الفاتورة -->
-<!-- ========================= -->
-
-@include('operation.purchases.invoicesPurch.detals')
-
-</div><!-- ===================================================== --><!-- نافذة البحث عن الفاتورة --><!-- ===================================================== --><div
+<div
     class="modal fade"
     id="invoiceSearchModal"
     tabindex="-1"
     aria-labelledby="invoiceSearchModalLabel"
     aria-hidden="true"
-><div class="modal-dialog modal-xl modal-dialog-centered">
-
-    <div class="modal-content">
-
-        <div class="modal-header">
-
-            <h5
-                class="modal-title"
-                id="invoiceSearchModalLabel"
-            >
-                <i class="bi bi-search"></i>
-                البحث عن فاتورة شراء
-            </h5>
-
-            <button
-                type="button"
-                class="btn-close"
-                data-bs-dismiss="modal"
-                aria-label="إغلاق"
-            ></button>
-
-        </div>
-
-
-        <div class="modal-body">
-
-            <div class="row g-2 mb-3">
-
-                <div class="col-md-10">
-
-                    <input
-                        type="text"
-                        class="form-control"
-                        id="invoiceSearchInput"
-                        placeholder="أدخل رقم الفاتورة أو اسم المورد..."
-                    >
-
-                </div>
-
-                <div class="col-md-2">
-
-                    <button
-                        type="button"
-                        class="btn btn-primary w-100"
-                        onclick="performInvoiceSearch()"
-                    >
-                        <i class="bi bi-search"></i>
-                        بحث
-                    </button>
-
-                </div>
-
-            </div>
-
-
-            <div class="table-responsive">
-
-                <table class="table table-bordered table-hover align-middle">
-
-                    <thead class="table-light">
-
-                        <tr class="text-center">
-
-                            <th>رقم الفاتورة</th>
-                            <th>التاريخ</th>
-                            <th>المورد</th>
-                            <th>العملة</th>
-                            <th>طريقة الدفع</th>
-                            <th>الإجمالي</th>
-                            <th>اختيار</th>
-
-                        </tr>
-
-                    </thead>
-
-                    <tbody id="invoiceSearchResults">
-
-                        <tr>
-
-                            <td
-                                colspan="7"
-                                class="text-center text-muted py-4"
-                            >
-                                أدخل بيانات البحث ثم اضغط بحث
-                            </td>
-
-                        </tr>
-
-                    </tbody>
-
-                </table>
-
-            </div>
-
-        </div>
-
-    </div>
-
-</div>
-
-</div><!-- ===================================================== --><!-- نافذة اختيار المورد --><!-- ===================================================== --><div
-    class="modal fade"
-    id="supplierModal"
-    tabindex="-1"
-    aria-labelledby="supplierModalLabel"
-    aria-hidden="true"
-><div class="modal-dialog modal-lg modal-dialog-centered">
-
-    <div class="modal-content">
-
-        <div class="modal-header">
-
-            <h5
-                class="modal-title"
-                id="supplierModalLabel"
-            >
-                <i class="bi bi-person"></i>
-                اختيار المورد
-            </h5>
-
-            <button
-                type="button"
-                class="btn-close"
-                data-bs-dismiss="modal"
-                aria-label="إغلاق"
-            ></button>
-
-        </div>
-
-        <div class="modal-body">
-
-            <div class="row g-2 mb-3">
-
-                <div class="col-md-10">
-
-                    <input
-                        type="text"
-                        class="form-control"
-                        id="supplierSearchInput"
-                        placeholder="اسم المورد أو الرقم المحاسبي"
-                    >
-
-                </div>
-
-                <div class="col-md-2">
-
-                    <button
-                        type="button"
-                        class="btn btn-primary w-100"
-                        onclick="searchSuppliers()"
-                    >
-                        بحث
-                    </button>
-
-                </div>
-
-            </div>
-
-
-            <div class="table-responsive">
-
-                <table class="table table-bordered table-hover">
-
-                    <thead class="table-light">
-
-                        <tr class="text-center">
-
-                            <th>الرقم</th>
-                            <th>اسم المورد</th>
-                            <th>الرقم المحاسبي</th>
-                            <th>اختيار</th>
-
-                        </tr>
-
-                    </thead>
-
-                    <tbody id="supplierResults">
-
-                        <tr>
-
-                            <td
-                                colspan="4"
-                                class="text-center text-muted py-3"
-                            >
-                                لا توجد نتائج
-                            </td>
-
-                        </tr>
-
-                    </tbody>
-
-                </table>
-
-            </div>
-
-        </div>
-
-    </div>
-
-</div>
-
-<!-- ===================================================== -->
-<!-- نافذة اختيار الصنف -->
-<!-- ===================================================== -->
-
-<div
-    class="modal fade"
-    id="salesItemModal"
-    tabindex="-1"
-    aria-labelledby="salesItemModalLabel"
-    aria-hidden="true"
 >
 
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
 
         <div class="modal-content">
 
@@ -281,10 +70,10 @@
 
                 <h5
                     class="modal-title"
-                    id="salesItemModalLabel"
+                    id="invoiceSearchModalLabel"
                 >
-                    <i class="bi bi-box-seam"></i>
-                    اختيار الصنف
+                    <i class="bi bi-search"></i>
+                    البحث عن فاتورة شراء
                 </h5>
 
                 <button
@@ -306,7 +95,561 @@
                         <input
                             type="text"
                             class="form-control"
-                            id="salesItemSearchInput"
+                            id="invoiceSearchInput"
+                            placeholder="أدخل رقم الفاتورة أو اسم المورد..."
+                        >
+
+                    </div>
+
+                    <div class="col-md-2">
+
+                        <button
+                            type="button"
+                            class="btn btn-primary w-100"
+                            onclick="performInvoiceSearch()"
+                        >
+                            <i class="bi bi-search"></i>
+                            بحث
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <div class="table-responsive">
+
+                    <table class="table table-bordered table-hover align-middle">
+
+                        <thead class="table-light">
+
+                            <tr class="text-center">
+
+                                <th>رقم الفاتورة</th>
+                                <th>التاريخ</th>
+                                <th>المورد</th>
+                                <th>العملة</th>
+                                <th>طريقة الدفع</th>
+                                <th>الإجمالي</th>
+                                <th>اختيار</th>
+
+                            </tr>
+
+                        </thead>
+
+                        <tbody id="invoiceSearchResults">
+
+                            <tr>
+
+                                <td
+                                    colspan="7"
+                                    class="text-center text-muted py-4"
+                                >
+                                    أدخل بيانات البحث ثم اضغط بحث
+                                </td>
+
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- نافذة اختيار المورد -->
+<!-- ===================================================== -->
+
+<div
+    class="modal fade"
+    id="supplierModal"
+    tabindex="-1"
+    aria-labelledby="supplierModalLabel"
+    aria-hidden="true"
+>
+
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h5
+                    class="modal-title"
+                    id="supplierModalLabel"
+                >
+                    <i class="bi bi-person"></i>
+                    اختيار المورد
+                </h5>
+
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                    aria-label="إغلاق"
+                ></button>
+
+            </div>
+
+            <div class="modal-body">
+
+                <div class="row g-2 mb-3">
+
+                    <div class="col-md-10">
+
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="supplierSearchInput"
+                            placeholder="اسم المورد أو الرقم المحاسبي"
+                        >
+
+                    </div>
+
+                    <div class="col-md-2">
+
+                        <button
+                            type="button"
+                            class="btn btn-primary w-100"
+                            onclick="searchSuppliers()"
+                        >
+                            بحث
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <div class="table-responsive">
+
+                    <table class="table table-bordered table-hover">
+
+                        <thead class="table-light">
+
+                            <tr class="text-center">
+
+                                <th>الرقم</th>
+                                <th>اسم المورد</th>
+                                <th>الرقم المحاسبي</th>
+                                <th>اختيار</th>
+
+                            </tr>
+
+                        </thead>
+
+                        <tbody id="supplierResults">
+
+                            <tr>
+
+                                <td
+                                    colspan="4"
+                                    class="text-center text-muted py-3"
+                                >
+                                    لا توجد نتائج
+                                </td>
+
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- نافذة اختيار العملة -->
+<!-- ===================================================== -->
+
+<div
+    class="modal fade"
+    id="currencyModal"
+    tabindex="-1"
+    aria-labelledby="currencyModalLabel"
+    aria-hidden="true"
+>
+
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h5
+                    class="modal-title"
+                    id="currencyModalLabel"
+                >
+                    <i class="bi bi-currency-exchange"></i>
+                    اختيار العملة
+                </h5>
+
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                    aria-label="إغلاق"
+                ></button>
+
+            </div>
+
+            <div class="modal-body">
+
+                <div class="row g-2 mb-3">
+
+                    <div class="col-md-10">
+
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="currencySearchInput"
+                            placeholder="اسم العملة أو رمزها"
+                        >
+
+                    </div>
+
+                    <div class="col-md-2">
+
+                        <button
+                            type="button"
+                            class="btn btn-primary w-100"
+                            onclick="searchCurrencies()"
+                        >
+                            بحث
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <div class="table-responsive">
+
+                    <table class="table table-bordered table-hover">
+
+                        <thead class="table-light">
+
+                            <tr class="text-center">
+
+                                <th>الرقم</th>
+                                <th>العملة</th>
+                                <th>الرمز</th>
+                                <th>سعر الصرف</th>
+                                <th>اختيار</th>
+
+                            </tr>
+
+                        </thead>
+
+                        <tbody id="currencyResults">
+
+                            <tr>
+
+                                <td
+                                    colspan="5"
+                                    class="text-center text-muted py-3"
+                                >
+                                    لا توجد نتائج
+                                </td>
+
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- نافذة اختيار المخزن -->
+<!-- ===================================================== -->
+
+<div
+    class="modal fade"
+    id="warehouseModal"
+    tabindex="-1"
+    aria-labelledby="warehouseModalLabel"
+    aria-hidden="true"
+>
+
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h5
+                    class="modal-title"
+                    id="warehouseModalLabel"
+                >
+                    <i class="bi bi-building"></i>
+                    اختيار المخزن
+                </h5>
+
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                    aria-label="إغلاق"
+                ></button>
+
+            </div>
+
+            <div class="modal-body">
+
+                <div class="row g-2 mb-3">
+
+                    <div class="col-md-10">
+
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="warehouseSearchInput"
+                            placeholder="اسم المخزن"
+                        >
+
+                    </div>
+
+                    <div class="col-md-2">
+
+                        <button
+                            type="button"
+                            class="btn btn-primary w-100"
+                            onclick="searchWarehouses()"
+                        >
+                            بحث
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <div class="table-responsive">
+
+                    <table class="table table-bordered table-hover">
+
+                        <thead class="table-light">
+
+                            <tr class="text-center">
+
+                                <th>الرقم</th>
+                                <th>اسم المخزن</th>
+                                <th>اختيار</th>
+
+                            </tr>
+
+                        </thead>
+
+                        <tbody id="warehouseResults">
+
+                            <tr>
+
+                                <td
+                                    colspan="3"
+                                    class="text-center text-muted py-3"
+                                >
+                                    لا توجد نتائج
+                                </td>
+
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- نافذة اختيار الحساب (لطريقة الدفع) -->
+<!-- ===================================================== -->
+
+<div
+    class="modal fade"
+    id="accountModal"
+    tabindex="-1"
+    aria-labelledby="accountModalLabel"
+    aria-hidden="true"
+>
+
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h5
+                    class="modal-title"
+                    id="accountModalLabel"
+                >
+                    <i class="bi bi-wallet2"></i>
+                    اختيار الحساب
+                </h5>
+
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                    aria-label="إغلاق"
+                ></button>
+
+            </div>
+
+            <div class="modal-body">
+
+                <div class="row g-2 mb-3">
+
+                    <div class="col-md-10">
+
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="accountSearchInput"
+                            placeholder="اسم الحساب"
+                        >
+
+                    </div>
+
+                    <div class="col-md-2">
+
+                        <button
+                            type="button"
+                            class="btn btn-primary w-100"
+                            onclick="searchAccounts()"
+                        >
+                            بحث
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <div class="table-responsive">
+
+                    <table class="table table-bordered table-hover">
+
+                        <thead class="table-light">
+
+                            <tr class="text-center">
+
+                                <th>الرقم</th>
+                                <th>اسم الحساب</th>
+                                <th>النوع</th>
+                                <th>اختيار</th>
+
+                            </tr>
+
+                        </thead>
+
+                        <tbody id="accountResults">
+
+                            <tr>
+
+                                <td
+                                    colspan="4"
+                                    class="text-center text-muted py-3"
+                                >
+                                    لا توجد نتائج
+                                </td>
+
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- نافذة اختيار الأصناف (لفاتورة الشراء) -->
+<!-- ===================================================== -->
+
+<div
+    class="modal fade"
+    id="purchaseItemModal"
+    tabindex="-1"
+    aria-labelledby="purchaseItemModalLabel"
+    aria-hidden="true"
+>
+
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h5
+                    class="modal-title"
+                    id="purchaseItemModalLabel"
+                >
+                    <i class="bi bi-box-seam"></i>
+                    اختيار الصنف
+                </h5>
+
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                    aria-label="إغلاق"
+                ></button>
+
+            </div>
+
+            <div class="modal-body">
+
+                <div class="row g-2 mb-3">
+
+                    <div class="col-md-10">
+
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="purchaseItemSearchInput"
                             placeholder="اسم الصنف"
                         >
 
@@ -317,7 +660,7 @@
                         <button
                             type="button"
                             class="btn btn-primary w-100"
-                            onclick="searchSalesItems()"
+                            onclick="searchPurchaseItems()"
                         >
                             بحث
                         </button>
@@ -344,7 +687,20 @@
 
                         </thead>
 
-                        <tbody id="salesItemResults"></tbody>
+                        <tbody id="purchaseItemResults">
+
+                            <tr>
+
+                                <td
+                                    colspan="4"
+                                    class="text-center text-muted py-3"
+                                >
+                                    لا توجد نتائج
+                                </td>
+
+                            </tr>
+
+                        </tbody>
 
                     </table>
 
@@ -358,99 +714,105 @@
 
 </div>
 
-</div><!-- ===================================================== --><!-- نافذة اختيار العملة --><!-- ===================================================== --><div
+
+<!-- ===================================================== -->
+<!-- نافذة اختيار الأنواع (ثابتة) -->
+<!-- ===================================================== -->
+
+<div
     class="modal fade"
-    id="currencyModal"
+    id="typeModal"
     tabindex="-1"
-    aria-labelledby="currencyModalLabel"
+    aria-labelledby="typeModalLabel"
     aria-hidden="true"
-><div class="modal-dialog modal-lg modal-dialog-centered">
+>
 
-    <div class="modal-content">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
 
-        <div class="modal-header">
+        <div class="modal-content">
 
-            <h5
-                class="modal-title"
-                id="currencyModalLabel"
-            >
-                <i class="bi bi-currency-exchange"></i>
-                اختيار العملة
-            </h5>
+            <div class="modal-header">
 
-            <button
-                type="button"
-                class="btn-close"
-                data-bs-dismiss="modal"
-                aria-label="إغلاق"
-            ></button>
+                <h5
+                    class="modal-title"
+                    id="typeModalLabel"
+                >
+                    <i class="bi bi-tags"></i>
+                    اختيار النوع
+                </h5>
 
-        </div>
-
-        <div class="modal-body">
-
-            <div class="row g-2 mb-3">
-
-                <div class="col-md-10">
-
-                    <input
-                        type="text"
-                        class="form-control"
-                        id="currencySearchInput"
-                        placeholder="اسم العملة أو رمزها"
-                    >
-
-                </div>
-
-                <div class="col-md-2">
-
-                    <button
-                        type="button"
-                        class="btn btn-primary w-100"
-                        onclick="searchCurrencies()"
-                    >
-                        بحث
-                    </button>
-
-                </div>
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                    aria-label="إغلاق"
+                ></button>
 
             </div>
 
+            <div class="modal-body">
 
-            <div class="table-responsive">
+                <div class="row g-2 mb-3">
 
-                <table class="table table-bordered table-hover">
+                    <div class="col-md-10">
 
-                    <thead class="table-light">
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="typeSearchInput"
+                            placeholder="اسم النوع"
+                        >
 
-                        <tr class="text-center">
+                    </div>
 
-                            <th>الرقم</th>
-                            <th>العملة</th>
-                            <th>الرمز</th>
-                            <th>سعر الصرف</th>
-                            <th>اختيار</th>
+                    <div class="col-md-2">
 
-                        </tr>
+                        <button
+                            type="button"
+                            class="btn btn-primary w-100"
+                            onclick="searchTypes()"
+                        >
+                            بحث
+                        </button>
 
-                    </thead>
+                    </div>
 
-                    <tbody id="currencyResults">
+                </div>
 
-                        <tr>
 
-                            <td
-                                colspan="5"
-                                class="text-center text-muted py-3"
-                            >
-                                لا توجد نتائج
-                            </td>
+                <div class="table-responsive">
 
-                        </tr>
+                    <table class="table table-bordered table-hover">
 
-                    </tbody>
+                        <thead class="table-light">
 
-                </table>
+                            <tr class="text-center">
+
+                                <th>النوع</th>
+                                <th>اختيار</th>
+
+                            </tr>
+
+                        </thead>
+
+                        <tbody id="typeResults">
+
+                            <tr>
+
+                                <td
+                                    colspan="2"
+                                    class="text-center text-muted py-3"
+                                >
+                                    لا توجد نتائج
+                                </td>
+
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
 
             </div>
 
@@ -460,12 +822,10 @@
 
 </div>
 
-</div>
 @endsection
 
 @push('scripts')
 
 <script src="{{ asset('js/purchase_invoice.js') }}"></script>
-<script src="{{ asset('js/sales/invoice/sales_invoice_item.js') }}"></script>
 
 @endpush

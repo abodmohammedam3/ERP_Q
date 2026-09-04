@@ -4,13 +4,9 @@
 
 window.clearSalesInvoiceForm = function () {
 
-    /*
-     * مسح بيانات رأس الفاتورة
-     */
-
+    // مسح بيانات رأس الفاتورة (باستثناء رقم الفاتورة)
     document
         .querySelectorAll(
-            '#SalesInvoiceNo,' +
             '#SalesInvoiceDate,' +
             '#SalesPaymentMethod,' +
             '#salesCashAccount,' +
@@ -28,11 +24,7 @@ window.clearSalesInvoiceForm = function () {
 
         });
 
-
-    /*
-     * العميل
-     */
-
+    // العميل
     const customerID =
         document.getElementById(
             'customerID'
@@ -41,15 +33,10 @@ window.clearSalesInvoiceForm = function () {
     if (customerID) {
 
         customerID.value = '';
-        
 
     }
 
-
-    /*
-     * العملة
-     */
-
+    // العملة
     const currencyID =
         document.getElementById(
             'salesCoinsID'
@@ -61,16 +48,11 @@ window.clearSalesInvoiceForm = function () {
 
     }
 
-
-    /*
-     * تفاصيل الفاتورة
-     */
-
+    // تفاصيل الفاتورة
     const details =
         document.getElementById(
             'salesInvoiceDetails'
         );
-
 
     if (details) {
 
@@ -91,16 +73,11 @@ window.clearSalesInvoiceForm = function () {
 
     }
 
-
-    /*
-     * إجمالي الخصم
-     */
-
+    // إجمالي الخصم
     const discount =
         document.getElementById(
             'totalSalesDiscountDisplay'
         );
-
 
     if (discount) {
 
@@ -108,16 +85,11 @@ window.clearSalesInvoiceForm = function () {
 
     }
 
-
-    /*
-     * إجمالي الفاتورة
-     */
-
+    // إجمالي الفاتورة
     const total =
         document.getElementById(
             'salesInvoiceTotalDisplay'
         );
-
 
     if (total) {
 
@@ -125,11 +97,7 @@ window.clearSalesInvoiceForm = function () {
 
     }
 
-
-    /*
-     * إخفاء حسابات الدفع
-     */
-
+    // إخفاء حسابات الدفع
     if (
         typeof hideSalesPaymentAccounts ===
         'function'
@@ -139,11 +107,13 @@ window.clearSalesInvoiceForm = function () {
 
     }
 
+    // إعادة تعيين المعرف
+    SalesInvoiceState.currentInvoiceId = null;
 
-    /*
-     * الوضع الابتدائي
-     */
+    // إعادة تعيين رقم الفاتورة (تفريغ)
+    document.getElementById('SalesInvoiceNo').value = '';
 
+    // الوضع الابتدائي
     if (
         typeof setSalesInvoiceMode ===
         'function'
@@ -172,7 +142,40 @@ window.cancelSalesInvoice = function () {
 
     }
 
-
     clearSalesInvoiceForm();
+
+    // التأكد من العودة إلى وضع العرض الفارغ
+    setSalesInvoiceMode('view');
+
+    // تفريغ رقم الفاتورة أيضاً
+    document.getElementById('SalesInvoiceNo').value = '';
+
+};
+
+
+/* =========================================================
+   توليد رقم فاتورة تلقائي
+   ========================================================= */
+
+window.generateSalesInvoiceNumber = function () {
+
+    // حساب آخر رقم مستخدم من البيانات التجريبية
+    if (typeof SalesInvoiceState.lastInvoiceNumber === 'undefined') {
+        SalesInvoiceState.lastInvoiceNumber = 0;
+    }
+
+    SalesInvoiceState.lastInvoiceNumber++;
+
+    const invoiceNo =
+        document.getElementById(
+            'SalesInvoiceNo'
+        );
+
+    if (invoiceNo) {
+
+        invoiceNo.value =
+            SalesInvoiceState.lastInvoiceNumber;
+
+    }
 
 };

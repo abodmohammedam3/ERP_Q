@@ -21,11 +21,9 @@
 
         </div>
 
-        <button type="button" class="btn btn-primary">
-
+        <button type="button" class="btn btn-primary" id="addBoxBtn">
             <i class="bi bi-plus-lg"></i>
             إضافة صندوق
-
         </button>
 
     </div>
@@ -46,6 +44,7 @@
                     <input
                         type="text"
                         class="form-control"
+                        id="boxSearchInput"
                         placeholder="ابحث باسم الصندوق..."
                     >
 
@@ -57,7 +56,7 @@
                         العملة
                     </label>
 
-                    <select class="form-select">
+                    <select class="form-select" id="boxCoinFilter">
 
                         <option value="">
                             جميع العملات
@@ -77,11 +76,9 @@
 
                 <div class="col-md-auto">
 
-                    <button type="button" class="btn btn-secondary">
-
+                    <button type="button" class="btn btn-secondary" id="searchBoxBtn">
                         <i class="bi bi-search"></i>
                         بحث
-
                     </button>
 
                 </div>
@@ -106,74 +103,44 @@
 
             <div class="table-responsive">
 
-                <table class="table table-hover table-bordered mb-0 align-middle">
+                <table class="table table-hover table-bordered mb-0 align-middle" id="boxesTable">
 
                     <thead class="table-light">
 
-                        <tr  class="text-center">
+                        <tr class="text-center">
 
-                            <th class="text-center">
-                                الرقم
-                            </th>
-
-                            <th>
-                                اسم الصندوق
-                            </th>
-
-                            <th>
-                                العملة
-                            </th>
-
-                            <th>
-                               سعر الصرف
-                            </th>
-
-                            <th class="text-center">
-                                الإجراءات
-                            </th>
+                            <th>الرقم</th>
+                            <th>اسم الصندوق</th>
+                            <th>العملة</th>
+                            <th>سعر الصرف</th>
+                            <th>رقم الحساب التحليلي</th>  <!-- تم التعديل -->
+                            <th class="text-center">الإجراءات</th>
 
                         </tr>
 
                     </thead>
 
-                    <tbody>
+                    <tbody id="boxesTableBody">
 
                         @forelse($boxes ?? [] as $box)
 
-                            <tr  class="text-center">
+                            <tr class="text-center box-row" data-id="{{ $box->boxID }}">
 
-                                <td class="text-center">
-                                    {{ $box->boxID }}
-                                </td>
-
-                                <td>
-                                    {{ $box->boxName2 }}
-                                </td>
-
-                                <td>
+                                <td class="row-number">{{ $loop->iteration }}</td>
+                                <td class="row-name">{{ $box->boxName2 }}</td>
+                                <td class="row-coin">
                                     {{ $box->coin->coinsCode2 ?? $box->coin->coinsCode3 ?? 'غير محددة' }}
                                 </td>
-
-                                <td>
-                                    {{ $box->account->accName ?? 'غير مرتبط' }}
-                                </td>
-
+                                <td class="row-rate">{{ $box->exchangeRate ?? '1' }}</td>
+                                <td class="row-analytical">{{ $box->analyticAccount ?? 'غير محدد' }}</td>
                                 <td class="text-center">
 
-                                    <button
-                                        type="button"
-                                        class="btn btn-sm btn-outline-primary"
-                                    >
-                                        <i class="bi bi-pencil"></i>
-                                        تعديل
+                                    <button type="button" class="btn btn-sm btn-outline-primary edit-box" data-id="{{ $box->boxID }}">
+                                        <i class="bi bi-pencil"></i> تعديل
                                     </button>
 
-                                    <button
-                                        type="button"
-                                        class="btn btn-sm btn-outline-danger"
-                                    >
-                                        <i class="bi bi-trash"></i>
-                                        حذف
+                                    <button type="button" class="btn btn-sm btn-outline-danger delete-box" data-id="{{ $box->boxID }}">
+                                        <i class="bi bi-trash"></i> حذف
                                     </button>
 
                                 </td>
@@ -182,17 +149,11 @@
 
                         @empty
 
-                            <tr>
+                            <tr id="emptyBoxRow">
 
-                                <td
-                                    colspan="5"
-                                    class="text-center text-muted py-5"
-                                >
-
+                                <td colspan="6" class="text-center text-muted py-5">
                                     <i class="bi bi-safe2 fs-2 d-block mb-2"></i>
-
                                     لا توجد صناديق مسجلة
-
                                 </td>
 
                             </tr>

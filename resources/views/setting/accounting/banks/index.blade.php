@@ -117,6 +117,19 @@
                                 اسم البنك
                             </th>
 
+                            <th>
+                                رقم الحساب
+                            </th>
+
+                            <th>
+                                رقم الحساب التحليلي
+                            </th>
+
+                            <!-- عمود جديد: عملة الحساب -->
+                            <th>
+                                عملة الحساب
+                            </th>
+
                             <th class="text-center">
                                 الإجراءات
                             </th>
@@ -138,6 +151,11 @@
                                 <td>
                                     {{ $bank->bankName2 }}
                                 </td>
+
+                                <!-- سيتم ملؤها بواسطة JS -->
+                                <td></td>
+                                <td></td>
+                                <td></td>
 
                                 <td class="text-center">
 
@@ -168,7 +186,7 @@
                             <tr>
 
                                 <td
-                                    colspan="3"
+                                    colspan="6"   <!-- تغيير من 5 إلى 6 -->
                                     class="text-center text-muted py-5"
                                 >
 
@@ -192,6 +210,57 @@
 
     </div>
 
+</div>
+
+<!-- نافذة منبثقة (مودال) لإضافة/تعديل بنك -->
+<div class="modal fade" id="bankModal" tabindex="-1" aria-labelledby="bankModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="bankModalLabel">إضافة بنك</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="bankForm">
+                    <input type="hidden" id="bankId">
+
+                    <div class="mb-3">
+                        <label for="bankName" class="form-label">اسم البنك <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="bankName" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="bankAccount" class="form-label">رقم الحساب <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="bankAccount" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="bankAnalytical" class="form-label">رقم الحساب التحليلي</label>
+                        <input type="text" class="form-control" id="bankAnalytical" readonly>
+                        <small class="form-text text-muted">يتم توليده تلقائياً عند الإضافة.</small>
+                    </div>
+
+                    <!-- حقل العملة -->
+                    <div class="mb-3">
+                        <label for="bankCurrency" class="form-label">عملة الحساب <span class="text-danger">*</span></label>
+                        <select class="form-select" id="bankCurrency" required>
+                            <option value="">اختر العملة</option>
+                            <option value="ريال يمني">ريال يمني</option>
+                            <option value="ريال سعودي">ريال سعودي</option>
+                            <option value="دولار أمريكي">دولار أمريكي</option>
+                            <option value="يورو">يورو</option>
+                            <option value="جنيه إسترليني">جنيه إسترليني</option>
+                        </select>
+                    </div>
+
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button type="button" class="btn btn-primary" id="saveBankBtn">حفظ</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 @endsection

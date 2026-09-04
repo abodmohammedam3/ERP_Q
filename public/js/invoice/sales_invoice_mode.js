@@ -12,7 +12,6 @@ window.setSalesInvoiceMode = function (mode) {
      */
 
     const inputs = document.querySelectorAll(
-        '#SalesInvoiceNo,' +
         '#SalesInvoiceDate,' +
         '#SalesPaymentMethod,' +
         '#salesCashAccount,' +
@@ -67,7 +66,6 @@ window.setSalesInvoiceMode = function (mode) {
             'btnAddSalesRow'
         );
 
-
     if (addRowButton) {
 
         addRowButton.disabled =
@@ -85,23 +83,21 @@ window.setSalesInvoiceMode = function (mode) {
             'btnSaveSalesInvoice'
         );
 
-
     const saveNewButton =
         document.getElementById(
             'btnSaveAndNewSalesInvoice'
         );
-
 
     const editButton =
         document.getElementById(
             'btnEditSalesInvoice'
         );
 
-
     const cancelButton =
         document.getElementById(
             'btnCancelSalesInvoice'
         );
+
     const printButton =
         document.getElementById(
             'btnprintButton'
@@ -109,50 +105,18 @@ window.setSalesInvoiceMode = function (mode) {
 
 
 
-    /*
-     * وضع العرض
-     */
-
     if (mode === 'view') {
 
-        if (saveButton) {
+        if (saveButton) saveButton.disabled = true;
+        if (saveNewButton) saveNewButton.disabled = true;
+        if (cancelButton) cancelButton.classList.add('d-none');
+        if (editButton) editButton.disabled = !hasSalesInvoiceData();
 
-            saveButton.disabled = true;
-
-        }
-
-
-        if (saveNewButton) {
-
-            saveNewButton.disabled = true;
-
-        }
-
-
-        if (cancelButton) {
-
-            cancelButton.classList.add('d-none');
-
-        }
-
-
-        if (editButton) {
-
-            editButton.disabled =
-                !hasSalesInvoiceData();
-
-        }
-
+        // الطباعة متاحة فقط في وضع العرض وفي حال وجود بيانات
         if (printButton) {
-
-            printButton.disabled = 
-             !hasSalesInvoiceData();
-
-             
-               
-
+            printButton.disabled = !hasSalesInvoiceData();
+            printButton.style.display = hasSalesInvoiceData() ? '' : 'none';
         }
-
 
         showSalesModeMessage(
             'عرض الفاتورة - لا يمكن تعديل البيانات. اضغط "تعديل" للسماح بالتعديل.',
@@ -162,46 +126,18 @@ window.setSalesInvoiceMode = function (mode) {
     }
 
 
-    /*
-     * وضع الإضافة
-     */
-
     else if (mode === 'add') {
 
-        if (saveButton) {
+        if (saveButton) saveButton.disabled = false;
+        if (saveNewButton) saveNewButton.disabled = false;
+        if (cancelButton) cancelButton.classList.remove('d-none');
+        if (editButton) editButton.disabled = true;
 
-            saveButton.disabled = false;
-
-        }
-
-
-        if (saveNewButton) {
-
-            saveNewButton.disabled = false;
-
-        }
-
-
-        if (cancelButton) {
-
-            cancelButton.classList.remove('d-none');
-
-        }
-
-
-        if (editButton) {
-
-            editButton.disabled = true;
-
-        }
-
+        // تعطيل الطباعة في وضع الإضافة
         if (printButton) {
-
-            printButton.disabled = false;
-               
-
+            printButton.disabled = true;
+            printButton.style.display = 'none';
         }
-
 
         showSalesModeMessage(
             'إضافة فاتورة جديدة - يمكنك إدخال بيانات الفاتورة.',
@@ -211,46 +147,18 @@ window.setSalesInvoiceMode = function (mode) {
     }
 
 
-    /*
-     * وضع التعديل
-     */
-
     else if (mode === 'edit') {
 
-        if (saveButton) {
+        if (saveButton) saveButton.disabled = false;
+        if (saveNewButton) saveNewButton.disabled = false;
+        if (cancelButton) cancelButton.classList.remove('d-none');
+        if (editButton) editButton.disabled = true;
 
-            saveButton.disabled = false;
-
-        }
-
-
-        if (saveNewButton) {
-
-            saveNewButton.disabled = false;
-
-        }
-
-
-        if (cancelButton) {
-
-            cancelButton.classList.remove('d-none');
-
-        }
-
-
-        if (editButton) {
-
-            editButton.disabled = true;
-
-        }
-
+        // تعطيل الطباعة في وضع التعديل
         if (printButton) {
-
-            printButton.disabled = false;
-               
-
+            printButton.disabled = true;
+            printButton.style.display = 'none';
         }
-
 
         showSalesModeMessage(
             'تعديل الفاتورة - يمكنك الآن تعديل البيانات.',
@@ -276,28 +184,19 @@ window.showSalesModeMessage = function (
             'salesInvoiceModeAlert'
         );
 
-
     const text =
         document.getElementById(
             'salesInvoiceModeText'
         );
 
-
-    if (!alertBox || !text) {
-
-        return;
-
-    }
-
+    if (!alertBox || !text) return;
 
     alertBox.className =
         'alert alert-' +
         type +
         ' py-2';
 
-
-    text.textContent =
-        message;
+    text.textContent = message;
 
 };
 
@@ -313,13 +212,7 @@ window.hasSalesInvoiceData = function () {
             'SalesInvoiceNo'
         );
 
-
-    if (!invoiceNumber) {
-
-        return false;
-
-    }
-
+    if (!invoiceNumber) return false;
 
     return invoiceNumber.value.trim() !== '';
 
@@ -333,6 +226,20 @@ window.hasSalesInvoiceData = function () {
 window.resetSalesInvoice = function () {
 
     clearSalesInvoiceForm();
+
+    // توليد رقم فاتورة جديد
+    generateSalesInvoiceNumber();
+
+    // تعيين التاريخ الحالي
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('SalesInvoiceDate').value = today;
+
+    // إضافة صف فارغ
+    addSalesRow();
+
+    // تفعيل حقول العملة وسعر الصرف
+    document.getElementById('salesCurrencyName').disabled = false;
+    document.getElementById('SalesExchangeRate').disabled = false;
 
     setSalesInvoiceMode('add');
 
@@ -355,7 +262,27 @@ window.editSalesInvoice = function () {
 
     }
 
-
     setSalesInvoiceMode('edit');
+
+};
+
+
+/* =========================================================
+   طباعة الفاتورة
+   ========================================================= */
+
+window.printSalesInvoice = function () {
+
+    if (!hasSalesInvoiceData()) {
+
+        alert(
+            'لا توجد فاتورة للطباعة.'
+        );
+
+        return;
+
+    }
+
+    window.print();
 
 };

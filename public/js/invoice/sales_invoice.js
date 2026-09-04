@@ -1,6 +1,5 @@
 /* =========================================================
-   فاتورة البيع
-   الملف الرئيسي للشاشة
+   فاتورة البيع - الملف الرئيسي
    ========================================================= */
 
 
@@ -27,158 +26,71 @@ function getSalesInvoiceState() {
 
 /* =========================================================
    زر حفظ الفاتورة
-   وظيفة تجريبية
    ========================================================= */
 
 window.saveSalesInvoice = function () {
 
-    const state =
-        getSalesInvoiceState();
-
+    const state = getSalesInvoiceState();
 
     if (!state) {
 
-        alert(
-            'خطأ: لم يتم تحميل حالة فاتورة البيع'
-        );
-
+        alert('خطأ: لم يتم تحميل حالة فاتورة البيع');
         return;
 
     }
 
-
-    /* -----------------------------------------
-       قراءة البيانات الأساسية
-       ----------------------------------------- */
-
-    const invoiceNo =
-        document.getElementById(
-            'SalesInvoiceNo'
-        )?.value || '';
-
-
-    const invoiceDate =
-        document.getElementById(
-            'SalesInvoiceDate'
-        )?.value || '';
-
-
-    const customer =
-        document.getElementById(
-            'customerName'
-        )?.value || '';
-
-
-    const currency =
-        document.getElementById(
-            'salesCurrencyName'
-        )?.value || '';
-
-
-    const paymentMethod =
-        document.getElementById(
-            'SalesPaymentMethod'
-        )?.value || '';
-
-
-    /* -----------------------------------------
-       تحقق تجريبي
-       ----------------------------------------- */
+    // التحقق من البيانات الأساسية
+    const invoiceNo = document.getElementById('SalesInvoiceNo')?.value || '';
+    const invoiceDate = document.getElementById('SalesInvoiceDate')?.value || '';
+    const customer = document.getElementById('customerName')?.value || '';
+    const currency = document.getElementById('salesCurrencyName')?.value || '';
+    const paymentMethod = document.getElementById('SalesPaymentMethod')?.value || '';
 
     if (!invoiceDate) {
-
-        alert(
-            'يرجى إدخال تاريخ الفاتورة'
-        );
-
+        alert('يرجى إدخال تاريخ الفاتورة');
         return;
-
     }
-
 
     if (!customer) {
-
-        alert(
-            'يرجى اختيار العميل'
-        );
-
+        alert('يرجى اختيار العميل');
         return;
-
     }
-
 
     if (!currency) {
-
-        alert(
-            'يرجى اختيار العملة'
-        );
-
+        alert('يرجى اختيار العملة');
         return;
-
     }
-
 
     if (!paymentMethod) {
-
-        alert(
-            'يرجى اختيار طريقة الدفع'
-        );
-
+        alert('يرجى اختيار طريقة الدفع');
         return;
-
     }
 
+    // التحقق من وجود أصناف
+    const rows = document.querySelectorAll('#salesInvoiceDetails .sales-detail-row');
+    if (rows.length === 0) {
+        alert('يرجى إضافة صنف واحد على الأقل');
+        return;
+    }
 
-    /* -----------------------------------------
-       حساب الإجماليات
-       ----------------------------------------- */
-
-    if (
-        typeof window.calculateSalesTotals ===
-        'function'
-    ) {
-
+    // حساب الإجماليات
+    if (typeof window.calculateSalesTotals === 'function') {
         window.calculateSalesTotals();
-
     }
 
+    const total = document.getElementById('salesInvoiceTotalDisplay')?.textContent || '0.00';
 
-    const total =
-        document.getElementById(
-            'salesInvoiceTotalDisplay'
-        )?.textContent || '0.00';
-
-
-    /* -----------------------------------------
-       بيانات تجريبية
-       ----------------------------------------- */
-
+    // بيانات الفاتورة
     const invoiceData = {
-
         number: invoiceNo,
-
         date: invoiceDate,
-
         customer: customer,
-
         currency: currency,
-
         paymentMethod: paymentMethod,
-
         total: total
-
     };
 
-
-    console.log(
-        'بيانات فاتورة البيع:',
-        invoiceData
-    );
-
-
-    /* -----------------------------------------
-       رسالة نجاح تجريبية
-       ----------------------------------------- */
+    console.log('بيانات فاتورة البيع:', invoiceData);
 
     alert(
         'تم حفظ فاتورة البيع بنجاح\n\n' +
@@ -187,20 +99,9 @@ window.saveSalesInvoice = function () {
         'الإجمالي: ' + total
     );
 
-
-    /* -----------------------------------------
-       بعد الحفظ ننتقل إلى وضع العرض
-       ----------------------------------------- */
-
-    if (
-        typeof window.setSalesInvoiceMode ===
-        'function'
-    ) {
-
-        window.setSalesInvoiceMode(
-            'view'
-        );
-
+    // بعد الحفظ ننتقل إلى وضع العرض
+    if (typeof window.setSalesInvoiceMode === 'function') {
+        window.setSalesInvoiceMode('view');
     }
 
 };
@@ -208,281 +109,49 @@ window.saveSalesInvoice = function () {
 
 /* =========================================================
    حفظ وإضافة فاتورة جديدة
-   وظيفة تجريبية
    ========================================================= */
 
 window.saveAndNewSalesInvoice = function () {
 
-    /* -----------------------------------------
-       التحقق من البيانات أولًا
-       ----------------------------------------- */
-
-    const customer =
-        document.getElementById(
-            'customerName'
-        )?.value || '';
-
-
-    const date =
-        document.getElementById(
-            'SalesInvoiceDate'
-        )?.value || '';
-
+    const customer = document.getElementById('customerName')?.value || '';
+    const date = document.getElementById('SalesInvoiceDate')?.value || '';
 
     if (!date) {
-
-        alert(
-            'يرجى إدخال تاريخ الفاتورة أولًا'
-        );
-
+        alert('يرجى إدخال تاريخ الفاتورة أولاً');
         return;
-
     }
-
 
     if (!customer) {
-
-        alert(
-            'يرجى اختيار العميل أولًا'
-        );
-
+        alert('يرجى اختيار العميل أولاً');
         return;
-
     }
 
+    // حفظ الفاتورة أولاً
+    saveSalesInvoice();
 
-    /* -----------------------------------------
-       حساب الإجماليات
-       ----------------------------------------- */
-
-    if (
-        typeof window.calculateSalesTotals ===
-        'function'
-    ) {
-
-        window.calculateSalesTotals();
-
-    }
-
-
-    const total =
-        document.getElementById(
-            'salesInvoiceTotalDisplay'
-        )?.textContent || '0.00';
-
-
-    console.log(
-        'حفظ الفاتورة ثم إنشاء فاتورة جديدة',
-        {
-            customer: customer,
-            date: date,
-            total: total
-        }
-    );
-
-
-    /* -----------------------------------------
-       رسالة تجريبية
-       ----------------------------------------- */
-
-    alert(
-        'تم حفظ الفاتورة بنجاح.\n\n' +
-        'الإجمالي: ' + total +
-        '\n\n' +
-        'سيتم الآن فتح فاتورة بيع جديدة.'
-    );
-
-
-    /* -----------------------------------------
-       إنشاء فاتورة جديدة
-       ----------------------------------------- */
-
-    if (
-        typeof window.resetSalesInvoice ===
-        'function'
-    ) {
-
+    // ثم إنشاء فاتورة جديدة
+    if (typeof window.resetSalesInvoice === 'function') {
         window.resetSalesInvoice();
-
-        return;
-
-    }
-
-
-    /* -----------------------------------------
-       احتياط إذا لم تكن الدالة موجودة
-       ----------------------------------------- */
-
-    if (
-        typeof window.setSalesInvoiceMode ===
-        'function'
-    ) {
-
-        window.setSalesInvoiceMode(
-            'new'
-        );
-
     }
 
 };
 
 
 /* =========================================================
-   زر تعديل الفاتورة
-   وظيفة تجريبية
+   زر الطباعة
    ========================================================= */
 
-window.editSalesInvoice = function () {
+window.printButton = function () {
 
-    const state =
-        getSalesInvoiceState();
+    if (typeof window.printSalesInvoice === 'function') {
 
+        window.printSalesInvoice();
 
-    if (!state) {
+    } else {
 
-        alert(
-            'خطأ: حالة الفاتورة غير موجودة'
-        );
-
-        return;
+        alert('دالة الطباعة غير متوفرة');
 
     }
-
-
-    /* -----------------------------------------
-       التأكد من وجود فاتورة للعرض
-       ----------------------------------------- */
-
-    const invoiceNo =
-        document.getElementById(
-            'SalesInvoiceNo'
-        )?.value || '';
-
-
-    if (!invoiceNo) {
-
-        alert(
-            'لا توجد فاتورة محددة للتعديل'
-        );
-
-        return;
-
-    }
-
-
-    /* -----------------------------------------
-       الانتقال إلى وضع التعديل
-       ----------------------------------------- */
-
-    if (
-        typeof window.setSalesInvoiceMode ===
-        'function'
-    ) {
-
-        window.setSalesInvoiceMode(
-            'edit'
-        );
-
-    }
-
-
-    console.log(
-        'تم الانتقال إلى وضع تعديل الفاتورة:',
-        invoiceNo
-    );
-
-
-    alert(
-        'تم تفعيل وضع تعديل الفاتورة\n\n' +
-        'رقم الفاتورة: ' + invoiceNo
-    );
-
-};
-
-
-/* =========================================================
-   زر إلغاء التعديل
-   وظيفة تجريبية
-   ========================================================= */
-
-window.cancelSalesInvoice = function () {
-
-    const state =
-        getSalesInvoiceState();
-
-
-    if (!state) {
-
-        alert(
-            'خطأ: حالة الفاتورة غير موجودة'
-        );
-
-        return;
-
-    }
-
-
-    /* -----------------------------------------
-       رسالة تأكيد
-       ----------------------------------------- */
-
-    const confirmed =
-        confirm(
-            'هل تريد إلغاء التعديل والعودة إلى وضع العرض؟'
-        );
-
-
-    if (!confirmed) {
-
-        return;
-
-    }
-
-
-    /* -----------------------------------------
-       العودة إلى وضع العرض
-       ----------------------------------------- */
-
-    if (
-        typeof window.setSalesInvoiceMode ===
-        'function'
-    ) {
-
-        window.setSalesInvoiceMode(
-            'view'
-        );
-
-    }
-
-
-    console.log(
-        'تم إلغاء تعديل فاتورة البيع'
-    );
-
-};
-
-
-/* =========================================================
-   زر إضافة فاتورة جديدة
-   ========================================================= */
-
-window.newSalesInvoice = function () {
-
-    if (
-        typeof window.resetSalesInvoice ===
-        'function'
-    ) {
-
-        window.resetSalesInvoice();
-
-        return;
-
-    }
-
-
-    alert(
-        'دالة إنشاء فاتورة جديدة غير محملة'
-    );
 
 };
 
@@ -495,26 +164,9 @@ document.addEventListener(
     'DOMContentLoaded',
     function () {
 
-        console.log(
-            'تم تحميل شاشة فواتير البيع'
-        );
+        console.log('تم تحميل شاشة فواتير البيع');
 
-
-        console.log(
-            'SalesInvoiceState:',
-            window.SalesInvoiceState
-        );
-
-
-        /*
-         * إذا كانت دالة تهيئة الشاشة موجودة
-         * يتم تشغيلها.
-         */
-
-        if (
-            typeof window.initSalesInvoice ===
-            'function'
-        ) {
+        if (typeof window.initSalesInvoice === 'function') {
 
             window.initSalesInvoice();
 

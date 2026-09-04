@@ -42,6 +42,8 @@
                             class="form-control"
                             id="salesTypeSearchInput"
                             placeholder="اسم النوع"
+                            oninput="salesTypeInput(event)"
+                            onkeydown="if(event.key==='Enter') searchSalesTypes()"
                         >
 
                     </div>

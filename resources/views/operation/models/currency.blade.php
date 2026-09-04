@@ -1,6 +1,6 @@
 <div
     class="modal fade"
-    id="CurrencyModal"
+    id="salesCurrencyModal"
     tabindex="-1"
     aria-labelledby="salesCurrencyModalLabel"
     aria-hidden="true"
@@ -42,6 +42,8 @@
                             class="form-control"
                             id="salesCurrencySearchInput"
                             placeholder="اسم العملة أو رمزها"
+                            oninput="salesCurrencyInput(event)"
+                            onkeydown="if(event.key==='Enter') searchSalesCurrencies()"
                         >
 
                     </div>

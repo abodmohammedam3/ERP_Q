@@ -10,23 +10,12 @@
 window.searchSalesInvoice = function () {
 
     const input =
-        document.getElementById(
-            'salesInvoiceSearchInput'
-        );
-
+        document.getElementById('salesInvoiceSearchInput');
 
     const tbody =
-        document.getElementById(
-            'salesInvoiceSearchResults'
-        );
+        document.getElementById('salesInvoiceSearchResults');
 
-
-    if (input) {
-
-        input.value = '';
-
-    }
-
+    if (input) input.value = '';
 
     if (tbody) {
 
@@ -34,10 +23,7 @@ window.searchSalesInvoice = function () {
 
             <tr>
 
-                <td
-                    colspan="7"
-                    class="text-center text-muted py-4"
-                >
+                <td colspan="7" class="text-center text-muted py-4">
                     أدخل بيانات البحث ثم اضغط بحث
                 </td>
 
@@ -47,17 +33,11 @@ window.searchSalesInvoice = function () {
 
     }
 
-
     SalesInvoiceState.modals.search.show();
 
+    setTimeout(function() {
 
-    setTimeout(function () {
-
-        if (input) {
-
-            input.focus();
-
-        }
+        if (input) input.focus();
 
     }, 300);
 
@@ -71,29 +51,19 @@ window.searchSalesInvoice = function () {
 window.performSalesInvoiceSearch = function () {
 
     const search =
-        document.getElementById(
-            'salesInvoiceSearchInput'
-        )?.value.trim() || '';
-
+        document.getElementById('salesInvoiceSearchInput')?.value.trim() || '';
 
     const tbody =
-        document.getElementById(
-            'salesInvoiceSearchResults'
-        );
+        document.getElementById('salesInvoiceSearchResults');
 
+    if (!tbody) return;
 
-    if (!tbody) {
-
-        return;
-
-    }
-
-
+    // بيانات تجريبية للفواتير
     const invoices = [
 
         {
             id: 1,
-            number: 'SAL-0001',
+            number: '1',
             date: '2026-08-20',
             customer: 'مؤسسة الأفق التجارية',
             currency: 'ريال يمني',
@@ -103,7 +73,7 @@ window.performSalesInvoiceSearch = function () {
 
         {
             id: 2,
-            number: 'SAL-0002',
+            number: '2',
             date: '2026-08-21',
             customer: 'تاجر المستقبل',
             currency: 'ريال سعودي',
@@ -113,7 +83,7 @@ window.performSalesInvoiceSearch = function () {
 
         {
             id: 3,
-            number: 'SAL-0003',
+            number: '3',
             date: '2026-08-22',
             customer: 'مؤسسة النور',
             currency: 'دولار أمريكي',
@@ -123,30 +93,14 @@ window.performSalesInvoiceSearch = function () {
 
     ];
 
+    const results = invoices.filter(function(invoice) {
 
-    const results =
-        invoices.filter(function (invoice) {
+        return invoice.number.toLowerCase().includes(search.toLowerCase()) ||
+               invoice.customer.toLowerCase().includes(search.toLowerCase());
 
-            return (
-                invoice.number
-                    .toLowerCase()
-                    .includes(
-                        search.toLowerCase()
-                    ) ||
-
-                invoice.customer
-                    .toLowerCase()
-                    .includes(
-                        search.toLowerCase()
-                    )
-
-            );
-
-        });
-
+    });
 
     tbody.innerHTML = '';
-
 
     if (results.length === 0) {
 
@@ -154,10 +108,7 @@ window.performSalesInvoiceSearch = function () {
 
             <tr>
 
-                <td
-                    colspan="7"
-                    class="text-center text-muted py-4"
-                >
+                <td colspan="7" class="text-center text-muted py-4">
                     لا توجد فواتير مطابقة للبحث
                 </td>
 
@@ -169,45 +120,24 @@ window.performSalesInvoiceSearch = function () {
 
     }
 
-
-    results.forEach(function (invoice) {
+    results.forEach(function(invoice) {
 
         tbody.innerHTML += `
 
             <tr>
 
-                <td>
-                    ${invoice.number}
-                </td>
-
-                <td>
-                    ${invoice.date}
-                </td>
-
-                <td>
-                    ${invoice.customer}
-                </td>
-
-                <td>
-                    ${invoice.currency}
-                </td>
-
-                <td>
-                    ${invoice.payment}
-                </td>
-
-                <td>
-                    ${invoice.total}
-                </td>
-
+                <td>${invoice.number}</td>
+                <td>${invoice.date}</td>
+                <td>${invoice.customer}</td>
+                <td>${invoice.currency}</td>
+                <td>${invoice.payment}</td>
+                <td>${invoice.total}</td>
                 <td>
 
                     <button
                         type="button"
                         class="btn btn-sm btn-primary"
-                        onclick="loadSalesInvoice(
-                            ${invoice.id}
-                        )"
+                        onclick="loadSalesInvoice(${invoice.id})"
                     >
 
                         <i class="bi bi-eye"></i>
@@ -234,101 +164,41 @@ window.loadSalesInvoice = function (invoiceId) {
 
     clearSalesInvoiceForm();
 
+    // تعيين رقم الفاتورة
+    document.getElementById('SalesInvoiceNo').value = '1';
 
-    document.getElementById(
-        'SalesInvoiceNo'
-    ).value =
-        'SAL-0001';
-
-
-    document.getElementById(
-        'SalesInvoiceDate'
-    ).value =
-        '2026-08-20';
-
-
-    document.getElementById(
-        'customerName'
-    ).value =
-        'مؤسسة الأفق التجارية';
-
-
-    document.getElementById(
-        'customerID'
-    ).value =
-        '201';
-
-
-    document.getElementById(
-        'salesCurrencyName'
-    ).value =
-        'ريال يمني';
-
-
-    document.getElementById(
-        'salesCoinsID'
-    ).value =
-        '1';
-
-
-    document.getElementById(
-        'SalesExchangeRate'
-    ).value =
-        '1';
-
-
-    document.getElementById(
-        'SalesPaymentMethod'
-    ).value =
-        'cash';
-
+    document.getElementById('SalesInvoiceDate').value = '2026-08-20';
+    document.getElementById('customerName').value = 'مؤسسة الأفق التجارية';
+    document.getElementById('customerID').value = '201';
+    document.getElementById('salesCurrencyName').value = 'ريال يمني';
+    document.getElementById('salesCoinsID').value = '1';
+    document.getElementById('SalesExchangeRate').value = '1';
+    document.getElementById('SalesPaymentMethod').value = 'cash';
 
     salesPaymentMethodChanged();
 
+    document.getElementById('salesCashAccount').value = 'main';
+    document.getElementById('SalesStatement').value = 'فاتورة بيع تجريبية';
+    document.getElementById('SalesReference').value = 'REF-SAL-001';
 
-    document.getElementById(
-        'salesCashAccount'
-    ).value =
-        'main';
-
-
-    document.getElementById(
-        'SalesStatement'
-    ).value =
-        'فاتورة بيع تجريبية';
-
-
-    document.getElementById(
-        'SalesReference'
-    ).value =
-        'REF-SAL-001';
-
-
-    const tbody =
-        document.getElementById(
-            'salesInvoiceDetails'
-        );
-
+    const tbody = document.getElementById('salesInvoiceDetails');
 
     if (tbody) {
 
         tbody.innerHTML = '';
-
-        addReadOnlySalesRow(
-            tbody,
-            1
-        );
+        addReadOnlySalesRow(tbody, 1);
 
     }
 
-
     calculateSalesTotals();
-
 
     SalesInvoiceState.modals.search.hide();
 
-
+    // الانتقال إلى وضع العرض مع تفعيل زر الطباعة
     setSalesInvoiceMode('view');
+
+    // تحديث رقم الفاتورة التالي
+    SalesInvoiceState.lastInvoiceNumber = 1;
 
 };
 
@@ -337,143 +207,61 @@ window.loadSalesInvoice = function (invoiceId) {
    صف للعرض
    ========================================================= */
 
-window.addReadOnlySalesRow = function (
-    tbody,
-    number
-) {
+window.addReadOnlySalesRow = function (tbody, number) {
 
-    const row =
-        document.createElement('tr');
-
-
-    row.className =
-        'sales-detail-row';
-
+    const row = document.createElement('tr');
+    row.className = 'sales-detail-row';
 
     row.innerHTML = `
 
+        <td>${number}</td>
+
         <td>
-            ${number}
+            <input type="text" class="form-control form-control-sm row-item" value="صنف ارحبي" disabled>
         </td>
 
         <td>
-
-            <input
-                type="text"
-                class="form-control form-control-sm row-item"
-                value="صنف ارحبي"
-                disabled
-            >
-
+            <input type="text" class="form-control form-control-sm row-type" value="عود" disabled>
         </td>
 
         <td>
-
-            <input
-                type="text"
-                class="form-control form-control-sm row-type"
-                value="عود"
-                disabled
-            >
-
+            <input type="text" class="form-control form-control-sm row-code" value="ITM-001" disabled>
         </td>
 
         <td>
-
-            <input
-                type="text"
-                class="form-control form-control-sm row-code"
-                value="ITM-001"
-                disabled
-            >
-
+            <input type="text" class="form-control form-control-sm row-unit" value="كيلو" disabled>
         </td>
 
         <td>
-
-            <input
-                type="text"
-                class="form-control form-control-sm row-unit"
-                value="كيلو"
-                disabled
-            >
-
+            <input type="number" class="form-control form-control-sm row-price" value="10000" disabled>
         </td>
 
         <td>
-
-            <input
-                type="number"
-                class="form-control form-control-sm row-price"
-                value="10000"
-                disabled
-            >
-
+            <input type="text" class="form-control form-control-sm row-warehouse" value="المخزن الرئيسي" disabled>
+            <input type="hidden" class="row-warehouse-id" value="1">
         </td>
 
         <td>
-
-            <input
-                type="number"
-                class="form-control form-control-sm row-discount"
-                value="0"
-                disabled
-            >
-
+            <input type="number" class="form-control form-control-sm row-measure" value="10" disabled>
         </td>
 
         <td>
-
-            <input
-                type="number"
-                class="form-control form-control-sm row-total"
-                value="100000"
-                readonly
-            >
-
+            <input type="number" class="form-control form-control-sm row-discount" value="0" disabled>
         </td>
 
         <td>
-
-            <input
-                type="number"
-                class="form-control form-control-sm row-measure"
-                value="10"
-                disabled
-            >
-
+            <input type="number" class="form-control form-control-sm row-total" value="100000" readonly>
         </td>
 
         <td>
-
-            <input
-                type="text"
-                class="form-control form-control-sm row-warehouse"
-                value="المخزن الرئيسي"
-                disabled
-            >
-
-        </td>
-
-        <td>
-
-            <button
-                type="button"
-                class="btn btn-sm btn-outline-danger"
-                disabled
-            >
-
+            <button type="button" class="btn btn-sm btn-outline-danger" disabled>
                 <i class="bi bi-trash3"></i>
-
             </button>
-
         </td>
 
     `;
 
-
     tbody.appendChild(row);
-
 
     updateSalesMeasureHeader(row);
 

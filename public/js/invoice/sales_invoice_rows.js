@@ -9,61 +9,21 @@
 
 window.addSalesRow = function () {
 
-    if (
-        window.SalesInvoiceState.mode ===
-        'view'
-    ) {
+    if (SalesInvoiceState.mode === 'view') return;
 
-        return;
+    const tbody = document.getElementById('salesInvoiceDetails');
+    if (!tbody) return;
 
-    }
+    const emptyRow = tbody.querySelector('td[colspan="11"]');
+    if (emptyRow) tbody.innerHTML = '';
 
-
-    const tbody =
-        document.getElementById(
-            'salesInvoiceDetails'
-        );
-
-
-    if (!tbody) {
-
-        return;
-
-    }
-
-
-    const emptyRow =
-        tbody.querySelector(
-            'td[colspan="11"]'
-        );
-
-
-    if (emptyRow) {
-
-        tbody.innerHTML = '';
-
-    }
-
-
-    const rowCount =
-        tbody.querySelectorAll(
-            '.sales-detail-row'
-        ).length + 1;
-
-
-    const row =
-        document.createElement('tr');
-
-
-    row.className =
-        'sales-detail-row';
-
+    const rowCount = tbody.querySelectorAll('.sales-detail-row').length + 1;
+    const row = document.createElement('tr');
+    row.className = 'sales-detail-row';
 
     row.innerHTML = `
 
-        <td class="row-num">
-            ${rowCount}
-        </td>
+        <td class="row-num">${rowCount}</td>
 
         <td>
 
@@ -72,8 +32,9 @@ window.addSalesRow = function () {
                 class="form-control form-control-sm row-item"
                 placeholder="الصنف"
                 disabled
+                onclick="openSalesItemModal()"
                 onkeydown="salesItemKeyDown(event)"
-                onblur="salesItemBlur(this)"
+                oninput="salesItemInput(event)"
             >
 
         </td>
@@ -85,8 +46,9 @@ window.addSalesRow = function () {
                 class="form-control form-control-sm row-type"
                 placeholder="النوع"
                 disabled
+                onclick="openSalesTypeModal()"
                 onkeydown="salesTypeKeyDown(event)"
-                onblur="salesTypeBlur(this)"
+                oninput="salesTypeInput(event)"
             >
 
         </td>
@@ -107,7 +69,7 @@ window.addSalesRow = function () {
             <input
                 type="text"
                 class="form-control form-control-sm row-unit"
-                placeholder="اختر الوحدة"
+                placeholder="الوحدة"
                 readonly
                 disabled
                 onclick="openSalesUnitModal(this)"
@@ -128,17 +90,17 @@ window.addSalesRow = function () {
             >
 
         </td>
-        
+
         <td>
-        
 
             <input
                 type="text"
                 class="form-control form-control-sm row-warehouse"
                 placeholder="المخزن"
                 disabled
+                onclick="openSalesWarehouseModal()"
                 onkeydown="salesWarehouseKeyDown(event)"
-                onblur="salesWarehouseBlur(this)"
+                oninput="salesWarehouseInput(event)"
             >
 
             <input
@@ -148,10 +110,7 @@ window.addSalesRow = function () {
 
         </td>
 
-       
-        
         <td>
-       
 
             <input
                 type="number"
@@ -165,9 +124,8 @@ window.addSalesRow = function () {
 
         </td>
 
-        
         <td>
-                            
+
             <input
                 type="number"
                 class="form-control form-control-sm row-discount"
@@ -180,10 +138,7 @@ window.addSalesRow = function () {
 
         </td>
 
-      
-
         <td>
-       
 
             <input
                 type="number"
@@ -193,8 +148,6 @@ window.addSalesRow = function () {
             >
 
         </td>
-
-        
 
         <td>
 
@@ -213,14 +166,9 @@ window.addSalesRow = function () {
 
     `;
 
-
     tbody.appendChild(row);
-
-
     enableSalesRow(row);
-
     updateSalesMeasureHeader(row);
-
     calculateSalesTotals();
 
 };
@@ -232,27 +180,15 @@ window.addSalesRow = function () {
 
 window.enableSalesRow = function (row) {
 
-    if (!row) {
+    if (!row) return;
 
-        return;
-
-    }
-
-
-    row.querySelectorAll(
-        'input, select, button'
-    )
+    row.querySelectorAll('input, select, button')
     .forEach(function (element) {
 
-        if (
-            !element.classList.contains(
-                'row-total'
-            )
-        ) {
+        if (!element.classList.contains('row-total')) {
 
             element.disabled =
-                window.SalesInvoiceState.mode ===
-                'view';
+                SalesInvoiceState.mode === 'view';
 
         }
 
@@ -267,53 +203,23 @@ window.enableSalesRow = function (row) {
 
 window.removeSalesRow = function (button) {
 
-    if (
-        window.SalesInvoiceState.mode ===
-        'view'
-    ) {
+    if (SalesInvoiceState.mode === 'view') return;
 
-        return;
-
-    }
-
-
-    const row =
-        button.closest('tr');
-
-
-    if (row) {
-
-        row.remove();
-
-    }
-
+    const row = button.closest('tr');
+    if (row) row.remove();
 
     renumberSalesRows();
-
     calculateSalesTotals();
 
+    const tbody = document.getElementById('salesInvoiceDetails');
 
-    const tbody =
-        document.getElementById(
-            'salesInvoiceDetails'
-        );
-
-
-    if (
-        tbody &&
-        tbody.querySelectorAll(
-            '.sales-detail-row'
-        ).length === 0
-    ) {
+    if (tbody && tbody.querySelectorAll('.sales-detail-row').length === 0) {
 
         tbody.innerHTML = `
 
             <tr>
 
-                <td
-                    colspan="11"
-                    class="text-center text-muted py-4"
-                >
+                <td colspan="11" class="text-center text-muted py-4">
                     لا توجد أصناف مضافة إلى الفاتورة
                 </td>
 
@@ -338,16 +244,11 @@ window.renumberSalesRows = function () {
         )
         .forEach(function (row, index) {
 
-            const number =
-                row.querySelector(
-                    '.row-num'
-                );
-
+            const number = row.querySelector('.row-num');
 
             if (number) {
 
-                number.textContent =
-                    index + 1;
+                number.textContent = index + 1;
 
             }
 

@@ -15,6 +15,7 @@
                         <th>اسم العميل</th>
                         <th>الهاتف</th>
                         <th>العنوان</th>
+                        <th>رقم الحساب التحليلي</th>
                         <th>الحالة</th>
                         <th class="no-print">الإجراءات</th>
                     </tr>
@@ -22,11 +23,12 @@
                 <tbody id="customersTableBody">
 
                     @forelse($customers ?? [] as $customer)
-                        <tr class="text-center customer-row">
-                            <td class="row-id">{{ $customer->CustomersID }}</td>
+                        <tr class="text-center customer-row" data-id="{{ $customer->CustomersID }}">
+                            <td class="row-id">{{ $loop->iteration }}</td>
                             <td class="row-name">{{ $customer->CusName }}</td>
                             <td class="row-phone">{{ $customer->CusPhone }}</td>
                             <td class="row-address">{{ $customer->CusAddress }}</td>
+                            <td class="row-analytical">{{ $customer->analytical_account ?? '' }}</td>
                             <td class="row-status" data-status="{{ $customer->CusIsStopeed }}">
                                 @if($customer->CusIsStopeed == 1)
                                     <span class="badge bg-danger">متوقف</span>
@@ -35,17 +37,13 @@
                                 @endif
                             </td>
                             <td class="text-center no-print">
-                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="editCustomer(this)">
-                                    <i class="bi bi-pencil"></i> تعديل
-                                </button>
-                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteCustomer(this)">
-                                    <i class="bi bi-trash"></i> حذف
-                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="editCustomer(this)"><i class="bi bi-pencil"></i> تعديل</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteCustomer(this)"><i class="bi bi-trash"></i> حذف</button>
                             </td>
                         </tr>
                     @empty
                         <tr id="emptyCustomerRow">
-                            <td colspan="6" class="text-center text-muted py-5">
+                            <td colspan="7" class="text-center text-muted py-5">
                                 <i class="bi bi-people fs-2 d-block mb-2"></i>
                                 لا يوجد عملاء مسجلون
                             </td>

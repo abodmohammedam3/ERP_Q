@@ -8,6 +8,10 @@ window.SalesInvoiceState = {
 
     activeRow: null,
 
+    lastInvoiceNumber: 0,
+
+    currentInvoiceId: null,
+
     modals: {
 
         customer: null,

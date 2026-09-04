@@ -43,6 +43,7 @@
                             class="form-control"
                             id="salesInvoiceSearchInput"
                             placeholder="أدخل رقم الفاتورة أو اسم العميل..."
+                            onkeydown="if(event.key==='Enter') performSalesInvoiceSearch()"
                         >
 
                     </div>

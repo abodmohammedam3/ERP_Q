@@ -3,111 +3,49 @@
    ========================================================= */
 
 window.initSalesInvoice = function () {
+    var state = window.SalesInvoiceState;
 
-    const state = window.SalesInvoiceState;
-    
-
-    /*
-     * تهيئة النوافذ المنبثقة
-     */
-
-    const customerModalElement =
-        document.getElementById('customerModal');
-
+    // تهيئة النوافذ المنبثقة
+    var customerModalElement = document.getElementById('customerModal');
     if (customerModalElement) {
-
-        state.modals.customer =
-            new bootstrap.Modal(customerModalElement);
-
+        state.modals.customer = new bootstrap.Modal(customerModalElement);
     }
 
-
-    const currencyModalElement =
-        document.getElementById('salesCurrencyModal');
-
+    var currencyModalElement = document.getElementById('salesCurrencyModal');
     if (currencyModalElement) {
-
-        state.modals.currency =
-            new bootstrap.Modal(currencyModalElement);
-
+        state.modals.currency = new bootstrap.Modal(currencyModalElement);
     }
 
-
-    const itemModalElement =
-        document.getElementById('salesItemModal');
-
+    var itemModalElement = document.getElementById('salesItemModal');
     if (itemModalElement) {
-
-        state.modals.item =
-            new bootstrap.Modal(itemModalElement);
-
+        state.modals.item = new bootstrap.Modal(itemModalElement);
     }
 
-
-    const typeModalElement =
-        document.getElementById('salesTypeModal');
-
+    var typeModalElement = document.getElementById('salesTypeModal');
     if (typeModalElement) {
-
-        state.modals.type =
-            new bootstrap.Modal(typeModalElement);
-
+        state.modals.type = new bootstrap.Modal(typeModalElement);
     }
 
-
-    const warehouseModalElement =
-        document.getElementById('salesWarehouseModal');
-
+    var warehouseModalElement = document.getElementById('salesWarehouseModal');
     if (warehouseModalElement) {
-
-        state.modals.warehouse =
-            new bootstrap.Modal(warehouseModalElement);
-
+        state.modals.warehouse = new bootstrap.Modal(warehouseModalElement);
     }
 
-
-    const unitModalElement =
-        document.getElementById('salesUnitModal');
-
+    var unitModalElement = document.getElementById('salesUnitModal');
     if (unitModalElement) {
-
-        state.modals.unit =
-            new bootstrap.Modal(unitModalElement);
-
+        state.modals.unit = new bootstrap.Modal(unitModalElement);
     }
 
-
-    const searchModalElement =
-        document.getElementById('salesInvoiceSearchModal');
-
+    var searchModalElement = document.getElementById('salesInvoiceSearchModal');
     if (searchModalElement) {
-
-        state.modals.search =
-            new bootstrap.Modal(searchModalElement);
-
+        state.modals.search = new bootstrap.Modal(searchModalElement);
     }
 
-
-    /*
-     * الحالة الابتدائية
-     */
-
+    // الحالة الابتدائية
     setSalesInvoiceMode('view');
-
     clearSalesInvoiceForm();
-
 };
 
-
-/* =========================================================
-   تشغيل التهيئة
-   ========================================================= */
-
-document.addEventListener(
-    'DOMContentLoaded',
-    function () {
-
-        initSalesInvoice();
-
-    }
-);
+document.addEventListener('DOMContentLoaded', function () {
+    initSalesInvoice();
+});

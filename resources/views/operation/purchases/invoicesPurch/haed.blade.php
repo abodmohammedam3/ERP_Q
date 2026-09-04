@@ -18,9 +18,7 @@
 
         <div class="row g-3">
 
-
-            <!-- رقم الفاتورة -->
-
+            <!-- رقم الفاتورة (تلقائي) -->
             <div class="col-md-3">
 
                 <label
@@ -35,14 +33,12 @@
                     class="form-control"
                     id="PurchaseInvoicesON2"
                     name="PurchaseInvoicesON2"
-                    disabled
+                    readonly
                 >
 
             </div>
 
-
             <!-- التاريخ -->
-
             <div class="col-md-3">
 
                 <label
@@ -62,9 +58,7 @@
 
             </div>
 
-
             <!-- طريقة الدفع -->
-
             <div class="col-md-3">
 
                 <label
@@ -86,128 +80,49 @@
                         اختر طريقة الدفع
                     </option>
 
-                    <option value="credit">
-                        أجل
-                    </option>
-
-                    <option value="cash">
-                        نقد
-                    </option>
-
-                    <option value="bank">
-                        تحويل بنكي
-                    </option>
-
-                    <option value="network">
-                        عبر شبكة
-                    </option>
+                    <option value="credit">أجل</option>
+                    <option value="cash">نقد</option>
+                    <option value="bank">تحويل بنكي</option>
+                    <option value="network">عبر شبكة</option>
 
                 </select>
 
             </div>
 
-
-            <!-- الصندوق -->
-
+            <!-- حساب الدفع (ديناميكي) -->
             <div
                 class="col-md-3 d-none"
-                id="cashAccountContainer"
+                id="paymentAccountContainer"
             >
 
                 <label
-                    for="cashAccount"
+                    for="paymentAccount"
                     class="form-label"
                 >
-                    الصندوق
+                    الحساب
                 </label>
 
-                <select
-                    class="form-select"
-                    id="cashAccount"
-                    disabled
-                >
+                <div class="input-group">
 
-                    <option value="">
-                        اختر الصندوق
-                    </option>
+                    <input
+                        type="text"
+                        class="form-control"
+                        id="paymentAccount"
+                        name="paymentAccount"
+                        placeholder="اختر الحساب"
+                        autocomplete="off"
+                        disabled
+                        onkeydown="accountKeyDown(event)"
+                        onblur="accountBlur()"
+                    >
 
-                    <option value="main">
-                        الصندوق الرئيسي
-                    </option>
+                    <input type="hidden" id="paymentAccountId">
 
-                </select>
-
-            </div>
-
-
-            <!-- حسابات البنوك -->
-
-            <div
-                class="col-md-3 d-none"
-                id="bankAccountContainer"
-            >
-
-                <label
-                    for="bankAccount"
-                    class="form-label"
-                >
-                    حسابات البنوك
-                </label>
-
-                <select
-                    class="form-select"
-                    id="bankAccount"
-                    disabled
-                >
-
-                    <option value="">
-                        اختر الحساب البنكي
-                    </option>
-
-                    <option value="main-bank">
-                        الحساب البنكي الرئيسي
-                    </option>
-
-                </select>
+                </div>
 
             </div>
-
-
-            <!-- حساب المحفظة -->
-
-            <div
-                class="col-md-3 d-none"
-                id="walletAccountContainer"
-            >
-
-                <label
-                    for="walletAccount"
-                    class="form-label"
-                >
-                    حساب المحفظة
-                </label>
-
-                <select
-                    class="form-select"
-                    id="walletAccount"
-                    disabled
-                >
-
-                    <option value="">
-                        اختر حساب المحفظة
-                    </option>
-
-                    <option value="main-wallet">
-                        المحفظة الرئيسية
-                    </option>
-
-                </select>
-
-            </div>
-
 
             <!-- المورد -->
-
             <div class="col-md-4">
 
                 <label
@@ -241,9 +156,7 @@
 
             </div>
 
-
             <!-- العملة -->
-
             <div class="col-md-3">
 
                 <label
@@ -259,23 +172,25 @@
                     name="coinsID"
                 >
 
-                <input
-                    type="text"
-                    class="form-control"
-                    id="currencyName"
-                    name="currencyName"
-                    placeholder="اختر العملة"
-                    autocomplete="off"
-                    disabled
-                    onkeydown="currencyKeyDown(event)"
-                    onblur="currencyBlur()"
-                >
+                <div class="input-group">
+
+                    <input
+                        type="text"
+                        class="form-control"
+                        id="currencyName"
+                        name="currencyName"
+                        placeholder="اختر العملة"
+                        autocomplete="off"
+                        disabled
+                        onkeydown="currencyKeyDown(event)"
+                        onblur="currencyBlur()"
+                    >
+
+                </div>
 
             </div>
 
-
             <!-- سعر الصرف -->
-
             <div class="col-md-2">
 
                 <label
@@ -292,13 +207,12 @@
                     id="PuInExchangeRate2"
                     name="PuInExchangeRate2"
                     disabled
+                    oninput="exchangeRateChanged()"
                 >
 
             </div>
 
-
             <!-- المخزن -->
-
             <div class="col-md-3">
 
                 <label
@@ -314,20 +228,23 @@
                     name="warehouseID"
                 >
 
-                <input
-                    type="text"
-                    class="form-control"
-                    id="warehouseName"
-                    name="warehouseName"
-                    placeholder="اكتب اسم المخزن"
-                    autocomplete="off"
-                    disabled
-                    onkeydown="warehouseKeyDown(event)"
-                    onblur="warehouseBlur()"
-                >
+                <div class="input-group">
+
+                    <input
+                        type="text"
+                        class="form-control"
+                        id="warehouseName"
+                        name="warehouseName"
+                        placeholder="اختر المخزن"
+                        autocomplete="off"
+                        disabled
+                        onkeydown="warehouseKeyDown(event)"
+                        onblur="warehouseBlur()"
+                    >
+
+                </div>
 
             </div>
-
 
         </div>
 

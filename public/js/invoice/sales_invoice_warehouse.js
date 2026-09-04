@@ -4,19 +4,34 @@
 
 
 /* =========================================================
-   الضغط على Enter
+   الضغط على Enter أو Tab
    ========================================================= */
 
 window.salesWarehouseKeyDown = function (event) {
+
+    const input = event.target;
 
     if (event.key === 'Enter') {
 
         event.preventDefault();
 
         SalesInvoiceState.activeRow =
-            event.target.closest('tr');
+            input.closest('tr');
 
         openSalesWarehouseModal();
+
+    } else if (event.key === 'Tab') {
+
+        if (input.value.trim() !== '') {
+
+            event.preventDefault();
+
+            SalesInvoiceState.activeRow =
+                input.closest('tr');
+
+            openSalesWarehouseModal();
+
+        }
 
     }
 
@@ -24,26 +39,29 @@ window.salesWarehouseKeyDown = function (event) {
 
 
 /* =========================================================
-   مغادرة حقل المخزن
+   الكتابة في حقل المخزن
    ========================================================= */
 
-window.salesWarehouseBlur = function (input) {
+window.salesWarehouseInput = function (event) {
 
-    if (
-        SalesInvoiceState.mode !== 'view' &&
-        document.activeElement.id !==
-        'salesWarehouseSearchInput'
-    ) {
+    if (SalesInvoiceState.mode !== 'view') {
 
-        SalesInvoiceState.activeRow =
-            input.closest('tr');
+        clearTimeout(window.warehouseInputTimeout);
 
+        window.warehouseInputTimeout = setTimeout(function() {
 
-        setTimeout(function () {
+            const input = event.target;
 
-            openSalesWarehouseModal();
+            if (input.value.trim() !== '') {
 
-        }, 200);
+                SalesInvoiceState.activeRow =
+                    input.closest('tr');
+
+                openSalesWarehouseModal();
+
+            }
+
+        }, 50);
 
     }
 
@@ -56,48 +74,22 @@ window.salesWarehouseBlur = function (input) {
 
 window.openSalesWarehouseModal = function () {
 
-    if (
-        SalesInvoiceState.mode ===
-        'view'
-    ) {
-
-        return;
-
-    }
-
+    if (SalesInvoiceState.mode === 'view') return;
 
     const value =
         SalesInvoiceState.activeRow
-            ?.querySelector(
-                '.row-warehouse'
-            )
-            ?.value || '';
-
+            ?.querySelector('.row-warehouse')?.value || '';
 
     const search =
-        document.getElementById(
-            'salesWarehouseSearchInput'
-        );
+        document.getElementById('salesWarehouseSearchInput');
 
-
-    if (search) {
-
-        search.value = value;
-
-    }
-
+    if (search) search.value = value;
 
     SalesInvoiceState.modals.warehouse.show();
 
+    setTimeout(function() {
 
-    setTimeout(function () {
-
-        if (search) {
-
-            search.focus();
-
-        }
-
+        if (search) search.focus();
         searchSalesWarehouses();
 
     }, 300);
@@ -112,54 +104,27 @@ window.openSalesWarehouseModal = function () {
 window.searchSalesWarehouses = function () {
 
     const search =
-        document.getElementById(
-            'salesWarehouseSearchInput'
-        )?.value.trim() || '';
+        document.getElementById('salesWarehouseSearchInput')?.value.trim() || '';
 
+    const tbody = document.getElementById('salesWarehouseResults');
 
-    const tbody =
-        document.getElementById(
-            'salesWarehouseResults'
-        );
-
-
-    if (!tbody) {
-
-        return;
-
-    }
-
+    if (!tbody) return;
 
     const warehouses = [
 
-        {
-            id: 1,
-            name: 'المخزن الرئيسي'
-        },
-
-        {
-            id: 2,
-            name: 'المخزن الفرعي'
-        },
-
-        {
-            id: 3,
-            name: 'مخزن المبيعات'
-        }
+        { id: 1, name: 'المخزن الرئيسي' },
+        { id: 2, name: 'المخزن الفرعي' },
+        { id: 3, name: 'مخزن المبيعات' }
 
     ];
 
+    const results = warehouses.filter(function(warehouse) {
 
-    const results =
-        warehouses.filter(function (warehouse) {
+        return warehouse.name.includes(search);
 
-            return warehouse.name.includes(search);
-
-        });
-
+    });
 
     tbody.innerHTML = '';
-
 
     if (results.length === 0) {
 
@@ -167,10 +132,7 @@ window.searchSalesWarehouses = function () {
 
             <tr>
 
-                <td
-                    colspan="3"
-                    class="text-center text-muted py-3"
-                >
+                <td colspan="3" class="text-center text-muted py-3">
                     لا توجد نتائج
                 </td>
 
@@ -182,21 +144,14 @@ window.searchSalesWarehouses = function () {
 
     }
 
-
-    results.forEach(function (warehouse) {
+    results.forEach(function(warehouse) {
 
         tbody.innerHTML += `
 
             <tr>
 
-                <td>
-                    ${warehouse.id}
-                </td>
-
-                <td>
-                    ${warehouse.name}
-                </td>
-
+                <td>${warehouse.id}</td>
+                <td>${warehouse.name}</td>
                 <td>
 
                     <button
@@ -225,50 +180,22 @@ window.searchSalesWarehouses = function () {
    اختيار المخزن
    ========================================================= */
 
-window.selectSalesWarehouse = function (
-    id,
-    name
-) {
+window.selectSalesWarehouse = function (id, name) {
 
-    const row =
-        SalesInvoiceState.activeRow;
+    const row = SalesInvoiceState.activeRow;
 
+    if (!row) return;
 
-    if (!row) {
+    const warehouse = row.querySelector('.row-warehouse');
+    const warehouseID = row.querySelector('.row-warehouse-id');
 
-        return;
-
-    }
-
-
-    const warehouse =
-        row.querySelector(
-            '.row-warehouse'
-        );
-
-
-    const warehouseID =
-        row.querySelector(
-            '.row-warehouse-id'
-        );
-
-
-    if (warehouse) {
-
-        warehouse.value =
-            name;
-
-    }
-
-
-    if (warehouseID) {
-
-        warehouseID.value =
-            id;
-
-    }
-
+    if (warehouse) warehouse.value = name;
+    if (warehouseID) warehouseID.value = id;
 
     SalesInvoiceState.modals.warehouse.hide();
+
+    // التركيز على حقل العدد (الحقل التالي)
+    const measureInput = row.querySelector('.row-measure');
+    if (measureInput) measureInput.focus();
 
 };

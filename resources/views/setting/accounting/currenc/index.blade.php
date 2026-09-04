@@ -240,7 +240,8 @@
                             <input type="text"
                                    class="form-control"
                                    name="coin_name"
-                                   placeholder="مثال: الريال اليمني">
+                                   placeholder="مثال: الريال اليمني"
+                                   required>
 
                         </div>
 
@@ -256,22 +257,8 @@
                             <input type="text"
                                    class="form-control"
                                    name="coin_symbol"
-                                   placeholder="مثال: YER">
-
-                        </div>
-
-
-                        {{-- كود العملة --}}
-                        <div class="col-md-3">
-
-                            <label class="form-label">
-                                كود العملة
-                            </label>
-
-                            <input type="text"
-                                   class="form-control"
-                                   name="coin_code"
-                                   placeholder="مثال: 886">
+                                   placeholder="مثال: YER"
+                                   required>
 
                         </div>
 
@@ -289,7 +276,8 @@
                                    name="exchange_rate"
                                    step="0.000001"
                                    min="0"
-                                   placeholder="أدخل سعر الصرف">
+                                   placeholder="أدخل سعر الصرف"
+                                   required>
 
                             <div class="form-text">
                                 سعر العملة مقارنة بالعملة الأساسية.
@@ -343,21 +331,6 @@
 
                         </div>
 
-
-                        {{-- ملاحظات --}}
-                        <div class="col-12">
-
-                            <label class="form-label">
-                                ملاحظات
-                            </label>
-
-                            <textarea class="form-control"
-                                      name="notes"
-                                      rows="3"
-                                      placeholder="ملاحظات إضافية عن العملة"></textarea>
-
-                        </div>
-
                     </div>
 
                 </form>
@@ -378,7 +351,8 @@
                 </button>
 
                 <button type="button"
-                        class="btn btn-success">
+                        class="btn btn-success"
+                        id="saveCoinBtn">  <!-- إضافة معرف مميز -->
 
                     <i class="bi bi-check-lg"></i>
                     حفظ
@@ -395,6 +369,5 @@
 
 @endsection
 @push('scripts')
-    <script src="{{ asset('js.currency.js') }}"></script>
-
+    <script src="{{ asset('js/currency.js') }}"></script>
 @endpush

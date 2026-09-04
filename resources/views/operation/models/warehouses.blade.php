@@ -42,6 +42,8 @@
                             class="form-control"
                             id="salesWarehouseSearchInput"
                             placeholder="اسم المخزن"
+                            oninput="salesWarehouseInput(event)"
+                            onkeydown="if(event.key==='Enter') searchSalesWarehouses()"
                         >
 
                     </div>

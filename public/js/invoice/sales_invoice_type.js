@@ -4,19 +4,34 @@
 
 
 /* =========================================================
-   الضغط على Enter
+   الضغط على Enter أو Tab
    ========================================================= */
 
 window.salesTypeKeyDown = function (event) {
+
+    const input = event.target;
 
     if (event.key === 'Enter') {
 
         event.preventDefault();
 
         SalesInvoiceState.activeRow =
-            event.target.closest('tr');
+            input.closest('tr');
 
         openSalesTypeModal();
+
+    } else if (event.key === 'Tab') {
+
+        if (input.value.trim() !== '') {
+
+            event.preventDefault();
+
+            SalesInvoiceState.activeRow =
+                input.closest('tr');
+
+            openSalesTypeModal();
+
+        }
 
     }
 
@@ -24,26 +39,29 @@ window.salesTypeKeyDown = function (event) {
 
 
 /* =========================================================
-   مغادرة حقل النوع
+   الكتابة في حقل النوع
    ========================================================= */
 
-window.salesTypeBlur = function (input) {
+window.salesTypeInput = function (event) {
 
-    if (
-        SalesInvoiceState.mode !== 'view' &&
-        document.activeElement.id !==
-        'salesTypeSearchInput'
-    ) {
+    if (SalesInvoiceState.mode !== 'view') {
 
-        SalesInvoiceState.activeRow =
-            input.closest('tr');
+        clearTimeout(window.typeInputTimeout);
 
+        window.typeInputTimeout = setTimeout(function() {
 
-        setTimeout(function () {
+            const input = event.target;
 
-            openSalesTypeModal();
+            if (input.value.trim() !== '') {
 
-        }, 200);
+                SalesInvoiceState.activeRow =
+                    input.closest('tr');
+
+                openSalesTypeModal();
+
+            }
+
+        }, 50);
 
     }
 
@@ -56,48 +74,22 @@ window.salesTypeBlur = function (input) {
 
 window.openSalesTypeModal = function () {
 
-    if (
-        SalesInvoiceState.mode ===
-        'view'
-    ) {
-
-        return;
-
-    }
-
+    if (SalesInvoiceState.mode === 'view') return;
 
     const value =
         SalesInvoiceState.activeRow
-            ?.querySelector(
-                '.row-type'
-            )
-            ?.value || '';
-
+            ?.querySelector('.row-type')?.value || '';
 
     const search =
-        document.getElementById(
-            'salesTypeSearchInput'
-        );
+        document.getElementById('salesTypeSearchInput');
 
-
-    if (search) {
-
-        search.value = value;
-
-    }
-
+    if (search) search.value = value;
 
     SalesInvoiceState.modals.type.show();
 
+    setTimeout(function() {
 
-    setTimeout(function () {
-
-        if (search) {
-
-            search.focus();
-
-        }
-
+        if (search) search.focus();
         searchSalesTypes();
 
     }, 300);
@@ -112,59 +104,28 @@ window.openSalesTypeModal = function () {
 window.searchSalesTypes = function () {
 
     const search =
-        document.getElementById(
-            'salesTypeSearchInput'
-        )?.value.trim() || '';
+        document.getElementById('salesTypeSearchInput')?.value.trim() || '';
 
+    const tbody = document.getElementById('salesTypeResults');
 
-    const tbody =
-        document.getElementById(
-            'salesTypeResults'
-        );
-
-
-    if (!tbody) {
-
-        return;
-
-    }
-
+    if (!tbody) return;
 
     const types = [
 
-        {
-            id: 1,
-            name: 'عود'
-        },
-
-        {
-            id: 2,
-            name: 'بزغه'
-        },
-
-        {
-            id: 3,
-            name: 'اميال'
-        },
-
-        {
-            id: 4,
-            name: 'نقفه'
-        }
+        { id: 1, name: 'عود' },
+        { id: 2, name: 'بزغه' },
+        { id: 3, name: 'اميال' },
+        { id: 4, name: 'نقفه' }
 
     ];
 
+    const results = types.filter(function(type) {
 
-    const results =
-        types.filter(function (type) {
+        return type.name.includes(search);
 
-            return type.name.includes(search);
-
-        });
-
+    });
 
     tbody.innerHTML = '';
-
 
     if (results.length === 0) {
 
@@ -172,10 +133,7 @@ window.searchSalesTypes = function () {
 
             <tr>
 
-                <td
-                    colspan="3"
-                    class="text-center text-muted py-3"
-                >
+                <td colspan="3" class="text-center text-muted py-3">
                     لا توجد نتائج
                 </td>
 
@@ -187,21 +145,14 @@ window.searchSalesTypes = function () {
 
     }
 
-
-    results.forEach(function (type) {
+    results.forEach(function(type) {
 
         tbody.innerHTML += `
 
             <tr>
 
-                <td>
-                    ${type.id}
-                </td>
-
-                <td>
-                    ${type.name}
-                </td>
-
+                <td>${type.id}</td>
+                <td>${type.name}</td>
                 <td>
 
                     <button
@@ -230,27 +181,18 @@ window.searchSalesTypes = function () {
    اختيار النوع
    ========================================================= */
 
-window.selectSalesType = function (
-    id,
-    name
-) {
+window.selectSalesType = function (id, name) {
 
-    const row =
-        SalesInvoiceState.activeRow;
+    const row = SalesInvoiceState.activeRow;
 
+    if (!row) return;
 
-    if (!row) {
-
-        return;
-
-    }
-
-
-    row.querySelector(
-        '.row-type'
-    ).value = name;
-
+    row.querySelector('.row-type').value = name;
 
     SalesInvoiceState.modals.type.hide();
+
+    // التركيز على حقل الرمز (الحقل التالي)
+    const codeInput = row.querySelector('.row-code');
+    if (codeInput) codeInput.focus();
 
 };

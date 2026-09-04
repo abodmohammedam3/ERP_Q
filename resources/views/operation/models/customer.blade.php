@@ -37,12 +37,14 @@
 
                     <div class="col-md-10">
 
-                        <input
+                       <input
                             type="text"
                             class="form-control"
                             id="customerSearchInput"
                             placeholder="اسم العميل أو الرقم المحاسبي"
-                        >
+                            oninput="customerInput(event)"
+                            onkeydown="if(event.key==='Enter') searchCustomers()"
+                        >   
 
                     </div>
 

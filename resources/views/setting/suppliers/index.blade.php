@@ -6,20 +6,24 @@
 
 <div class="container-fluid py-3">
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
+   <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="mb-1">
+            <i class="bi bi-truck"></i> الموردون
+        </h4>
+        <small class="text-muted">إدارة الموردين المسجلين في النظام</small>
+    </div>
 
-        <div>
-            <h4 class="mb-1">
-                <i class="bi bi-truck"></i> الموردون
-            </h4>
-            <small class="text-muted">إدارة الموردين المسجلين في النظام</small>
-        </div>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-secondary" onclick="printSuppliers()">
+            <i class="bi bi-printer"></i> طباعة
+        </button>
 
         <button type="button" class="btn btn-primary" onclick="openSupplierModal()">
             <i class="bi bi-plus-lg"></i> إضافة مورد
         </button>
-
     </div>
+</div>
 
     <!-- استدعاء ملف البحث وملف الجدول -->
     @include('setting.suppliers.search')
@@ -52,6 +56,12 @@
                     <div class="mb-3">
                         <label for="supArea" class="form-label">المنطقة</label>
                         <input type="text" class="form-control" id="supArea">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="analyticalAccount" class="form-label">رقم الحساب التحليلي</label>
+                        <input type="text" class="form-control" id="analyticalAccount" readonly>
+                        <small class="text-muted">يتم تعبئته تلقائياً</small>
                     </div>
 
                     <div class="mb-3">

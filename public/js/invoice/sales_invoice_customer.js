@@ -4,16 +4,26 @@
 
 
 /* =========================================================
-   الضغط على Enter
+   الضغط على Enter أو Tab
    ========================================================= */
 
 window.customerKeyDown = function (event) {
 
+    const input = event.target;
+
     if (event.key === 'Enter') {
 
         event.preventDefault();
-
         openCustomerModal();
+
+    } else if (event.key === 'Tab') {
+
+        if (input.value.trim() !== '') {
+
+            event.preventDefault();
+            openCustomerModal();
+
+        }
 
     }
 
@@ -21,22 +31,26 @@ window.customerKeyDown = function (event) {
 
 
 /* =========================================================
-   مغادرة حقل العميل
+   الكتابة في حقل العميل
    ========================================================= */
 
-window.customerBlur = function () {
+window.customerInput = function (event) {
 
-    if (
-        SalesInvoiceState.mode !== 'view' &&
-        document.activeElement.id !==
-        'customerSearchInput'
-    ) {
+    if (SalesInvoiceState.mode !== 'view') {
 
-        setTimeout(function () {
+        clearTimeout(window.customerInputTimeout);
 
-            openCustomerModal();
+        window.customerInputTimeout = setTimeout(function() {
 
-        }, 200);
+            const input = event.target;
+
+            if (input.value.trim() !== '') {
+
+                openCustomerModal();
+
+            }
+
+        }, 50);
 
     }
 
@@ -49,46 +63,18 @@ window.customerBlur = function () {
 
 window.openCustomerModal = function () {
 
-    if (
-        SalesInvoiceState.mode ===
-        'view'
-    ) {
+    if (SalesInvoiceState.mode === 'view') return;
 
-        return;
+    const value = document.getElementById('customerName')?.value || '';
+    const search = document.getElementById('customerSearchInput');
 
-    }
-
-
-    const value =
-        document.getElementById(
-            'customerName'
-        )?.value || '';
-
-
-    const search =
-        document.getElementById(
-            'customerSearchInput'
-        );
-
-
-    if (search) {
-
-        search.value = value;
-
-    }
-
+    if (search) search.value = value;
 
     SalesInvoiceState.modals.customer.show();
 
+    setTimeout(function() {
 
-    setTimeout(function () {
-
-        if (search) {
-
-            search.focus();
-
-        }
-
+        if (search) search.focus();
         searchCustomers();
 
     }, 300);
@@ -103,60 +89,28 @@ window.openCustomerModal = function () {
 window.searchCustomers = function () {
 
     const search =
-        document.getElementById(
-            'customerSearchInput'
-        )?.value.trim() || '';
+        document.getElementById('customerSearchInput')?.value.trim() || '';
 
+    const tbody = document.getElementById('customerResults');
 
-    const tbody =
-        document.getElementById(
-            'customerResults'
-        );
-
-
-    if (!tbody) {
-
-        return;
-
-    }
-
+    if (!tbody) return;
 
     const customers = [
 
-        {
-            id: 201,
-            name: 'مؤسسة الأفق التجارية',
-            account: '301001'
-        },
-
-        {
-            id: 202,
-            name: 'تاجر المستقبل',
-            account: '301002'
-        },
-
-        {
-            id: 203,
-            name: 'مؤسسة النور',
-            account: '301003'
-        }
+        { id: 201, name: 'مؤسسة الأفق التجارية', account: '301001' },
+        { id: 202, name: 'تاجر المستقبل', account: '301002' },
+        { id: 203, name: 'مؤسسة النور', account: '301003' }
 
     ];
 
+    const results = customers.filter(function(customer) {
 
-    const results =
-        customers.filter(function (customer) {
+        return customer.name.includes(search) ||
+               customer.account.includes(search);
 
-            return (
-                customer.name.includes(search) ||
-                customer.account.includes(search)
-            );
-
-        });
-
+    });
 
     tbody.innerHTML = '';
-
 
     if (results.length === 0) {
 
@@ -164,10 +118,7 @@ window.searchCustomers = function () {
 
             <tr>
 
-                <td
-                    colspan="4"
-                    class="text-center text-muted py-3"
-                >
+                <td colspan="4" class="text-center text-muted py-3">
                     لا توجد نتائج
                 </td>
 
@@ -179,25 +130,15 @@ window.searchCustomers = function () {
 
     }
 
-
-    results.forEach(function (customer) {
+    results.forEach(function(customer) {
 
         tbody.innerHTML += `
 
             <tr>
 
-                <td>
-                    ${customer.id}
-                </td>
-
-                <td>
-                    ${customer.name}
-                </td>
-
-                <td>
-                    ${customer.account}
-                </td>
-
+                <td>${customer.id}</td>
+                <td>${customer.name}</td>
+                <td>${customer.account}</td>
                 <td>
 
                     <button
@@ -228,32 +169,12 @@ window.searchCustomers = function () {
 
 window.selectCustomer = function (id, name) {
 
-    const customerID =
-        document.getElementById(
-            'customerID'
-        );
-
-
-    const customerName =
-        document.getElementById(
-            'customerName'
-        );
-
-
-    if (customerID) {
-
-        customerID.value = id;
-
-    }
-
-
-    if (customerName) {
-
-        customerName.value = name;
-
-    }
-
+    document.getElementById('customerID').value = id;
+    document.getElementById('customerName').value = name;
 
     SalesInvoiceState.modals.customer.hide();
+
+    // الانتقال إلى حقل العملة
+    document.getElementById('salesCurrencyName').focus();
 
 };

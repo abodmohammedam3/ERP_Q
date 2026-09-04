@@ -14,14 +14,12 @@ document.addEventListener('DOMContentLoaded', function () {
     const searchButton = document.querySelector('.btn-secondary');
     const resetButton = document.querySelector('.btn-outline-secondary');
 
-    const saveButton = coinModal
-        ? coinModal.querySelector('.btn-success')
-        : null;
+    // زر الحفظ - نختاره بواسطة المعرف الجديد
+    const saveButton = document.getElementById('saveCoinBtn');
 
 
     // =========================================================
     // بيانات تجريبية مؤقتة
-    // لاحقًا سيتم استبدالها ببيانات Laravel / MySQL
     // =========================================================
 
     let coins = [
@@ -29,21 +27,17 @@ document.addEventListener('DOMContentLoaded', function () {
             id: 1,
             name: 'الريال اليمني',
             symbol: 'YER',
-            code: '886',
             exchangeRate: 1,
             baseCurrency: true,
             status: true,
-            notes: 'العملة الأساسية للنظام'
         },
         {
             id: 2,
             name: 'الريال السعودي',
             symbol: 'SAR',
-            code: '682',
             exchangeRate: 0.0097,
             baseCurrency: false,
             status: true,
-            notes: ''
         }
     ];
 
@@ -234,8 +228,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const matchesSearch =
                 coin.name.toLowerCase().includes(search) ||
-                coin.symbol.toLowerCase().includes(search) ||
-                coin.code.toLowerCase().includes(search);
+                coin.symbol.toLowerCase().includes(search);
 
 
             let matchesStatus = true;
@@ -410,9 +403,6 @@ document.addEventListener('DOMContentLoaded', function () {
         coinForm.elements['coin_symbol'].value =
             coin.symbol;
 
-        coinForm.elements['coin_code'].value =
-            coin.code;
-
         coinForm.elements['exchange_rate'].value =
             coin.exchangeRate;
 
@@ -421,9 +411,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
         coinForm.elements['status'].value =
             coin.status ? '1' : '0';
-
-        coinForm.elements['notes'].value =
-            coin.notes || '';
 
     }
 
@@ -465,13 +452,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
     // =========================================================
-    // حفظ العملة
+    // حفظ العملة (تم إصلاحه)
     // =========================================================
 
     if (saveButton) {
 
-        saveButton.addEventListener('click', function () {
+        saveButton.addEventListener('click', function (event) {
 
+            // منع أي سلوك افتراضي
+            event.preventDefault();
+
+            // التحقق من صحة النموذج
             if (!coinForm.checkValidity()) {
 
                 coinForm.reportValidity();
@@ -481,14 +472,12 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
 
+            // قراءة البيانات من النموذج
             const name =
                 coinForm.elements['coin_name'].value.trim();
 
             const symbol =
                 coinForm.elements['coin_symbol'].value.trim();
-
-            const code =
-                coinForm.elements['coin_code'].value.trim();
 
             const exchangeRate =
                 Number(
@@ -500,9 +489,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const status =
                 coinForm.elements['status'].value === '1';
-
-            const notes =
-                coinForm.elements['notes'].value.trim();
 
 
             // ---------------------------------------------
@@ -555,11 +541,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
                         name: name,
                         symbol: symbol,
-                        code: code,
                         exchangeRate: exchangeRate,
                         baseCurrency: baseCurrency,
-                        status: status,
-                        notes: notes
+                        status: status
 
                     };
 
@@ -581,15 +565,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     symbol: symbol,
 
-                    code: code,
-
                     exchangeRate: exchangeRate,
 
                     baseCurrency: baseCurrency,
 
-                    status: status,
-
-                    notes: notes
+                    status: status
 
                 };
 
@@ -607,8 +587,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 coins.forEach(function (coin) {
 
-                    if (coin.id !== editingId &&
-                        coin.id !== (coins.at(-1)?.id)) {
+                    // استثناء العملة التي يتم تعديلها أو إضافتها
+                    const isCurrent = coin.id === editingId || coin.id === (coins.at(-1)?.id);
+
+                    if (!isCurrent) {
 
                         coin.baseCurrency = false;
 
@@ -619,13 +601,17 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
 
+            // إعادة عرض الجدول
             renderCoins();
 
+            // إعادة ضبط النموذج
             resetForm();
 
+            // إلغاء التعديل
             editingId = null;
 
 
+            // إغلاق المودال
             if (coinModal) {
 
                 const modal =

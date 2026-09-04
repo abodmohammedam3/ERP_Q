@@ -24,13 +24,12 @@
         </div>
     </div>
 
-    <!-- استدعاء ملف البحث وملف الجدول -->
     @include('setting.customers.search')
     @include('setting.customers.table')
 
 </div>
 
-<!-- النافذة المنبثقة (Modal) لإضافة/تعديل عميل -->
+<!-- النافذة المنبثقة -->
 <div class="modal fade" id="customerModal" tabindex="-1" aria-labelledby="customerModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -57,6 +56,13 @@
                         <input type="text" class="form-control" id="cusAddress">
                     </div>
 
+                    <!-- حقل رقم الحساب التحليلي (جديد) -->
+                    <div class="mb-3">
+                        <label for="cusAnalytical" class="form-label">رقم الحساب التحليلي</label>
+                        <input type="text" class="form-control" id="cusAnalytical" readonly>
+                        <small class="form-text text-muted">يتم توليده تلقائياً عند الإضافة.</small>
+                    </div>
+
                     <div class="mb-3">
                         <label for="cusStatus" class="form-label">الحالة</label>
                         <select class="form-select" id="cusStatus">
@@ -74,11 +80,7 @@
     </div>
 </div>
 
-
-
 @endsection
 @push('scripts')
-
 <script src="{{ asset('js/customer.js') }}"></script>
-
 @endpush

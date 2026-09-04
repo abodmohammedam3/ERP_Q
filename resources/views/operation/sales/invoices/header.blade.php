@@ -19,8 +19,7 @@
         <div class="row g-3">
 
 
-            <!-- رقم الفاتورة -->
-
+            <!-- رقم الفاتورة (للقراءة فقط) -->
             <div class="col-md-3">
 
                 <label
@@ -35,14 +34,13 @@
                     class="form-control"
                     id="SalesInvoiceNo"
                     name="SalesInvoiceNo"
-                    disabled
+                    readonly
                 >
 
             </div>
 
 
             <!-- التاريخ -->
-
             <div class="col-md-3">
 
                 <label
@@ -64,7 +62,6 @@
 
 
             <!-- طريقة الدفع -->
-
             <div class="col-md-3">
 
                 <label
@@ -108,7 +105,6 @@
 
 
             <!-- الصندوق -->
-
             <div
                 class="col-md-3 d-none"
                 id="salesCashAccountContainer"
@@ -141,7 +137,6 @@
 
 
             <!-- حسابات البنوك -->
-
             <div
                 class="col-md-3 d-none"
                 id="salesBankAccountContainer"
@@ -174,7 +169,6 @@
 
 
             <!-- حساب المحفظة -->
-
             <div
                 class="col-md-3 d-none"
                 id="salesWalletAccountContainer"
@@ -207,7 +201,6 @@
 
 
             <!-- العميل -->
-
             <div class="col-md-4">
 
                 <label
@@ -234,7 +227,7 @@
                         autocomplete="off"
                         disabled
                         onkeydown="customerKeyDown(event)"
-                        onblur="customerBlur()"
+                        oninput="customerInput(event)"
                     >
 
                 </div>
@@ -243,7 +236,6 @@
 
 
             <!-- العملة -->
-
             <div class="col-md-3">
 
                 <label
@@ -268,14 +260,13 @@
                     autocomplete="off"
                     disabled
                     onkeydown="salesCurrencyKeyDown(event)"
-                    onblur="salesCurrencyBlur()"
+                    oninput="salesCurrencyInput(event)"
                 >
 
             </div>
 
 
             <!-- سعر الصرف -->
-
             <div class="col-md-2">
 
                 <label
@@ -292,6 +283,7 @@
                     id="SalesExchangeRate"
                     name="SalesExchangeRate"
                     disabled
+                    oninput="salesExchangeRateChanged()"
                 >
 
             </div>

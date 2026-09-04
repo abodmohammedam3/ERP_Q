@@ -45,14 +45,14 @@
 <!-- رأس الفاتورة -->
 <!-- ========================= -->
 
-@include('purchases.invoicesPurch.haed')
+@include('operation.purchases.invoicesPurch.haed')
 
 
 <!-- ========================= -->
 <!-- تفاصيل الفاتورة -->
 <!-- ========================= -->
 
-@include('purchases.invoicesPurch.detals')
+@include('operation.purchases.invoicesPurch.detals')
 
 </div><!-- ===================================================== --><!-- نافذة البحث عن الفاتورة --><!-- ===================================================== --><div
     class="modal fade"

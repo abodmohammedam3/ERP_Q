@@ -47,6 +47,11 @@ document.addEventListener('DOMContentLoaded', function() {
     Customer.setTargets('CustomerName', 'CustomerID');
     Currency.setTargets('CurrencyName', 'CoinsID', 'ExchangeRate');
 
+    // ✅ إضافة استدعاء لتحديث النص عند اختيار العملة
+    Currency.setOnSelect(function() {
+        updateSummary();
+    });
+
     // ========================================
     // 4. تهيئة PaymentMethod (مع إضافة cheque)
     // ========================================
@@ -64,8 +69,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const amount = parseFloat(document.getElementById('Amount').value) || 0;
         const rate = parseFloat(document.getElementById('ExchangeRate').value) || 1;
         const paid = amount * rate;
+        const currencyName = document.getElementById('CurrencyName').value.trim() || '';
 
-        document.getElementById('AmountWords').value = Utils.numberToWords(amount);
+        // ✅ إذا كان المبلغ صفراً أو فارغاً، افرغ حقل المبلغ كتابة
+        if (amount === 0 || isNaN(amount)) {
+            document.getElementById('AmountWords').value = '';
+        } else {
+            // تمرير اسم العملة إلى الدالة
+            document.getElementById('AmountWords').value = Utils.numberToWords(amount, currencyName);
+        }
+
         document.getElementById('SummaryPaid').textContent = paid.toFixed(2);
         document.getElementById('SummaryPrevious').textContent = '0.00';
         document.getElementById('SummaryRemain').textContent = (0 - paid).toFixed(2);

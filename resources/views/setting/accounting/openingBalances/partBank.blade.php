@@ -121,22 +121,15 @@
                 <tr>
 
                     <th style="width: 55px;">
-                        #
-                    </th>
-
-                    <th>
-                        البنك
+                        الرقم
                     </th>
 
                     <th>
                         رقم الحساب
                     </th>
 
-                    <th style="width: 140px;">
-                        العملة
-                    </th>
-                    <th style="width: 140px;">
-                        سعر الصرف
+                    <th>
+                        اسم الحساب
                     </th>
 
                     <th style="width: 170px;">
@@ -146,6 +139,15 @@
                     <th style="width: 170px;">
                         دائن
                     </th>
+
+                    <th style="width: 140px;">
+                        العملة
+                    </th>
+                    <th style="width: 140px;">
+                        سعر الصرف
+                    </th>
+
+                    
 
                     <th>
                         البيان
@@ -170,28 +172,48 @@
                     </td>
 
                     <td>
-                        البنك اليمني
+                        123456789
                     </td>
 
                     <td>
-                        123456789
+                        البنك اليمني
+                    </td>
+
+                    
+
+                    <td>
+                        <input
+                            type="number"
+                            class="form-control"
+                            placeholder="0.00"
+                        >
+                    </td>
+
+                    <td>
+                        <input
+                            type="number"
+                            class="form-control"
+                            placeholder="0.00"
+                        >
                     </td>
 
                     <td>
 
                         <select class="form-select">
 
-                            <option value="YER">
+                            <option>
                                 ريال يمني
                             </option>
 
-                            <option value="USD">
+                            <option>
                                 دولار أمريكي
                             </option>
 
                         </select>
 
                     </td>
+
+                    
                     <td>
                         <input
                             type="number"
@@ -199,30 +221,6 @@
                             placeholder="0.00"
                         >
                     </td>
-                    <td>
-
-                        <input
-                            type="number"
-                            class="form-control"
-                            placeholder="0.00"
-                            min="0"
-                            step="0.01"
-                        >
-
-                    </td>
-
-                    <td>
-
-                        <input
-                            type="number"
-                            class="form-control"
-                            placeholder="0.00"
-                            min="0"
-                            step="0.01"
-                        >
-
-                    </td>
-
                     <td>
 
                         <input

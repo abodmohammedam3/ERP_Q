@@ -121,11 +121,23 @@
                 <tr>
 
                     <th style="width: 55px;">
-                        #
+                        الرقم
                     </th>
 
                     <th>
-                        الصندوق
+                        رقم الحساب
+                    </th>
+
+                    <th>
+                        اسم الحساب
+                    </th>
+
+                     <th style="width: 170px;">
+                        مدين
+                    </th>
+
+                    <th style="width: 170px;">
+                        دائن
                     </th>
 
                     <th style="width: 150px;">
@@ -135,13 +147,7 @@
                         سعر الصرف
                     </th>
 
-                    <th style="width: 170px;">
-                        مدين
-                    </th>
-
-                    <th style="width: 170px;">
-                        دائن
-                    </th>
+           
 
                     <th>
                         البيان
@@ -163,6 +169,10 @@
 
                     <td>
                         1
+                    </td>
+
+                    <td>
+                        12110001
                     </td>
 
                     <td>

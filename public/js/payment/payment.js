@@ -49,6 +49,11 @@ document.addEventListener('DOMContentLoaded', function() {
     Supplier.setTargets('SupplierName', 'SupplierID');
     Currency.setTargets('CurrencyName', 'CoinsID', 'ExchangeRate');
 
+    // ✅ إضافة استدعاء لتحديث النص عند اختيار العملة
+    Currency.setOnSelect(function() {
+        updateSummary();
+    });
+
     // ========================================
     // 4. ✅ تهيئة PaymentMethod (هنا نضيف السطر الجديد)
     // ========================================
@@ -57,8 +62,6 @@ document.addEventListener('DOMContentLoaded', function() {
         bank: 'bankAccountContainer',
         network: 'walletAccountContainer'
     });
-    // بعد هذه التهيئة، أصبح الـ select مربوطاً تلقائياً
-    // ولا نحتاج إلى onchange في HTML
 
     // ========================================
     // 5. تعريف الدوال الخاصة بالصفحة
@@ -67,32 +70,40 @@ document.addEventListener('DOMContentLoaded', function() {
         const amount = parseFloat(document.getElementById('Amount').value) || 0;
         const rate = parseFloat(document.getElementById('ExchangeRate').value) || 1;
         const paid = amount * rate;
+        const currencyName = document.getElementById('CurrencyName').value.trim() || '';
 
-        document.getElementById('AmountWords').value = Utils.numberToWords(amount);
+        // ✅ إذا كان المبلغ صفراً أو غير صحيح، افرغ حقل المبلغ كتابة
+        if (amount === 0 || isNaN(amount)) {
+            document.getElementById('AmountWords').value = '';
+        } else {
+            // تمرير اسم العملة إلى الدالة
+            document.getElementById('AmountWords').value = Utils.numberToWords(amount, currencyName);
+        }
+
         document.getElementById('SummaryPaid').textContent = paid.toFixed(2);
         document.getElementById('SummaryPrevious').textContent = '0.00';
         document.getElementById('SummaryRemain').textContent = (0 - paid).toFixed(2);
     };
 
-   function updateDisplay() {
-    const num = document.getElementById('VoucherNumber')?.value || '';
-    const date = document.getElementById('VoucherDate')?.value || '';
+    function updateDisplay() {
+        const num = document.getElementById('VoucherNumber')?.value || '';
+        const date = document.getElementById('VoucherDate')?.value || '';
 
-    const displayNum = document.getElementById('VoucherNumberDisplay');
-    const displayDate = document.getElementById('VoucherDateDisplay');
+        const displayNum = document.getElementById('VoucherNumberDisplay');
+        const displayDate = document.getElementById('VoucherDateDisplay');
 
-    if (displayNum) {
-        displayNum.textContent = num
-            ? 'رقم السند: ' + num
-            : 'رقم السند: --';
+        if (displayNum) {
+            displayNum.textContent = num
+                ? 'رقم السند: ' + num
+                : 'رقم السند: --';
+        }
+
+        if (displayDate) {
+            displayDate.innerHTML = date
+                ? '<i class="bi bi-calendar3 me-1"></i> ' + date
+                : '<i class="bi bi-calendar3 me-1"></i> --';
+        }
     }
-
-    if (displayDate) {
-        displayDate.innerHTML = date
-            ? '<i class="bi bi-calendar3 me-1"></i> ' + date
-            : '<i class="bi bi-calendar3 me-1"></i> --';
-    }
-}
 
     function clearForm() {
         const fields = ['VoucherNumber', 'VoucherDate', 'SupplierID', 'SupplierName',
@@ -123,40 +134,34 @@ document.addEventListener('DOMContentLoaded', function() {
         updateDisplay();
     };
 
-   window.saveVoucher = function() {
-    const supplier = document.getElementById('SupplierName').value.trim();
-    const amount = parseFloat(document.getElementById('Amount').value) || 0;
-    const currency = document.getElementById('CurrencyName').value.trim();
+    window.saveVoucher = function() {
+        const supplier = document.getElementById('SupplierName').value.trim();
+        const amount = parseFloat(document.getElementById('Amount').value) || 0;
+        const currency = document.getElementById('CurrencyName').value.trim();
 
-    if (!supplier) { alert('يرجى اختيار المورد.'); return; }
-    if (amount <= 0) { alert('المبلغ يجب أن يكون أكبر من صفر.'); return; }
-    if (!currency) { alert('يرجى اختيار العملة.'); return; }
+        if (!supplier) { alert('يرجى اختيار المورد.'); return; }
+        if (amount <= 0) { alert('المبلغ يجب أن يكون أكبر من صفر.'); return; }
+        if (!currency) { alert('يرجى اختيار العملة.'); return; }
 
-    // 🔹 التأكد من وجود رقم سند (إذا كان فارغاً، قم بإنشائه)
-    let voucherNumber = document.getElementById('VoucherNumber').value.trim();
-    if (!voucherNumber) {
-        const now = new Date();
-        voucherNumber = 'صرف-' + now.getFullYear() + '-' + 
-                        String(now.getMonth()+1).padStart(2,'0') + 
-                        String(now.getDate()).padStart(2,'0') + '-001';
-        document.getElementById('VoucherNumber').value = voucherNumber;
-        document.getElementById('VoucherDate').value = now.toISOString().slice(0,10);
-        console.log('✅ تم إنشاء رقم سند جديد:', voucherNumber);
-    }
+        let voucherNumber = document.getElementById('VoucherNumber').value.trim();
+        if (!voucherNumber) {
+            const now = new Date();
+            voucherNumber = 'صرف-' + now.getFullYear() + '-' + 
+                            String(now.getMonth()+1).padStart(2,'0') + 
+                            String(now.getDate()).padStart(2,'0') + '-001';
+            document.getElementById('VoucherNumber').value = voucherNumber;
+            document.getElementById('VoucherDate').value = now.toISOString().slice(0,10);
+            console.log('✅ تم إنشاء رقم سند جديد:', voucherNumber);
+        }
 
-    alert(state.mode === 'edit' ? 'تم تعديل السند بنجاح.' : 'تم حفظ السند بنجاح.');
+        alert(state.mode === 'edit' ? 'تم تعديل السند بنجاح.' : 'تم حفظ السند بنجاح.');
 
-    // 🔹 الانتقال إلى وضع العرض
-    state.setMode('view');
-    
-    // 🔹 تحديث واجهة المستخدم (رقم السند والتاريخ)
-    updateDisplay();
+        state.setMode('view');
+        updateDisplay();
+        state.setMode('view');
 
-    // 🔹 (هام) إعادة تطبيق الحالة لتفعيل الأزرار (تأكيد)
-    state.setMode('view'); // إعادة استدعاء للتأكد من تحديث الأزرار
-
-    console.log('✅ تم حفظ السند، رقم السند:', document.getElementById('VoucherNumber').value);
-};
+        console.log('✅ تم حفظ السند، رقم السند:', document.getElementById('VoucherNumber').value);
+    };
 
     window.saveAndNewVoucher = function() {
         saveVoucher();
@@ -186,32 +191,32 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     window.searchVoucher = function() {
-    if (!Modals.get('PaymentVoucherSearchModal')) {
-        Modals.init('PaymentVoucherSearchModal');
-    }
+        if (!Modals.get('PaymentVoucherSearchModal')) {
+            Modals.init('PaymentVoucherSearchModal');
+        }
 
-    PaymentVoucherSearch.setTargets({
-        number: 'VoucherNumber',
-        date: 'VoucherDate',
-        supplier: 'SupplierName',
-        supplierId: 'SupplierID',
-        amount: 'Amount',
-        currency: 'CurrencyName',
-        currencyId: 'CoinsID',
-        exchangeRate: 'ExchangeRate',
-        paymentMethod: 'PaymentMethod',
-        notes: 'Notes'
-    });
+        PaymentVoucherSearch.setTargets({
+            number: 'VoucherNumber',
+            date: 'VoucherDate',
+            supplier: 'SupplierName',
+            supplierId: 'SupplierID',
+            amount: 'Amount',
+            currency: 'CurrencyName',
+            currencyId: 'CoinsID',
+            exchangeRate: 'ExchangeRate',
+            paymentMethod: 'PaymentMethod',
+            notes: 'Notes'
+        });
 
-    PaymentVoucherSearch.setOnSelect(function(data) {
-        state.setMode('view');
-        updateDisplay();
-        updateSummary();
-        PaymentMethod.change();
-    });
+        PaymentVoucherSearch.setOnSelect(function(data) {
+            state.setMode('view');
+            updateDisplay();
+            updateSummary();
+            PaymentMethod.change();
+        });
 
-    PaymentVoucherSearch.openModal();
-};
+        PaymentVoucherSearch.openModal();
+    };
 
     // ========================================
     // 6. ربط الأحداث بالحقول
@@ -226,8 +231,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.getElementById('Amount').addEventListener('input', updateSummary);
     document.getElementById('ExchangeRate').addEventListener('input', updateSummary);
-
-    // ✅ لا حاجة لـ onchange هنا لأن PaymentMethod.init قام بربطه
 
     // ========================================
     // 7. ربط الأزرار

@@ -133,7 +133,7 @@
                 <tr>
 
                     <th style="width: 60px;">
-                        #
+                        الرقم
                     </th>
 
                     <th>

@@ -71,9 +71,9 @@
 
                     {{-- إعدادات المحاسبة --}}
                     @php
-                        $isAccountingActive = request()->routeIs('boxes.*') ||
+                        $isAccountingActive = request()->routeIs('currenc.*') ||
                                               request()->routeIs('banks.*') ||
-                                              request()->routeIs('currenc.*') ||
+                                              request()->routeIs('boxes.*') ||
                                               request()->routeIs('chartOfAccounts.*') ||
                                               request()->routeIs('openingBalances.*');
                     @endphp
@@ -91,6 +91,12 @@
                     </button>
                     <div class="collapse {{ $isAccountingActive ? 'show' : '' }}" id="accountingSettingsMenu">
                         <div class="border-end border-secondary me-3 pe-2">
+                            <a href="{{ route('currenc.index') }}"
+                               class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
+                               {{ request()->routeIs('currenc.*') ? 'bg-success text-white' : 'text-white-50' }}">
+                                <i class="bi bi-diagram-3"></i> <span>العملات</span>
+                            </a>
+
                             <a href="{{ route('boxes.index') }}"
                                class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
                                {{ request()->routeIs('boxes.*') ? 'bg-success text-white' : 'text-white-50' }}">
@@ -101,11 +107,7 @@
                                {{ request()->routeIs('banks.*') ? 'bg-success text-white' : 'text-white-50' }}">
                                 <i class="bi bi-diagram-3"></i> <span>البنوك</span>
                             </a>
-                            <a href="{{ route('currenc.index') }}"
-                               class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
-                               {{ request()->routeIs('currenc.*') ? 'bg-success text-white' : 'text-white-50' }}">
-                                <i class="bi bi-diagram-3"></i> <span>العملات</span>
-                            </a>
+                            
                             <a href="{{ route('chartOfAccounts.index') }}"
                                class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
                                {{ request()->routeIs('chartOfAccounts.*') ? 'bg-success text-white' : 'text-white-50' }}">

@@ -40,58 +40,23 @@
                             placeholder="مثال: 1100">
                     </div>
                 </div>
-                {{-- نوع الحساب --}}
+               {{-- اسم الحساب --}}
                 <div class="col-12 col-md-6 col-xl-3">
                     <label
-                        for="searchType"
+                        for="searchName"
                         class="form-label">
-                        نوع الحساب
+                        اسم الحساب
                     </label>
-                    <select
-                        class="form-select"
-                        id="searchType"
-                        name="search_type">
-                        <option value="">
-                            جميع الأنواع
-                        </option>
-                        <option value="assets">
-                            أصول
-                        </option>
-                        <option value="liabilities">
-                            خصوم
-                        </option>
-                        <option value="equity">
-                            حقوق ملكية
-                        </option>
-                        <option value="revenue">
-                            إيرادات
-                        </option>
-                        <option value="expense">
-                            مصروفات
-                        </option>
-                    </select>
-                </div>
-                {{-- طبيعة الحساب --}}
-                <div class="col-12 col-md-6 col-xl-3">
-                    <label
-                        for="searchNature"
-                        class="form-label">
-                        طبيعة الحساب
-                    </label>
-                    <select
-                        class="form-select"
-                        id="searchNature"
-                        name="search_nature">
-                        <option value="">
-                            جميع الطبائع
-                        </option>
-                        <option value="debit">
-                            مدين
-                        </option>
-                        <option value="credit">
-                            دائن
-                        </option>
-                    </select>
+
+                    <div class="input-group">
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="searchName"
+                            name="search_name"
+                            placeholder="مثال: الصندوق">
+                    </div>
+
                 </div>
             </div>
         </div>

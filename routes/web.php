@@ -10,32 +10,51 @@ Route::get('/', function () {
 Route::get('/dashboard', function () {
     return view('dashboard.index');
 });
+
+// =====================================================
 // دوال دليل الحسابات
+// =====================================================
 
 Route::get(
     '/settings/accounting/chartOfAccounts',
     [CharAccountController::class, 'index']
 )->name('chartOfAccounts.index');
 
+
 Route::get(
     '/settings/accounting/chartOfAccounts/list',
     [CharAccountController::class, 'list']
 )->name('chartOfAccounts.list');
+
 
 Route::post(
     '/settings/accounting/chartOfAccounts',
     [CharAccountController::class, 'store']
 )->name('chartOfAccounts.store');
 
+
 Route::get(
     '/settings/accounting/chartOfAccounts/{account}',
     [CharAccountController::class, 'edit']
 )->name('chartOfAccounts.edit');
 
+
 Route::put(
     '/settings/accounting/chartOfAccounts/{account}',
     [CharAccountController::class, 'update']
 )->name('chartOfAccounts.update');
+
+
+Route::delete(
+    '/settings/accounting/chartOfAccounts/{account}',
+    [CharAccountController::class, 'destroy']
+)->name('chartOfAccounts.destroy');
+
+Route::get(
+    '/settings/accounting/chartOfAccounts/next-code/{parentId}',
+    [CharAccountController::class, 'nextCode']
+)->name('chartOfAccounts.nextCode');
+
 /////////////////////////////////////////////////////////////
 
 Route::get('/setting/accounting/boxes', function () {

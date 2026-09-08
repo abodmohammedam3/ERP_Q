@@ -2,8 +2,7 @@
 <div class="card mb-3">
     <div class="card-body">
         <div class="row g-2 align-items-end">
-
-            <div class="col-md-6">
+            <div class="col-md-12">
                 <label class="form-label" for="searchItemInput">البحث</label>
                 <input 
                     type="text" 
@@ -13,13 +12,6 @@
                     onkeyup="filterItems()"
                 >
             </div>
-
-            <div class="col-md-auto">
-                <button type="button" class="btn btn-secondary" onclick="filterItems()">
-                    <i class="bi bi-search"></i> بحث
-                </button>
-            </div>
-
         </div>
     </div>
 </div>

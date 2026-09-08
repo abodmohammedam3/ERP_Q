@@ -6,31 +6,55 @@ use App\Http\Controllers\Controller;
 use App\Models\Inventory\Item;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Validator; // تأكد من استيراد هذه
 
 class ItemController extends Controller
 {
-    /**
-     * عرض قائمة الأصناف (النشطة فقط أو الكل)
-     */
     public function index()
     {
-        // يمكن عرض الكل، أو عرض النشطة فقط
-        $items = Item::orderBy('itemID', 'desc')->get();
+        $items = Item::orderBy('itemID', 'asc')->get();
         return view('setting.inventory.items.index', compact('items'));
     }
 
-    /**
-     * إضافة صنف جديد
-     */
+    public function list(Request $request)
+    {
+        $search = $request->input('search');
+        $query = Item::query();
+
+        if ($search) {
+            $query->where('itemName2', 'LIKE', "%{$search}%");
+        }
+
+        $items = $query->orderBy('itemID', 'asc')->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $items,
+        ]);
+    }
+
     public function store(Request $request)
     {
-        $request->validate([
-            'itemName2' => 'required|string|max:255|unique:Items,itemName2',
+        // استخدام Validator يدوياً
+        $validator = Validator::make($request->all(), [
+            'itemName2' => 'required|string|max:255|unique:Items,itemName2'
+        ], [
+            'itemName2.unique' => 'هذا الصنف موجود بالفعل',
+            'itemName2.required' => 'اسم الصنف مطلوب',
         ]);
+
+        // إذا فشل التحقق، نعيد JSON مع الأخطاء
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => $validator->errors()->first('itemName2'),
+                'errors' => $validator->errors()
+            ], 422);
+        }
 
         $item = Item::create([
             'itemName2' => $request->itemName2,
-            'is_active' => 1, // افتراضي نشط
+            'is_active' => 1,
         ]);
 
         return response()->json([
@@ -40,21 +64,29 @@ class ItemController extends Controller
         ]);
     }
 
-    /**
-     * تحديث صنف موجود
-     */
     public function update(Request $request, $id)
     {
         $item = Item::findOrFail($id);
 
-        $request->validate([
+        $validator = Validator::make($request->all(), [
             'itemName2' => [
                 'required',
                 'string',
                 'max:255',
                 Rule::unique('Items', 'itemName2')->ignore($item->itemID, 'itemID'),
             ],
+        ], [
+            'itemName2.unique' => 'هذا الصنف موجود بالفعل',
+            'itemName2.required' => 'اسم الصنف مطلوب',
         ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => $validator->errors()->first('itemName2'),
+                'errors' => $validator->errors()
+            ], 422);
+        }
 
         $item->update([
             'itemName2' => $request->itemName2,
@@ -67,30 +99,17 @@ class ItemController extends Controller
         ]);
     }
 
-    /**
-     * حذف صنف (فعلي أو تعطيل)
-     * نفضل التعطيل بدلاً من الحذف الفعلي.
-     * إذا أردت الحذف الفعلي، استخدم delete() بعد التحقق من عدم استخدامه.
-     */
     public function destroy($id)
     {
         $item = Item::findOrFail($id);
-
-        // هنا يمكنك إضافة فحص إذا كان الصنف مستخدماً في جداول أخرى
-        // مثلاً: if ($item->purchaseDetails()->exists()) { return response()->json(...) }
-
-        // نستخدم التعطيل بدلاً من الحذف
-        $item->update(['is_active' => 0]);
+        $item->delete();
 
         return response()->json([
             'success' => true,
-            'message' => 'تم تعطيل الصنف بنجاح',
+            'message' => 'تم حذف الصنف بنجاح',
         ]);
     }
 
-    /**
-     * تبديل حالة التفعيل (تمكين / تعطيل)
-     */
     public function toggleStatus($id)
     {
         $item = Item::findOrFail($id);
@@ -105,15 +124,12 @@ class ItemController extends Controller
         ]);
     }
 
-    /**
-     * البحث عن الأصناف (لـ Item Selector)
-     */
     public function search(Request $request)
     {
         $search = $request->input('search', '');
         $items = Item::where('itemName2', 'LIKE', "%{$search}%")
             ->orderBy('itemName2')
-            ->get(['itemID', 'itemName2']); // نرجع الحقول المطلوبة فقط
+            ->get(['itemID', 'itemName2']);
 
         return response()->json([
             'success' => true,

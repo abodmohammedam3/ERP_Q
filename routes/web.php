@@ -1,4 +1,5 @@
 <?php
+
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\accounting\CharAccountController;
 use App\Http\Controllers\Inventory\ItemController;
@@ -20,30 +21,25 @@ Route::get(
     [CharAccountController::class, 'index']
 )->name('chartOfAccounts.index');
 
-
 Route::get(
     '/settings/accounting/chartOfAccounts/list',
     [CharAccountController::class, 'list']
 )->name('chartOfAccounts.list');
-
 
 Route::post(
     '/settings/accounting/chartOfAccounts',
     [CharAccountController::class, 'store']
 )->name('chartOfAccounts.store');
 
-
 Route::get(
     '/settings/accounting/chartOfAccounts/{account}',
     [CharAccountController::class, 'edit']
 )->name('chartOfAccounts.edit');
 
-
 Route::put(
     '/settings/accounting/chartOfAccounts/{account}',
     [CharAccountController::class, 'update']
 )->name('chartOfAccounts.update');
-
 
 Route::delete(
     '/settings/accounting/chartOfAccounts/{account}',
@@ -55,7 +51,9 @@ Route::get(
     [CharAccountController::class, 'nextCode']
 )->name('chartOfAccounts.nextCode');
 
-/////////////////////////////////////////////////////////////
+// =====================================================
+// الصفحات الأخرى (الإعدادات)
+// =====================================================
 
 Route::get('/setting/accounting/boxes', function () {
     return view('setting.accounting.boxes.index');
@@ -93,9 +91,23 @@ Route::get('/setting/inventory/types', function () {
     return view('setting.inventory.types.index');
 })->name('types.index');
 
-Route::get('/setting/inventory/items', function () {
-    return view('setting.inventory.items.index');
-})->name('items.index');
+// =====================================================
+// Routes الخاصة بالأصناف (معدلة)
+// =====================================================
+
+// ملاحظة: تم حذف Route القديم الذي كان يعرض الـ View مباشرة
+// واستبداله بـ:
+Route::get('/setting/inventory/items', [ItemController::class, 'index'])->name('items.index');
+Route::get('/setting/inventory/items/list', [ItemController::class, 'list'])->name('items.list');  // جديد
+Route::post('/setting/inventory/items', [ItemController::class, 'store'])->name('items.store');
+Route::put('/setting/inventory/items/{item}', [ItemController::class, 'update'])->name('items.update');
+Route::delete('/setting/inventory/items/{item}', [ItemController::class, 'destroy'])->name('items.destroy');
+Route::patch('/setting/inventory/items/{item}/toggle-status', [ItemController::class, 'toggleStatus'])->name('items.toggleStatus');
+Route::get('/setting/inventory/items/search', [ItemController::class, 'search'])->name('items.search');
+
+// =====================================================
+// الصفحات التشغيلية
+// =====================================================
 
 Route::get('/operation/sales/invoices', function () {
     return view('operation.sales.invoices.index');
@@ -116,15 +128,3 @@ Route::get('/operation/accounting/receiptVouchers', function () {
 Route::get('/operation/movements', function () {
     return view('operation.movements.index');
 })->name('movements.index');
-
-
-// =====================================================
-// Routes الخاصة بالأصناف
-// =====================================================
-Route::get('/setting/inventory/items', [ItemController::class, 'index'])->name('items.index');
-Route::post('/setting/inventory/items', [ItemController::class, 'store'])->name('items.store');
-Route::put('/setting/inventory/items/{item}', [ItemController::class, 'update'])->name('items.update');
-Route::delete('/setting/inventory/items/{item}', [ItemController::class, 'destroy'])->name('items.destroy');
-Route::patch('/setting/inventory/items/{item}/toggle-status', [ItemController::class, 'toggleStatus'])->name('items.toggleStatus');
-Route::get('/setting/inventory/items/search', [ItemController::class, 'search'])->name('items.search');
-

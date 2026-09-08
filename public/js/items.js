@@ -1,35 +1,36 @@
 let itemModalInstance;
-let lastItemId = 500; // رقم تجريبي للعناصر الجديدة
+let currentItemId = null;
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     const modalElement = document.getElementById('itemModal');
-    if(modalElement) {
+    if (modalElement) {
         itemModalInstance = new bootstrap.Modal(modalElement);
     }
-    updateItemsCount();
 });
 
 // فتح نافذة الإضافة
 function openItemModal() {
     document.getElementById('itemForm').reset();
     document.getElementById('itemID').value = '';
+    currentItemId = null;
     document.getElementById('itemModalLabel').innerText = 'إضافة صنف جديد';
-    
     itemModalInstance.show();
 }
 
 // فتح نافذة التعديل
 function editItem(btn) {
     const row = btn.closest('tr');
-    
-    document.getElementById('itemID').value = row.querySelector('.row-id').innerText.trim();
-    document.getElementById('itemName').value = row.querySelector('.row-name').innerText.trim();
+    const id = row.querySelector('.row-id').innerText.trim();
+    const name = row.querySelector('.row-name').innerText.trim();
 
+    document.getElementById('itemID').value = id;
+    document.getElementById('itemName').value = name;
+    currentItemId = id;
     document.getElementById('itemModalLabel').innerText = 'تعديل بيانات الصنف';
     itemModalInstance.show();
 }
 
-// حفظ الصنف (إضافة/تعديل)
+// حفظ الصنف (إضافة / تعديل)
 function saveItem() {
     const form = document.getElementById('itemForm');
     if (!form.checkValidity()) {
@@ -38,93 +39,101 @@ function saveItem() {
     }
 
     const id = document.getElementById('itemID').value;
-    const name = document.getElementById('itemName').value;
+    const name = document.getElementById('itemName').value.trim();
 
-    const tbody = document.getElementById('itemsTableBody');
-    const emptyRow = document.getElementById('emptyItemRow');
-    
-    if (emptyRow) emptyRow.remove();
+    const url = id ? `/setting/inventory/items/${id}` : '/setting/inventory/items';
+    const method = id ? 'PUT' : 'POST';
 
-    if (id) {
-        // تعديل
-        const rows = tbody.querySelectorAll('tr.item-row');
-        rows.forEach(row => {
-            if (row.querySelector('.row-id').innerText.trim() === id) {
-                row.querySelector('.row-name').innerText = name;
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        },
+        body: JSON.stringify({ itemName2: name })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // إعادة تحميل الصفحة لتحديث الجدول
+                location.reload();
+            } else {
+                alert('حدث خطأ: ' + (data.message || 'غير معروف'));
             }
+        })
+        .catch(error => {
+            console.error(error);
+            alert('حدث خطأ في الاتصال بالخادم');
         });
-    } else {
-        // إضافة
-        lastItemId++;
-        const newRow = document.createElement('tr');
-        newRow.className = 'item-row text-center';
-        newRow.innerHTML = `
-            <td class="row-id">${lastItemId}</td>
-            <td class="row-name">${name}</td>
-            <td class="no-print">
-                <button type="button" class="btn btn-sm btn-outline-primary" onclick="editItem(this)">
-                    <i class="bi bi-pencil"></i> تعديل
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteItem(this)">
-                    <i class="bi bi-trash"></i> حذف
-                </button>
-            </td>
-        `;
-        tbody.appendChild(newRow);
-    }
-
-    updateItemsCount();
-    itemModalInstance.hide();
-    alert('تم حفظ الصنف بنجاح!');
 }
 
-// حذف الصنف
+// حذف الصنف (تعطيل)
 function deleteItem(btn) {
-    if (confirm('هل أنت متأكد من حذف هذا الصنف؟')) {
-        btn.closest('tr').remove();
-        
-        const tbody = document.getElementById('itemsTableBody');
-        if (tbody.querySelectorAll('tr.item-row').length === 0) {
-            tbody.innerHTML = `
-                <tr id="emptyItemRow">
-                    <td colspan="3" class="text-center text-muted py-5">
-                        <i class="bi bi-box-seam fs-2 d-block mb-2"></i>
-                        لا توجد أصناف مسجلة
-                    </td>
-                </tr>
-            `;
+    if (!confirm('هل أنت متأكد من تعطيل هذا الصنف؟')) return;
+
+    const row = btn.closest('tr');
+    const id = row.querySelector('.row-id').innerText.trim();
+
+    fetch(`/setting/inventory/items/${id}`, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
         }
-        updateItemsCount();
-    }
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('حدث خطأ: ' + (data.message || 'غير معروف'));
+            }
+        })
+        .catch(error => {
+            console.error(error);
+            alert('حدث خطأ في الاتصال بالخادم');
+        });
 }
 
-// تحديث عداد الأصناف
-function updateItemsCount() {
-    const count = document.querySelectorAll('tr.item-row').length;
-    const badge = document.getElementById('itemsCountBadge');
-    if(badge) badge.innerText = count;
+// تبديل حالة التفعيل (تمكين / تعطيل)
+function toggleItemStatus(btn) {
+    const row = btn.closest('tr');
+    const id = row.querySelector('.row-id').innerText.trim();
+
+    fetch(`/setting/inventory/items/${id}/toggle-status`, {
+        method: 'PATCH',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        }
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('حدث خطأ: ' + (data.message || 'غير معروف'));
+            }
+        })
+        .catch(error => {
+            console.error(error);
+            alert('حدث خطأ في الاتصال بالخادم');
+        });
 }
 
-// فلترة الأصناف (بحث)
+// فلترة الأصناف (تعتمد على العميل)
 function filterItems() {
     const searchText = document.getElementById('searchItemInput').value.toLowerCase();
     const rows = document.querySelectorAll('tr.item-row');
 
     rows.forEach(row => {
         const name = row.querySelector('.row-name').innerText.toLowerCase();
-        
-        if (name.includes(searchText)) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
-        }
+        row.style.display = name.includes(searchText) ? '' : 'none';
     });
 }
 
-// طباعة القائمة
+// طباعة القائمة (مع تعديل عدد الأعمدة)
 function printItems() {
     const table = document.getElementById('itemsTable');
-    
+
     let printContents = `
         <html dir="rtl" lang="ar">
         <head>
@@ -158,7 +167,7 @@ function printItems() {
     const printWindow = window.open('', '_blank');
     printWindow.document.write(printContents);
     printWindow.document.close();
-    
+
     setTimeout(() => {
         printWindow.print();
         printWindow.close();

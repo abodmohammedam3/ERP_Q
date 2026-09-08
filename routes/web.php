@@ -1,7 +1,7 @@
 <?php
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\accounting\CharAccountController;
-
+use App\Http\Controllers\Inventory\ItemController;
 
 Route::get('/', function () {
     return view('dashboard.index');
@@ -116,4 +116,15 @@ Route::get('/operation/accounting/receiptVouchers', function () {
 Route::get('/operation/movements', function () {
     return view('operation.movements.index');
 })->name('movements.index');
+
+
+// =====================================================
+// Routes الخاصة بالأصناف
+// =====================================================
+Route::get('/setting/inventory/items', [ItemController::class, 'index'])->name('items.index');
+Route::post('/setting/inventory/items', [ItemController::class, 'store'])->name('items.store');
+Route::put('/setting/inventory/items/{item}', [ItemController::class, 'update'])->name('items.update');
+Route::delete('/setting/inventory/items/{item}', [ItemController::class, 'destroy'])->name('items.destroy');
+Route::patch('/setting/inventory/items/{item}/toggle-status', [ItemController::class, 'toggleStatus'])->name('items.toggleStatus');
+Route::get('/setting/inventory/items/search', [ItemController::class, 'search'])->name('items.search');
 

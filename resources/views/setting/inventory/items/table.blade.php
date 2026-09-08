@@ -16,18 +16,27 @@
                     <tr class="text-center">
                         <th>الرقم</th>
                         <th>اسم الصنف</th>
-                        <th class="no-print" style="width: 180px;">الإجراءات</th>
+                        <th>الحالة</th>          {{-- جديد --}}
+                        <th class="no-print" style="width: 220px;">الإجراءات</th>
                     </tr>
                 </thead>
                 <tbody id="itemsTableBody">
 
                     @forelse($items ?? [] as $item)
-                        <tr class="item-row text-center">
+                        <tr class="item-row text-center" data-id="{{ $item->itemID }}">
                             <td class="row-id">{{ $item->itemID }}</td>
                             <td class="row-name">{{ $item->itemName2 }}</td>
+                            <td class="row-status">
+                                <span class="badge {{ $item->is_active ? 'bg-success' : 'bg-danger' }}">
+                                    {{ $item->is_active ? 'نشط' : 'غير نشط' }}
+                                </span>
+                            </td>
                             <td class="no-print">
                                 <button type="button" class="btn btn-sm btn-outline-primary" onclick="editItem(this)">
                                     <i class="bi bi-pencil"></i> تعديل
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-warning" onclick="toggleItemStatus(this)">
+                                    <i class="bi bi-arrow-repeat"></i> {{ $item->is_active ? 'تعطيل' : 'تفعيل' }}
                                 </button>
                                 <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteItem(this)">
                                     <i class="bi bi-trash"></i> حذف
@@ -36,7 +45,7 @@
                         </tr>
                     @empty
                         <tr id="emptyItemRow">
-                            <td colspan="3" class="text-center text-muted py-5">
+                            <td colspan="4" class="text-center text-muted py-5">
                                 <i class="bi bi-box-seam fs-2 d-block mb-2"></i>
                                 لا توجد أصناف مسجلة
                             </td>

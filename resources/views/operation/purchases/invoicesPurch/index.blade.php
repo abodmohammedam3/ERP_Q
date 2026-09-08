@@ -39,13 +39,12 @@
 
     </div>
 
+    
+     <!-- رأس الفاتورة -->
+     <!-- تفاصيل الفاتورة -->
+     @include('operation.purchases.invoicesPurch.detals')
+    
 
-    <!-- رأس الفاتورة -->
-    @include('operation.purchases.invoicesPurch.haed')
-
-
-    <!-- تفاصيل الفاتورة -->
-    @include('operation.purchases.invoicesPurch.detals')
 
 </div>
 

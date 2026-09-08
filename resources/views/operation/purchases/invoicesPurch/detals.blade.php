@@ -3,6 +3,7 @@
 <!-- ========================= -->
 
 <div class="card mb-3">
+      @include('operation.purchases.invoicesPurch.haed')
 
     <div class="card-header d-flex justify-content-between align-items-center">
 
@@ -120,6 +121,8 @@
 
                     </td>
 
+                    
+
                 </tr>
 
             </tfoot>
@@ -127,6 +130,18 @@
         </table>
 
     </div>
+
+    <div class="col-md-8">
+        <div class="card h-100">
+            <div class="card-body">
+                <label class="form-label" for="AmountWords">المبلغ كتابة</label>
+                <input type="text" class="form-control amount-words" id="AmountWords" name="amountWords" readonly>
+            </div>
+        </div>
+    </div>
+
+    
+    
 
 </div>
 

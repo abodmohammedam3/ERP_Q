@@ -16,8 +16,8 @@
                     <tr class="text-center">
                         <th style="width: 60px;">#</th>
                         <th>اسم الوحدة</th>
-                        <th style="width: 100px;">الحالة</th>
-                        <th style="width: 130px;" class="no-print">الإجراءات</th>
+                        <th style="width: 120px;">الحالة</th>
+                        <th style="width: 180px;" class="no-print">الإجراءات</th>
                     </tr>
                 </thead>
                 <tbody id="unitsTableBody">
@@ -27,20 +27,25 @@
                             <td>{{ $loop->iteration }}</td>
                             <td class="row-name">{{ $unit->UnitName }}</td>
                             <td class="row-status">
-                                <span class="badge {{ $unit->is_active ? 'bg-success' : 'bg-danger' }}">
+                                {{-- زر الحالة (نشط / غير نشط) --}}
+                                <button type="button" 
+                                        class="btn btn-sm {{ $unit->is_active ? 'btn-success' : 'btn-secondary' }} toggle-status-btn"
+                                        onclick="toggleUnitStatus(this)"
+                                        title="{{ $unit->is_active ? 'تعطيل' : 'تفعيل' }}">
                                     {{ $unit->is_active ? 'نشط' : 'غير نشط' }}
-                                </span>
+                                </button>
                             </td>
                             <td class="no-print">
                                 <div class="btn-action-group">
+                                    {{-- زر تعديل (نص + أيقونة) --}}
                                     <button type="button" class="btn btn-sm btn-outline-primary" onclick="editUnit(this)" title="تعديل">
-                                        <i class="bi bi-pencil"></i>
+                                        <i class="bi bi-pencil d-md-none"></i>
+                                        <span class="d-none d-md-inline">تعديل</span>
                                     </button>
-                                    <button type="button" class="btn btn-sm {{ $unit->is_active ? 'btn-toggle-on' : 'btn-toggle-off' }}" onclick="toggleUnitStatus(this)" title="{{ $unit->is_active ? 'تعطيل' : 'تفعيل' }}">
-                                        <i class="bi {{ $unit->is_active ? 'bi-toggle-on' : 'bi-toggle-off' }}"></i>
-                                    </button>
+                                    {{-- زر حذف (نص + أيقونة) --}}
                                     <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteUnit(this)" title="حذف">
-                                        <i class="bi bi-trash"></i>
+                                        <i class="bi bi-trash d-md-none"></i>
+                                        <span class="d-none d-md-inline">حذف</span>
                                     </button>
                                 </div>
                             </td>
@@ -73,43 +78,51 @@
         display: flex !important;
         justify-content: center !important;
         align-items: center !important;
-        gap: 4px !important;
+        gap: 6px !important;
         flex-wrap: nowrap !important;
         flex-direction: row !important;
     }
     .btn-action-group .btn-sm {
-        padding: 2px 6px !important;
-        font-size: 14px !important;
-        line-height: 1.2 !important;
-        border-radius: 4px !important;
+        padding: 4px 12px !important;
+        font-size: 13px !important;
+        line-height: 1.4 !important;
+        border-radius: 6px !important;
         min-width: 28px !important;
-        height: 28px !important;
+        height: 32px !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
+        gap: 4px !important;
+        transition: all 0.2s ease !important;
     }
     .btn-action-group .btn-sm i {
-        font-size: 14px !important;
+        font-size: 15px !important;
     }
 
-    /* زر التبديل (حالة) */
-    .btn-toggle-on {
+    /* زر الحالة */
+    .toggle-status-btn {
+        min-width: 80px !important;
+        padding: 4px 12px !important;
+        font-size: 13px !important;
+        font-weight: 600 !important;
+        border-radius: 6px !important;
+        border: none !important;
+        cursor: pointer !important;
+        transition: all 0.25s ease !important;
+    }
+    .toggle-status-btn.btn-success {
         background-color: #28a745 !important;
         color: #fff !important;
-        border-color: #28a745 !important;
     }
-    .btn-toggle-on:hover {
+    .toggle-status-btn.btn-success:hover {
         background-color: #218838 !important;
-        border-color: #1e7e34 !important;
     }
-    .btn-toggle-off {
+    .toggle-status-btn.btn-secondary {
         background-color: #6c757d !important;
         color: #fff !important;
-        border-color: #6c757d !important;
     }
-    .btn-toggle-off:hover {
+    .toggle-status-btn.btn-secondary:hover {
         background-color: #5a6268 !important;
-        border-color: #545b62 !important;
     }
 
     /* =========================================================
@@ -225,17 +238,21 @@
     }
 
     /* =========================================================
-       التجاوب: أزرار أيقونية فقط على الهواتف
+       التجاوب: أزرار أيقونية فقط على الهواتف (أقل من 768px)
     ========================================================= */
-    @media (max-width: 576px) {
+    @media (max-width: 767.98px) {
         .btn-action-group .btn-sm {
-            padding: 4px 6px !important;
-            font-size: 12px !important;
-            min-width: 24px !important;
-            height: 24px !important;
+            padding: 2px 6px !important;
+            min-width: 28px !important;
+            height: 28px !important;
         }
         .btn-action-group .btn-sm i {
-            font-size: 12px !important;
+            font-size: 14px !important;
+        }
+        .toggle-status-btn {
+            min-width: 60px !important;
+            padding: 2px 8px !important;
+            font-size: 11px !important;
         }
     }
 </style>

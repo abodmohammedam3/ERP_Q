@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const unit = {
                 UnitID: parseInt(row.dataset.id, 10),
                 UnitName: row.querySelector('.row-name').innerText.trim(),
-                is_active: row.querySelector('.row-status .badge').classList.contains('bg-success') ? 1 : 0
+                is_active: row.querySelector('.row-status .toggle-status-btn')?.classList.contains('btn-success') ? 1 : 0
             };
             allUnitsData.push(unit);
         });
@@ -259,7 +259,7 @@ function applyFiltersAndRender() {
 }
 
 // =========================================================
-// عرض الوحدات
+// عرض الوحدات (الجزء المعدل)
 // =========================================================
 function renderUnits(units) {
     const tbody = document.getElementById('unitsTableBody');
@@ -285,25 +285,33 @@ function renderUnits(units) {
     pageUnits.forEach((unit, index) => {
         const serial = start + index + 1;
         const isActive = unit.is_active == 1;
-        const statusBadge = isActive
-            ? '<span class="badge bg-success">نشط</span>'
-            : '<span class="badge bg-danger">غير نشط</span>';
+
+        // زر الحالة (نصي)
+        const statusBtnClass = isActive ? 'btn-success' : 'btn-secondary';
+        const statusText = isActive ? 'نشط' : 'غير نشط';
+        const statusTitle = isActive ? 'تعطيل' : 'تفعيل';
 
         html += `
             <tr class="unit-row text-center" data-id="${unit.UnitID}">
                 <td>${serial}</td>
                 <td class="row-name">${escapeHtml(unit.UnitName)}</td>
-                <td class="row-status">${statusBadge}</td>
+                <td class="row-status">
+                    <button type="button" 
+                            class="btn btn-sm ${statusBtnClass} toggle-status-btn"
+                            onclick="toggleUnitStatus(this)"
+                            title="${statusTitle}">
+                        ${statusText}
+                    </button>
+                </td>
                 <td class="no-print">
                     <div class="btn-action-group">
                         <button type="button" class="btn btn-sm btn-outline-primary" onclick="editUnit(this)" title="تعديل">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                        <button type="button" class="btn btn-sm ${isActive ? 'btn-toggle-on' : 'btn-toggle-off'}" onclick="toggleUnitStatus(this)" title="${isActive ? 'تعطيل' : 'تفعيل'}">
-                            <i class="bi ${isActive ? 'bi-toggle-on' : 'bi-toggle-off'}"></i>
+                            <i class="bi bi-pencil d-md-none"></i>
+                            <span class="d-none d-md-inline">تعديل</span>
                         </button>
                         <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteUnit(this)" title="حذف">
-                            <i class="bi bi-trash"></i>
+                            <i class="bi bi-trash d-md-none"></i>
+                            <span class="d-none d-md-inline">حذف</span>
                         </button>
                     </div>
                 </td>

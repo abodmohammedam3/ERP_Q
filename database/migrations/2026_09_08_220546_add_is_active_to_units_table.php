@@ -8,10 +8,9 @@ return new class extends Migration
 {
     public function up()
     {
-        Schema::create('type', function (Blueprint $table) {
-            $table->id();                           // auto-increment bigint
-            $table->string('name');                 // اسم النوع
-            $table->string('code', 50)->nullable(); // الكود (نصي، اختياري، طول 50)
+        Schema::create('units', function (Blueprint $table) {
+            $table->id('UnitID');           // primary key
+            $table->string('UnitName');     // اسم الوحدة
             $table->boolean('is_active')->default(1);
             // لا نضيف timestamps
         });
@@ -19,6 +18,6 @@ return new class extends Migration
 
     public function down()
     {
-        Schema::dropIfExists('type');
+        Schema::dropIfExists('units');
     }
 };

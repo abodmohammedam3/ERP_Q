@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\accounting\CharAccountController;
 use App\Http\Controllers\Inventory\ItemController;
 use App\Http\Controllers\Inventory\TypeController;
+use App\Http\Controllers\Inventory\UnitController;
 
 Route::get('/', function () {
     return view('dashboard.index');
@@ -139,3 +140,13 @@ Route::post('/setting/inventory/types', [TypeController::class, 'store'])->name(
 Route::put('/setting/inventory/types/{type}', [TypeController::class, 'update'])->name('types.update');
 Route::delete('/setting/inventory/types/{type}', [TypeController::class, 'destroy'])->name('types.destroy');
 Route::patch('/setting/inventory/types/{type}/toggle-status', [TypeController::class, 'toggleStatus'])->name('types.toggleStatus');
+
+// =====================================================
+// Routes الخاصة بالوحدات
+// =====================================================
+Route::get('/setting/inventory/units', [UnitController::class, 'index'])->name('units.index');
+Route::get('/setting/inventory/units/list', [UnitController::class, 'list'])->name('units.list');
+Route::post('/setting/inventory/units', [UnitController::class, 'store'])->name('units.store');
+Route::put('/setting/inventory/units/{unit}', [UnitController::class, 'update'])->name('units.update');
+Route::delete('/setting/inventory/units/{unit}', [UnitController::class, 'destroy'])->name('units.destroy');
+Route::patch('/setting/inventory/units/{unit}/toggle-status', [UnitController::class, 'toggleStatus'])->name('units.toggleStatus');

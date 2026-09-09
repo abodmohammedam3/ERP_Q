@@ -1,240 +1,466 @@
-let customerModalInstance;
-let lastCustomerId = 0;
+/**
+ * =========================================================
+ * customers.js
+ * إدارة العملاء
+ * =========================================================
+ */
 
-document.addEventListener('DOMContentLoaded', function() {
-    const modalElement = document.getElementById('customerModal');
-    if(modalElement) {
-        customerModalInstance = new bootstrap.Modal(modalElement);
+document.addEventListener('DOMContentLoaded', function () {
+
+    // =====================================================
+    // عناصر الصفحة
+    // =====================================================
+    const addCustomerBtn = document.getElementById('addCustomerBtn');
+    const customerForm = document.getElementById('customerForm');
+    const customerModalElement = document.getElementById('customerModal');
+    const saveCustomerBtn = document.getElementById('saveCustomerBtn');
+    const customerModalTitle = document.getElementById('customerModalLabel');
+    const customersTbody = document.getElementById('customersTableBody');
+
+    // عناصر البحث
+    const searchName = document.getElementById('searchName');
+    const searchPhone = document.getElementById('searchPhone');
+    const searchCode = document.getElementById('searchCode');
+
+    // حقول النموذج
+    const customerID = document.getElementById('customerID');
+    const cusName = document.getElementById('cusName');
+    const cusPhone = document.getElementById('cusPhone');
+    const cusAddress = document.getElementById('cusAddress');
+    const cusStatus = document.getElementById('cusStatus');
+
+    // حقول الحساب المحاسبي
+    const accountDisplay = document.getElementById('accountDisplay');
+    const accountIDSelect = document.getElementById('accountID');
+    const accountSearchModalEl = document.getElementById('accountSearchModal');
+    const accountSearchInput = document.getElementById('accountSearchInput');
+    const accountSearchList = document.getElementById('accountSearchList');
+
+    // نافذة الحذف
+    const deleteConfirmModal = document.getElementById('deleteConfirmModal');
+    const deleteCancelBtn = document.getElementById('deleteCancelBtn');
+    const deleteConfirmBtn = document.getElementById('deleteConfirmBtn');
+
+    // Modals
+    let customerModal = null;
+    if (customerModalElement) {
+        customerModal = bootstrap.Modal.getOrCreateInstance(customerModalElement);
+    }
+    let accountSearchModal = null;
+    if (accountSearchModalEl) {
+        accountSearchModal = bootstrap.Modal.getOrCreateInstance(accountSearchModalEl);
     }
 
-    // تعيين آخر معرف مستخدم من الجدول
-    const rows = document.querySelectorAll('tr.customer-row');
-    let maxId = 0;
-    rows.forEach(row => {
-        const id = parseInt(row.dataset.id, 10);
-        if (!isNaN(id) && id > maxId) {
-            maxId = id;
-        }
-    });
-    lastCustomerId = maxId;
+    let formMode = 'add';
+    let editingCustomerId = null;
+    let deletingCustomerId = null;
 
-    // إعادة ترقيم الصفوف عند التحميل
-    renumberRows();
-});
+    let currentPage = 1;
+    const rowsPerPage = 10;
 
-function openCustomerModal() {
-    document.getElementById('customerForm').reset();
-    document.getElementById('customerID').value = '';
-    document.getElementById('customerModalLabel').innerText = 'إضافة عميل جديد';
-
-    // توليد رقم تحليلي جديد بناءً على آخر رقم موجود
-    const analyticalInput = document.getElementById('cusAnalytical');
-    const rows = document.querySelectorAll('tr.customer-row');
-    let maxAnalytical = 12310000;
-    rows.forEach(row => {
-        const val = row.querySelector('.row-analytical')?.innerText.trim();
-        if (val) {
-            const num = parseInt(val, 10);
-            if (!isNaN(num) && num > maxAnalytical) {
-                maxAnalytical = num;
-            }
-        }
-    });
-    analyticalInput.value = maxAnalytical + 1;
-
-    customerModalInstance.show();
-}
-
-function editCustomer(btn) {
-    const row = btn.closest('tr');
-    const id = row.dataset.id;
-
-    document.getElementById('customerID').value = id;
-    document.getElementById('cusName').value = row.querySelector('.row-name').innerText.trim();
-    document.getElementById('cusPhone').value = row.querySelector('.row-phone').innerText.trim();
-    document.getElementById('cusAddress').value = row.querySelector('.row-address').innerText.trim();
-    document.getElementById('cusAnalytical').value = row.querySelector('.row-analytical').innerText.trim();
-    document.getElementById('cusStatus').value = row.querySelector('.row-status').getAttribute('data-status');
-
-    document.getElementById('customerModalLabel').innerText = 'تعديل بيانات العميل';
-    customerModalInstance.show();
-}
-
-function saveCustomer() {
-    const form = document.getElementById('customerForm');
-    if (!form.checkValidity()) {
-        form.reportValidity();
-        return;
+    function getCsrfToken() {
+        const token = document.querySelector('meta[name="csrf-token"]');
+        return token ? token.getAttribute('content') : '';
     }
 
-    const id = document.getElementById('customerID').value;
-    const name = document.getElementById('cusName').value;
-    const phone = document.getElementById('cusPhone').value;
-    const address = document.getElementById('cusAddress').value;
-    const analytical = document.getElementById('cusAnalytical').value.trim();
-    const status = document.getElementById('cusStatus').value;
-    const statusHtml = status === '1' ? '<span class="badge bg-danger">متوقف</span>' : '<span class="badge bg-success">نشط</span>';
-
-    const tbody = document.getElementById('customersTableBody');
-    const emptyRow = document.getElementById('emptyCustomerRow');
-    if (emptyRow) emptyRow.remove();
-
-    if (id) {
-        // تعديل
-        const rows = tbody.querySelectorAll('tr.customer-row');
-        rows.forEach(row => {
-            if (row.dataset.id === id) {
-                row.querySelector('.row-name').innerText = name;
-                row.querySelector('.row-phone').innerText = phone;
-                row.querySelector('.row-address').innerText = address;
-                row.querySelector('.row-analytical').innerText = analytical;
-                const statusCell = row.querySelector('.row-status');
-                statusCell.setAttribute('data-status', status);
-                statusCell.innerHTML = statusHtml;
+    // =====================================================
+    // اختيار الحساب المحاسبي من المودال
+    // =====================================================
+    
+    if (accountDisplay) {
+        accountDisplay.addEventListener('click', function () {
+            if (accountSearchModal) {
+                if (accountSearchInput) accountSearchInput.value = '';
+                filterAccountList('');
+                accountSearchModal.show();
+                setTimeout(() => accountSearchInput?.focus(), 500);
             }
         });
-    } else {
-        // إضافة
-        lastCustomerId++;
-        const newId = lastCustomerId;
-
-        const newRow = document.createElement('tr');
-        newRow.className = 'text-center customer-row';
-        newRow.dataset.id = newId;
-        newRow.innerHTML = `
-            <td class="row-id">0</td>
-            <td class="row-name">${name}</td>
-            <td class="row-phone">${phone}</td>
-            <td class="row-address">${address}</td>
-            <td class="row-analytical">${analytical}</td>
-            <td class="row-status" data-status="${status}">${statusHtml}</td>
-            <td class="text-center no-print">
-                <button type="button" class="btn btn-sm btn-outline-primary" onclick="editCustomer(this)"><i class="bi bi-pencil"></i> تعديل</button>
-                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteCustomer(this)"><i class="bi bi-trash"></i> حذف</button>
-            </td>
-        `;
-        tbody.appendChild(newRow);
     }
 
-    renumberRows();
-    customerModalInstance.hide();
-    alert('تم حفظ البيانات بنجاح!');
-}
-
-function deleteCustomer(btn) {
-    if (confirm('هل أنت متأكد من حذف هذا العميل؟')) {
-        const row = btn.closest('tr');
-        row.remove();
-
-        const tbody = document.getElementById('customersTableBody');
-        if (tbody.querySelectorAll('tr.customer-row').length === 0) {
-            tbody.innerHTML = `
-                <tr id="emptyCustomerRow">
-                    <td colspan="7" class="text-center text-muted py-5">
-                        <i class="bi bi-people fs-2 d-block mb-2"></i> لا يوجد عملاء مسجلون
-                    </td>
-                </tr>
-            `;
-        } else {
-            renumberRows();
-        }
+    function filterAccountList(searchTerm) {
+        if (!accountSearchList) return;
+        const term = searchTerm.toLowerCase();
+        const items = accountSearchList.querySelectorAll('.account-search-item');
+        
+        items.forEach(item => {
+            const text = item.textContent.toLowerCase();
+            if (text.includes(term)) {
+                item.style.display = '';
+            } else {
+                item.style.display = 'none';
+            }
+        });
     }
-}
 
-function filterCustomers() {
-    const searchText = document.getElementById('searchCustomerInput').value.toLowerCase();
-    const statusValue = document.getElementById('filterCustomerStatus').value;
-    const rows = document.querySelectorAll('tr.customer-row');
+    if (accountSearchInput) {
+        accountSearchInput.addEventListener('input', function (e) {
+            filterAccountList(e.target.value);
+        });
+    }
 
-    rows.forEach(row => {
-        const name = row.querySelector('.row-name').innerText.toLowerCase();
-        const phone = row.querySelector('.row-phone').innerText.toLowerCase();
-        const status = row.querySelector('.row-status').getAttribute('data-status');
+    if (accountSearchList) {
+        accountSearchList.addEventListener('click', function (e) {
+            const item = e.target.closest('.account-search-item');
+            if (item) {
+                const id = item.dataset.id;
+                const code = item.dataset.code;
+                const name = item.dataset.name;
 
-        const matchSearch = name.includes(searchText) || phone.includes(searchText);
-        const matchStatus = statusValue === "" || status === statusValue;
+                if (accountIDSelect) {
+                    accountIDSelect.value = id;
+                }
+                if (accountDisplay) {
+                    accountDisplay.value = `${code} - ${name}`;
+                }
 
-        if (matchSearch && matchStatus) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
+                if (accountSearchModal) accountSearchModal.hide();
+            }
+        });
+    }
+
+    // =====================================================
+    // إدارة النموذج (إضافة / تعديل)
+    // =====================================================
+
+    function setAddMode() {
+        formMode = 'add';
+        editingCustomerId = null;
+        if (customerModalTitle) customerModalTitle.textContent = 'إضافة عميل جديد';
+        if (saveCustomerBtn) saveCustomerBtn.textContent = 'حفظ البيانات';
+        
+        customerForm.reset();
+        if (customerID) customerID.value = '';
+        if (accountIDSelect) accountIDSelect.value = '';
+        if (accountDisplay) accountDisplay.value = '';
+        setFormMethod('POST');
+    }
+
+    window.editCustomer = async function (id) {
+        try {
+            // المسار الجديد: /setting/customers/{id}
+            const response = await fetch(`/setting/customers/${id}`, {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await response.json();
+
+            if (!response.ok || !data.success) throw new Error(data.message || 'تعذر تحميل بيانات العميل');
+
+            const customer = data.customer;
+            formMode = 'edit';
+            editingCustomerId = customer.CustomersID;
+
+            if (customerModalTitle) customerModalTitle.textContent = 'تعديل العميل';
+            if (saveCustomerBtn) saveCustomerBtn.textContent = 'تحديث البيانات';
+
+            if (customerID) customerID.value = customer.CustomersID ?? '';
+            if (cusName) cusName.value = customer.CustomersName2 ?? '';
+            if (cusPhone) cusPhone.value = customer.CusPhone ?? '';
+            if (cusAddress) cusAddress.value = customer.CusAddress ?? '';
+            
+            // قراءة وتحديد حالة العميل
+            const statusVal = customer.CusIsStoopeed !== undefined ? customer.CusIsStoopeed : (customer.CusIsStopped ?? 0);
+            if (cusStatus) cusStatus.value = String(statusVal);
+            
+            // تعيين الحساب المحاسبي
+            if (accountIDSelect) accountIDSelect.value = customer.accountID ?? '';
+            if (accountDisplay && customer.account) {
+                accountDisplay.value = `${customer.account.accCode} - ${customer.account.accName}`;
+            } else if (accountDisplay) {
+                accountDisplay.value = '';
+            }
+
+            setFormMethod('PUT');
+            if (customerModal) customerModal.show();
+
+        } catch (error) {
+            console.error('خطأ:', error);
+            if (typeof showSystemToast === 'function') showSystemToast(error.message, 'danger');
+        }
+    };
+
+    function setFormMethod(method) {
+        let methodInput = customerForm.querySelector('input[name="_method"]');
+        if (method.toUpperCase() === 'POST') {
+            if (methodInput) methodInput.remove();
+            customerForm.method = 'POST';
+            return;
+        }
+        if (!methodInput) {
+            methodInput = document.createElement('input');
+            methodInput.type = 'hidden';
+            methodInput.name = '_method';
+            customerForm.appendChild(methodInput);
+        }
+        methodInput.value = method.toUpperCase();
+        customerForm.method = 'POST';
+    }
+
+    customerForm.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        if (saveCustomerBtn && saveCustomerBtn.disabled) return;
+        if (saveCustomerBtn) saveCustomerBtn.disabled = true;
+
+        try {
+            const formData = new FormData(customerForm);
+            
+            // المسارات الجديدة: /setting/customers
+            let url = '/setting/customers';
+
+            if (formMode === 'edit' && editingCustomerId) {
+                url = `/setting/customers/${editingCustomerId}`;
+                formData.set('_method', 'PUT');
+            }
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': getCsrfToken()
+                },
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                let message = data.message || 'حدث خطأ أثناء الحفظ';
+                if (data.errors && typeof data.errors === 'object') {
+                    const firstError = Object.values(data.errors)[0];
+                    if (Array.isArray(firstError)) message = firstError[0];
+                }
+                throw new Error(message);
+            }
+
+            if (typeof showSystemToast === 'function') {
+                showSystemToast(data.message || (formMode === 'edit' ? 'تم التحديث بنجاح' : 'تمت الإضافة بنجاح'), 'success');
+            }
+
+            if (customerModal) customerModal.hide();
+            await reloadCustomersTable();
+            setAddMode();
+
+        } catch (error) {
+            console.error('خطأ:', error);
+            if (typeof showSystemToast === 'function') showSystemToast(error.message, 'danger');
+        } finally {
+            if (saveCustomerBtn) saveCustomerBtn.disabled = false;
         }
     });
-}
 
-function renumberRows() {
-    const rows = document.querySelectorAll('tr.customer-row');
-    rows.forEach((row, index) => {
-        const idCell = row.querySelector('.row-id');
-        if (idCell) {
-            idCell.innerText = index + 1;
+    if (addCustomerBtn) {
+        addCustomerBtn.addEventListener('click', function () {
+            setAddMode();
+            if (customerModal) customerModal.show();
+        });
+    }
+
+    if (customerModalElement) {
+        customerModalElement.addEventListener('hidden.bs.modal', function () {
+            setAddMode();
+        });
+    }
+
+    // =====================================================
+    // الحذف
+    // =====================================================
+
+    window.deleteCustomer = function (id) {
+        deletingCustomerId = id;
+        if (deleteConfirmModal) {
+            deleteConfirmModal.classList.add('show');
+            deleteConfirmModal.style.display = 'flex';
+            document.body.classList.add('delete-confirm-open');
         }
-    });
-}
+    };
 
-function printCustomers() {
-    const table = document.getElementById('customersTable');
-    let printContents = `
-        <html dir="rtl" lang="ar">
-        <head>
-            <title>طباعة قائمة العملاء</title>
-            <style>
-                body { font-family: Arial, sans-serif; padding: 20px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; text-align: center; }
-                th, td { border: 1px solid #000; padding: 8px; }
-                th { background-color: #f8f9fa; }
-                .no-print { display: none !important; }
-            </style>
-        </head>
-        <body>
-            <h2>قائمة العملاء</h2>
-            <table>
-    `;
+    function closeDeleteConfirm() {
+        deletingCustomerId = null;
+        if (deleteConfirmModal) {
+            deleteConfirmModal.classList.remove('show');
+            deleteConfirmModal.style.display = 'none';
+        }
+        document.body.classList.remove('delete-confirm-open');
+    }
 
-    const headerHtml = `
-        <tr>
-            <th>الرقم</th>
-            <th>اسم العميل</th>
-            <th>الهاتف</th>
-            <th>العنوان</th>
-            <th>رقم الحساب التحليلي</th>
-            <th>الحالة</th>
-        </tr>
-    `;
-    printContents += `<thead>${headerHtml}</thead><tbody>`;
+    if (deleteCancelBtn) deleteCancelBtn.addEventListener('click', closeDeleteConfirm);
 
-    const rows = table.querySelectorAll('tbody tr');
-    rows.forEach(row => {
-        if (row.style.display !== 'none' && !row.id.includes('emptyCustomerRow')) {
-            const cells = row.querySelectorAll('td');
-            if (cells.length >= 6) {
-                const id = cells[0].innerText;
-                const name = cells[1].innerText;
-                const phone = cells[2].innerText;
-                const address = cells[3].innerText;
-                const analytical = cells[4].innerText;
-                const status = cells[5].innerText;
-                printContents += `
-                    <tr>
-                        <td>${id}</td>
-                        <td>${name}</td>
-                        <td>${phone}</td>
-                        <td>${address}</td>
-                        <td>${analytical}</td>
-                        <td>${status}</td>
-                    </tr>
-                `;
+    if (deleteConfirmBtn) {
+        deleteConfirmBtn.addEventListener('click', async function () {
+            if (!deletingCustomerId) return;
+            deleteConfirmBtn.disabled = true;
+
+            try {
+                // المسار الجديد للحذف: /setting/customers/{id}
+                const response = await fetch(`/setting/customers/${deletingCustomerId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': getCsrfToken()
+                    }
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || 'لا يمكن حذف العميل لوجود حركات مرتبطة به');
+                }
+
+                closeDeleteConfirm();
+                if (typeof showSystemToast === 'function') showSystemToast(data.message || 'تم حذف العميل بنجاح', 'success');
+                await reloadCustomersTable();
+
+            } catch (error) {
+                closeDeleteConfirm();
+                if (typeof showSystemToast === 'function') showSystemToast(error.message, 'danger');
+            } finally {
+                deleteConfirmBtn.disabled = false;
+            }
+        });
+    }
+
+    // =====================================================
+    // Pagination (ترقيم الصفحات)
+    // =====================================================
+
+    function applyPagination() {
+        const rows = Array.from(customersTbody.querySelectorAll('tr.customer-row'));
+        const totalRows = rows.length;
+        const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
+
+        if (currentPage > totalPages) currentPage = totalPages;
+
+        const start = (currentPage - 1) * rowsPerPage;
+        const end = start + rowsPerPage;
+
+        rows.forEach(function (row, index) {
+            row.style.display = (index >= start && index < end) ? '' : 'none';
+            const firstCell = row.querySelector('td:first-child');
+            if (firstCell) firstCell.textContent = index + 1;
+        });
+
+        renderPagination(totalRows, totalPages, start, end);
+    }
+
+    function renderPagination(totalRows, totalPages, start, end) {
+        const paginationList = document.getElementById('customersPaginationList');
+        const paginationInfo = document.getElementById('customersPaginationInfo');
+
+        if (paginationInfo) {
+            if (totalRows === 0) {
+                paginationInfo.textContent = 'عرض 0-0 من 0 عميل';
+            } else {
+                paginationInfo.textContent = `عرض ${start + 1}-${Math.min(end, totalRows)} من ${totalRows} عميل`;
             }
         }
-    });
 
-    printContents += `</tbody></table></body></html>`;
+        if (!paginationList) return;
+        paginationList.innerHTML = '';
+        if (totalPages <= 1) return;
 
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(printContents);
-    printWindow.document.close();
-    setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-    }, 250);
-}
+        // السابق
+        const prevLi = document.createElement('li');
+        prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+        prevLi.innerHTML = `<button type="button" class="page-link" data-page="${currentPage - 1}">السابق</button>`;
+        paginationList.appendChild(prevLi);
+
+        // الأرقام
+        for (let page = 1; page <= totalPages; page++) {
+            const li = document.createElement('li');
+            li.className = `page-item ${page === currentPage ? 'active' : ''}`;
+            li.innerHTML = `<button type="button" class="page-link" data-page="${page}">${page}</button>`;
+            paginationList.appendChild(li);
+        }
+
+        // التالي
+        const nextLi = document.createElement('li');
+        nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+        nextLi.innerHTML = `<button type="button" class="page-link" data-page="${currentPage + 1}">التالي</button>`;
+        paginationList.appendChild(nextLi);
+    }
+
+    const paginationList = document.getElementById('customersPaginationList');
+    if (paginationList) {
+        paginationList.addEventListener('click', function (event) {
+            const button = event.target.closest('[data-page]');
+            if (!button) return;
+            const page = parseInt(button.dataset.page, 10);
+            if (!page || page < 1) return;
+            currentPage = page;
+            applyPagination();
+        });
+    }
+
+    // =====================================================
+    // البحث وجلب البيانات
+    // =====================================================
+
+    let searchTimer = null;
+    function handleSearch() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            currentPage = 1;
+            reloadCustomersTable();
+        }, 350);
+    }
+
+    if (searchName) searchName.addEventListener('input', handleSearch);
+    if (searchPhone) searchPhone.addEventListener('input', handleSearch);
+    if (searchCode) searchCode.addEventListener('input', handleSearch);
+
+    async function reloadCustomersTable() {
+        try {
+            const params = new URLSearchParams();
+            if (searchName && searchName.value.trim()) params.set('search_name', searchName.value.trim());
+            if (searchPhone && searchPhone.value.trim()) params.set('search_phone', searchPhone.value.trim());
+            if (searchCode && searchCode.value.trim()) params.set('search_code', searchCode.value.trim());
+
+            const query = params.toString();
+            
+            // المسار الجديد للقائمة: /setting/customers/list
+            const url = query ? `/setting/customers/list?${query}` : '/setting/customers/list';
+
+            const response = await fetch(url, {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await response.json();
+
+            if (!response.ok || !data.success) throw new Error(data.message || 'تعذر تحميل العملاء');
+
+            customersTbody.innerHTML = data.html || '';
+            currentPage = 1;
+            applyPagination();
+
+        } catch (error) {
+            console.error('خطأ:', error);
+            if (typeof showSystemToast === 'function') showSystemToast(error.message, 'danger');
+        }
+    }
+
+    // =====================================================
+    // أحداث الجدول (تعديل / حذف)
+    // =====================================================
+    if (customersTbody) {
+        customersTbody.addEventListener('click', function (event) {
+            const editBtn = event.target.closest('.edit-customer');
+            if (editBtn) {
+                event.preventDefault();
+                editCustomer(editBtn.dataset.id);
+                return;
+            }
+            const deleteBtn = event.target.closest('.delete-customer');
+            if (deleteBtn) {
+                event.preventDefault();
+                deleteCustomer(deleteBtn.dataset.id);
+                return;
+            }
+        });
+    }
+
+    // التهيئة الأولية
+    if (customersTbody) {
+        applyPagination();
+    }
+});

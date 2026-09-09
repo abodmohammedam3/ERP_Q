@@ -18,9 +18,13 @@
             <button type="button" class="btn btn-outline-secondary" onclick="printCustomers()">
                 <i class="bi bi-printer"></i> طباعة القائمة
             </button>
-            <button type="button" class="btn btn-primary" onclick="openCustomerModal()">
-                <i class="bi bi-plus-lg"></i> إضافة عميل
-            </button>
+            <button
+            type="button"
+            class="btn btn-sm btn-primary"
+            id="addCustomerBtn">
+            <i class="bi bi-plus-lg me-1"></i>
+            إضافة عميل 
+        </button>
         </div>
     </div>
 
@@ -29,57 +33,8 @@
 
 </div>
 
-<!-- النافذة المنبثقة -->
-<div class="modal fade" id="customerModal" tabindex="-1" aria-labelledby="customerModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="customerModalLabel">إضافة عميل جديد</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="customerForm">
-                    <input type="hidden" id="customerID">
-                    
-                    <div class="mb-3">
-                        <label for="cusName" class="form-label">اسم العميل <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="cusName" required>
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="cusPhone" class="form-label">رقم الهاتف</label>
-                        <input type="text" class="form-control" id="cusPhone">
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="cusAddress" class="form-label">العنوان</label>
-                        <input type="text" class="form-control" id="cusAddress">
-                    </div>
-
-                    <!-- حقل رقم الحساب التحليلي (جديد) -->
-                    <div class="mb-3">
-                        <label for="cusAnalytical" class="form-label">رقم الحساب التحليلي</label>
-                        <input type="text" class="form-control" id="cusAnalytical" readonly>
-                        <small class="form-text text-muted">يتم توليده تلقائياً عند الإضافة.</small>
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="cusStatus" class="form-label">الحالة</label>
-                        <select class="form-select" id="cusStatus">
-                            <option value="0">نشط</option>
-                            <option value="1">متوقف</option>
-                        </select>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
-                <button type="button" class="btn btn-primary" onclick="saveCustomer()">حفظ البيانات</button>
-            </div>
-        </div>
-    </div>
-</div>
-
+    @include('setting.customers.deletModel')
+    @include('setting.customers.addUpdate')
 @endsection
 @push('scripts')
 <script src="{{ asset('js/customer.js') }}"></script>

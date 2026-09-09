@@ -1,7 +1,8 @@
 <?php
+
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\accounting\CharAccountController;
-
+use App\Http\Controllers\CustomerController;
 
 Route::get('/', function () {
     return view('dashboard.index');
@@ -55,6 +56,41 @@ Route::get(
     [CharAccountController::class, 'nextCode']
 )->name('chartOfAccounts.nextCode');
 
+
+// =====================================================
+// دوال إدارة العملاء
+// =====================================================
+
+Route::get(
+    '/settings/customers',
+    [CustomerController::class, 'index']
+)->name('customers.index');
+
+Route::get(
+    '/settings/customers/list',
+    [CustomerController::class, 'list']
+)->name('customers.list');
+
+Route::post(
+    '/settings/customers',
+    [CustomerController::class, 'store']
+)->name('customers.store');
+
+Route::get(
+    '/settings/customers/{id}',
+    [CustomerController::class, 'show']
+)->name('customers.show');
+
+Route::put(
+    '/settings/customers/{id}',
+    [CustomerController::class, 'update']
+)->name('customers.update');
+
+Route::delete(
+    '/settings/customers/{id}',
+    [CustomerController::class, 'destroy']
+)->name('customers.destroy');
+
 /////////////////////////////////////////////////////////////
 
 Route::get('/setting/accounting/boxes', function () {
@@ -76,10 +112,6 @@ Route::get('/setting/accounting/openingBalances', function () {
 Route::get('/setting/suppliers', function () {
     return view('setting.suppliers.index');
 })->name('suppliers.index');
-
-Route::get('/setting/customers', function () {
-    return view('setting.customers.index');
-})->name('customers.index');
 
 Route::get('/setting/inventory/warehouses', function () {
     return view('setting.inventory.warehouses.index');
@@ -116,4 +148,3 @@ Route::get('/operation/accounting/receiptVouchers', function () {
 Route::get('/operation/movements', function () {
     return view('operation.movements.index');
 })->name('movements.index');
-

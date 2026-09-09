@@ -1063,7 +1063,7 @@ return response()->json([
     // =====================================================
 
     public function nextCode(
-        $parentId
+        int|string $parentId
     ) {
 
         // جلب الأب

@@ -5,6 +5,7 @@ use App\Http\Controllers\accounting\CharAccountController;
 use App\Http\Controllers\Inventory\ItemController;
 use App\Http\Controllers\Inventory\TypeController;
 use App\Http\Controllers\Inventory\UnitController;
+use App\Http\Controllers\Inventory\StockController;
 
 Route::get('/', function () {
     return view('dashboard.index');
@@ -150,3 +151,14 @@ Route::post('/setting/inventory/units', [UnitController::class, 'store'])->name(
 Route::put('/setting/inventory/units/{unit}', [UnitController::class, 'update'])->name('units.update');
 Route::delete('/setting/inventory/units/{unit}', [UnitController::class, 'destroy'])->name('units.destroy');
 Route::patch('/setting/inventory/units/{unit}/toggle-status', [UnitController::class, 'toggleStatus'])->name('units.toggleStatus');
+
+// =====================================================
+// Routes الخاصة بالمخازن
+// =====================================================
+Route::get('/setting/inventory/warehouses', [StockController::class, 'index'])->name('warehouses.index');
+Route::get('/setting/inventory/warehouses/list', [StockController::class, 'list'])->name('warehouses.list');
+Route::post('/setting/inventory/warehouses', [StockController::class, 'store'])->name('warehouses.store');
+Route::get('/setting/inventory/warehouses/next-code', [StockController::class, 'getNextCode'])->name('warehouses.nextCode');
+Route::put('/setting/inventory/warehouses/{stock}', [StockController::class, 'update'])->name('warehouses.update');
+Route::delete('/setting/inventory/warehouses/{stock}', [StockController::class, 'destroy'])->name('warehouses.destroy');
+Route::patch('/setting/inventory/warehouses/{stock}/toggle-status', [StockController::class, 'toggleStatus'])->name('warehouses.toggleStatus');

@@ -6,197 +6,78 @@
 
 <div class="container-fluid py-3">
 
+    {{-- عنوان الشاشة --}}
     <div class="d-flex justify-content-between align-items-center mb-3">
-
         <div>
-
             <h4 class="mb-1">
                 <i class="bi bi-rulers"></i>
                 الوحدات
             </h4>
-
-            <small class="text-muted">
-                إدارة وحدات القياس المستخدمة في النظام
-            </small>
-
+            <small class="text-muted">إدارة وحدات القياس المستخدمة في النظام</small>
         </div>
 
         <div class="d-flex gap-2">
-
-            <button
-                type="button"
-                class="btn btn-secondary"
-                id="printUnitsBtn"
-            >
-                <i class="bi bi-printer"></i>
-                طباعة
+            <button type="button" class="btn btn-secondary" onclick="printUnits()">
+                <i class="bi bi-printer"></i> طباعة
             </button>
-
-            <button
-                type="button"
-                class="btn btn-primary"
-                id="addUnitBtn"
-            >
-                <i class="bi bi-plus-lg"></i>
-                إضافة وحدة
+            <button type="button" class="btn btn-primary" onclick="openUnitModal()">
+                <i class="bi bi-plus-lg"></i> إضافة وحدة
             </button>
-
         </div>
-
     </div>
 
-
-    <div class="card mb-3">
-
-        <div class="card-body">
-
-            <div class="row g-2 align-items-end">
-
-                <div class="col-md-6">
-
-                    <label class="form-label">
-                        البحث
-                    </label>
-
-                    <input
-                        type="text"
-                        class="form-control"
-                        id="unitSearch"
-                        placeholder="ابحث باسم الوحدة..."
-                    >
-
-                </div>
-
-                <div class="col-md-auto">
-
-                    <button
-                        type="button"
-                        class="btn btn-secondary"
-                        id="searchUnitBtn"
-                    >
-                        <i class="bi bi-search"></i>
-                        بحث
-                    </button>
-
-                </div>
-
-            </div>
-
-        </div>
-
-    </div>
-
-
-    <div class="card">
-
-        <div class="card-header">
-
-            <i class="bi bi-list-ul"></i>
-            قائمة الوحدات
-
-        </div>
-
-        <div class="card-body p-0">
-
-            <div class="table-responsive">
-
-                <table
-                    class="table table-hover table-bordered mb-0 align-middle"
-                    id="unitsTable"
-                >
-
-                    <thead class="table-light">
-
-                        <tr>
-
-                            <th class="text-center">
-                                الرقم
-                            </th>
-
-                            <th>
-                                اسم الوحدة
-                            </th>
-
-                            <th class="text-center">
-                                الإجراءات
-                            </th>
-
-                        </tr>
-
-                    </thead>
-
-                    <tbody>
-
-                        @forelse($units ?? [] as $unit)
-
-                            <tr>
-
-                                <td class="text-center">
-                                    {{ $unit->UnitID }}
-                                </td>
-
-                                <td>
-                                    {{ $unit->UnitName }}
-                                </td>
-
-                                <td class="text-center">
-
-                                    <button
-                                        type="button"
-                                        class="btn btn-sm btn-outline-primary edit-unit"
-                                        data-id="{{ $unit->UnitID }}"
-                                    >
-                                        <i class="bi bi-pencil"></i>
-                                        تعديل
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        class="btn btn-sm btn-outline-danger delete-unit"
-                                        data-id="{{ $unit->UnitID }}"
-                                    >
-                                        <i class="bi bi-trash"></i>
-                                        حذف
-                                    </button>
-
-                                </td>
-
-                            </tr>
-
-                        @empty
-
-                            <tr>
-
-                                <td
-                                    colspan="3"
-                                    class="text-center text-muted py-5"
-                                >
-
-                                    <i class="bi bi-rulers fs-2 d-block mb-2"></i>
-
-                                    لا توجد وحدات مسجلة
-
-                                </td>
-
-                            </tr>
-
-                        @endforelse
-
-                    </tbody>
-
-                </table>
-
-            </div>
-
-        </div>
-
-    </div>
+    {{-- استدعاء ملفات البحث والجدول --}}
+    @include('setting.inventory.units.search')
+    @include('setting.inventory.units.table')
 
 </div>
 
-@endsection
+{{-- مودال إضافة/تعديل وحدة --}}
+<div class="modal fade" id="unitModal" tabindex="-1" aria-labelledby="unitModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="unitModalLabel">إضافة وحدة جديدة</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="unitForm">
+                    <input type="hidden" id="unitID">
+                    <div class="mb-3">
+                        <label for="unitName" class="form-label">اسم الوحدة <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="unitName" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button type="button" class="btn btn-primary" onclick="saveUnit()">حفظ البيانات</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- نافذة تأكيد الحذف --}}
+<div class="delete-confirm-overlay" id="deleteConfirmModal">
+    <div class="delete-confirm-box">
+        <div class="delete-confirm-icon">
+            <i class="bi bi-trash3"></i>
+        </div>
+        <h3>حذف الوحدة</h3>
+        <p>
+            هل أنت متأكد من حذف هذه الوحدة؟
+            <br>
+            <span>لا يمكن التراجع عن هذه العملية بعد تنفيذها.</span>
+        </p>
+        <div class="delete-confirm-actions">
+            <button type="button" class="delete-cancel-btn" id="deleteCancelBtn">إلغاء</button>
+            <button type="button" class="delete-confirm-btn" id="deleteConfirmBtn">حذف الوحدة</button>
+        </div>
+    </div>
+</div>
+
 @push('scripts')
-
-<script src="{{ asset('js/units.js') }}"></script>
-
+    <script src="{{ asset('js/units.js') }}"></script>
 @endpush
+
+@endsection

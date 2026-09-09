@@ -42,10 +42,15 @@
             <div class="modal-body">
                 <form id="typeForm">
                     <input type="hidden" id="typeID">
-                    
+
                     <div class="mb-3">
                         <label for="typeName" class="form-label">اسم النوع <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="typeName" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="typeCode" class="form-label">الكود</label>
+                        <input type="text" class="form-control" id="typeCode" placeholder="مثال: T001 أو 123">
                     </div>
                 </form>
             </div>
@@ -56,8 +61,9 @@
         </div>
     </div>
 </div>
+
 @push('scripts')
-    <script src="{{asset("js/type.js")}}"></script>
+    <script src="{{ asset('js/type.js') }}"></script>
 @endpush
 
 @endsection

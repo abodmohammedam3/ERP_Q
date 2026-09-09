@@ -1,618 +1,458 @@
+let unitModalInstance;
+let currentUnitId = null;
+let allUnitsData = [];
+let filteredUnitsData = [];
+let currentPage = 1;
+const rowsPerPage = 5;
+
 document.addEventListener('DOMContentLoaded', function () {
-
-    let units = [
-        {
-            id: 1,
-            name: 'كيلو'
-        },
-        {
-            id: 2,
-            name: 'جرام'
-        },
-        {
-            id: 3,
-            name: 'حبة'
-        },
-        {
-            id: 4,
-            name: 'كيس'
-        }
-    ];
-
-
-    const unitsTable = document.querySelector('#unitsTable tbody');
-    const searchInput = document.getElementById('unitSearch');
-    const searchButton = document.getElementById('searchUnitBtn');
-    const addButton = document.getElementById('addUnitBtn');
-    const printButton = document.getElementById('printUnitsBtn');
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | عرض الوحدات
-    |--------------------------------------------------------------------------
-    */
-
-    function renderUnits(data = units) {
-
-        if (!unitsTable) {
-            return;
-        }
-
-        unitsTable.innerHTML = '';
-
-
-        if (data.length === 0) {
-
-            unitsTable.innerHTML = `
-                <tr>
-                    <td
-                        colspan="3"
-                        class="text-center text-muted py-5"
-                    >
-                        <i class="bi bi-rulers fs-2 d-block mb-2"></i>
-                        لا توجد وحدات مسجلة
-                    </td>
-                </tr>
-            `;
-
-            return;
-        }
-
-
-        data.forEach(function (unit) {
-
-            const row = document.createElement('tr');
-
-            row.innerHTML = `
-                <td class="text-center">
-                    ${unit.id}
-                </td>
-
-                <td>
-                    ${escapeHtml(unit.name)}
-                </td>
-
-                <td class="text-center">
-
-                    <button
-                        type="button"
-                        class="btn btn-sm btn-outline-primary edit-unit"
-                        data-id="${unit.id}"
-                    >
-                        <i class="bi bi-pencil"></i>
-                        تعديل
-                    </button>
-
-                    <button
-                        type="button"
-                        class="btn btn-sm btn-outline-danger delete-unit"
-                        data-id="${unit.id}"
-                    >
-                        <i class="bi bi-trash"></i>
-                        حذف
-                    </button>
-
-                </td>
-            `;
-
-            unitsTable.appendChild(row);
-
-        });
-
+    const modalElement = document.getElementById('unitModal');
+    if (modalElement) {
+        unitModalInstance = new bootstrap.Modal(modalElement);
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | البحث
-    |--------------------------------------------------------------------------
-    */
-
-    function searchUnits() {
-
-        const searchValue = searchInput.value
-            .trim()
-            .toLowerCase();
-
-
-        if (searchValue === '') {
-
-            renderUnits();
-
-            return;
-        }
-
-
-        const filteredUnits = units.filter(function (unit) {
-
-            return unit.name
-                .toLowerCase()
-                .includes(searchValue);
-
+    // قراءة البيانات من الـ Blade
+    const rows = document.querySelectorAll('#unitsTableBody tr.unit-row');
+    if (rows.length > 0) {
+        rows.forEach(row => {
+            const unit = {
+                UnitID: parseInt(row.dataset.id, 10),
+                UnitName: row.querySelector('.row-name').innerText.trim(),
+                is_active: row.querySelector('.row-status .toggle-status-btn')?.classList.contains('btn-success') ? 1 : 0
+            };
+            allUnitsData.push(unit);
         });
-
-
-        renderUnits(filteredUnits);
-
+    } else {
+        reloadUnitsTable();
     }
 
+    filteredUnitsData = [...allUnitsData];
+    applyFiltersAndRender();
 
-    /*
-    |--------------------------------------------------------------------------
-    | إضافة وحدة
-    |--------------------------------------------------------------------------
-    */
-
-    function addUnit() {
-
-        const unitName = prompt('أدخل اسم الوحدة:');
-
-
-        if (unitName === null) {
-            return;
-        }
-
-
-        const name = unitName.trim();
-
-
-        if (name === '') {
-
-            alert('يرجى إدخال اسم الوحدة.');
-
-            return;
-        }
-
-
-        /*
-        | منع تكرار الوحدة
-        */
-
-        const exists = units.some(function (unit) {
-
-            return unit.name.toLowerCase() === name.toLowerCase();
-
-        });
-
-
-        if (exists) {
-
-            alert('هذه الوحدة مسجلة مسبقاً.');
-
-            return;
-        }
-
-
-        /*
-        | إنشاء رقم مؤقت
-        */
-
-        const newId = units.length > 0
-            ? Math.max(...units.map(unit => unit.id)) + 1
-            : 1;
-
-
-        units.push({
-            id: newId,
-            name: name
-        });
-
-
-        renderUnits();
-
-        alert('تمت إضافة الوحدة بنجاح.');
-
+    // =========================================================
+    // أحداث نافذة تأكيد الحذف
+    // =========================================================
+    const cancelBtn = document.getElementById('deleteCancelBtn');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', closeDeleteModal);
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | تعديل وحدة
-    |--------------------------------------------------------------------------
-    */
-
-    function editUnit(id) {
-
-        const unit = units.find(function (item) {
-
-            return item.id === id;
-
-        });
-
-
-        if (!unit) {
-            return;
-        }
-
-
-        const newName = prompt(
-            'تعديل اسم الوحدة:',
-            unit.name
-        );
-
-
-        if (newName === null) {
-            return;
-        }
-
-
-        const name = newName.trim();
-
-
-        if (name === '') {
-
-            alert('اسم الوحدة لا يمكن أن يكون فارغاً.');
-
-            return;
-        }
-
-
-        /*
-        | منع التكرار
-        */
-
-        const exists = units.some(function (item) {
-
-            return item.id !== id &&
-                   item.name.toLowerCase() === name.toLowerCase();
-
-        });
-
-
-        if (exists) {
-
-            alert('يوجد وحدة أخرى بهذا الاسم.');
-
-            return;
-        }
-
-
-        unit.name = name;
-
-
-        renderUnits();
-
-        alert('تم تعديل الوحدة بنجاح.');
-
+    const confirmBtn = document.getElementById('deleteConfirmBtn');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', confirmDeleteUnit);
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | حذف وحدة
-    |--------------------------------------------------------------------------
-    */
-
-    function deleteUnit(id) {
-
-        const unit = units.find(function (item) {
-
-            return item.id === id;
-
-        });
-
-
-        if (!unit) {
-            return;
-        }
-
-
-        const confirmed = confirm(
-            `هل أنت متأكد من حذف الوحدة "${unit.name}"؟`
-        );
-
-
-        if (!confirmed) {
-            return;
-        }
-
-
-        units = units.filter(function (item) {
-
-            return item.id !== id;
-
-        });
-
-
-        renderUnits();
-
-        alert('تم حذف الوحدة بنجاح.');
-
-    }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | طباعة الوحدات
-    |--------------------------------------------------------------------------
-    */
-
-    function printUnits() {
-
-        const searchValue = searchInput
-            ? searchInput.value.trim().toLowerCase()
-            : '';
-
-
-        let dataToPrint = units;
-
-
-        /*
-        | طباعة نتائج البحث فقط
-        */
-
-        if (searchValue !== '') {
-
-            dataToPrint = units.filter(function (unit) {
-
-                return unit.name
-                    .toLowerCase()
-                    .includes(searchValue);
-
-            });
-
-        }
-
-
-        if (dataToPrint.length === 0) {
-
-            alert('لا توجد بيانات لطباعة.');
-
-            return;
-        }
-
-
-        let rows = '';
-
-
-        dataToPrint.forEach(function (unit, index) {
-
-            rows += `
-                <tr>
-                    <td>${index + 1}</td>
-                    <td>${escapeHtml(unit.name)}</td>
-                </tr>
-            `;
-
-        });
-
-
-        const printWindow = window.open(
-            '',
-            '_blank',
-            'width=900,height=700'
-        );
-
-
-        printWindow.document.write(`
-            <!DOCTYPE html>
-
-            <html lang="ar" dir="rtl">
-
-            <head>
-
-                <meta charset="UTF-8">
-
-                <title>طباعة الوحدات</title>
-
-                <style>
-
-                    body {
-                        font-family: Arial, sans-serif;
-                        padding: 30px;
-                        direction: rtl;
-                    }
-
-                    h2 {
-                        text-align: center;
-                        margin-bottom: 25px;
-                    }
-
-                    table {
-                        width: 100%;
-                        border-collapse: collapse;
-                    }
-
-                    th,
-                    td {
-                        border: 1px solid #000;
-                        padding: 10px;
-                        text-align: center;
-                    }
-
-                    th {
-                        background: #eee;
-                    }
-
-                    .date {
-                        text-align: left;
-                        margin-bottom: 15px;
-                    }
-
-                </style>
-
-            </head>
-
-            <body>
-
-                <h2>
-                    قائمة الوحدات
-                </h2>
-
-                <div class="date">
-                    تاريخ الطباعة:
-                    ${new Date().toLocaleDateString('ar-YE')}
-                </div>
-
-                <table>
-
-                    <thead>
-
-                        <tr>
-
-                            <th>
-                                #
-                            </th>
-
-                            <th>
-                                اسم الوحدة
-                            </th>
-
-                        </tr>
-
-                    </thead>
-
-                    <tbody>
-
-                        ${rows}
-
-                    </tbody>
-
-                </table>
-
-                <script>
-                    window.onload = function () {
-                        window.print();
-                    };
-                <\/script>
-
-            </body>
-
-            </html>
-        `);
-
-
-        printWindow.document.close();
-
-    }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | حماية النصوص
-    |--------------------------------------------------------------------------
-    */
-
-    function escapeHtml(value) {
-
-        return String(value)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-
-    }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | الأحداث
-    |--------------------------------------------------------------------------
-    */
-
-    if (searchButton) {
-
-        searchButton.addEventListener(
-            'click',
-            searchUnits
-        );
-
-    }
-
-
-    if (searchInput) {
-
-        searchInput.addEventListener(
-            'keyup',
-            function (event) {
-
-                if (event.key === 'Enter') {
-
-                    searchUnits();
-
-                }
-
+    const overlay = document.getElementById('deleteConfirmModal');
+    if (overlay) {
+        overlay.addEventListener('click', function (e) {
+            if (e.target === this) {
+                closeDeleteModal();
             }
-        );
-
+        });
     }
-
-
-    if (addButton) {
-
-        addButton.addEventListener(
-            'click',
-            addUnit
-        );
-
-    }
-
-
-    if (printButton) {
-
-        printButton.addEventListener(
-            'click',
-            printUnits
-        );
-
-    }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | تعديل وحذف
-    |--------------------------------------------------------------------------
-    */
-
-    if (unitsTable) {
-
-        unitsTable.addEventListener(
-            'click',
-            function (event) {
-
-                const editButton =
-                    event.target.closest('.edit-unit');
-
-                const deleteButton =
-                    event.target.closest('.delete-unit');
-
-
-                if (editButton) {
-
-                    const id = Number(
-                        editButton.dataset.id
-                    );
-
-                    editUnit(id);
-
-                    return;
-                }
-
-
-                if (deleteButton) {
-
-                    const id = Number(
-                        deleteButton.dataset.id
-                    );
-
-                    deleteUnit(id);
-
-                }
-
-            }
-        );
-
-    }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | التشغيل الأول
-    |--------------------------------------------------------------------------
-    */
-
-    renderUnits();
-
 });
+
+// =========================================================
+// فتح مودال الإضافة
+// =========================================================
+function openUnitModal() {
+    document.getElementById('unitForm').reset();
+    document.getElementById('unitID').value = '';
+    currentUnitId = null;
+    document.getElementById('unitModalLabel').innerText = 'إضافة وحدة جديدة';
+    unitModalInstance.show();
+}
+
+// =========================================================
+// تعديل وحدة
+// =========================================================
+function editUnit(btn) {
+    const row = btn.closest('tr');
+    const id = parseInt(row.dataset.id, 10);
+    const name = row.querySelector('.row-name').innerText.trim();
+
+    document.getElementById('unitID').value = id;
+    document.getElementById('unitName').value = name;
+    currentUnitId = id;
+    document.getElementById('unitModalLabel').innerText = 'تعديل بيانات الوحدة';
+    unitModalInstance.show();
+}
+
+// =========================================================
+// حفظ الوحدة (إضافة / تعديل)
+// =========================================================
+function saveUnit() {
+    const form = document.getElementById('unitForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const id = document.getElementById('unitID').value;
+    const name = document.getElementById('unitName').value.trim();
+
+    const url = id ? `/setting/inventory/units/${id}` : '/setting/inventory/units';
+    const formData = new FormData();
+    formData.append('UnitName', name);
+    if (id) {
+        formData.append('_method', 'PUT');
+    }
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+        },
+        body: formData
+    })
+        .then(response => response.json().then(data => ({ status: response.status, data })))
+        .then(({ status, data }) => {
+            if (status !== 200 || !data.success) {
+                throw new Error(data.message || 'حدث خطأ غير معروف');
+            }
+            showSystemToast(data.message || 'تم حفظ الوحدة بنجاح', 'success');
+            unitModalInstance.hide();
+            reloadUnitsTable();
+        })
+        .catch(error => {
+            console.error('خطأ:', error);
+            showSystemToast(error.message || 'حدث خطأ في الاتصال بالخادم', 'danger');
+        });
+}
+
+// =========================================================
+// حذف وحدة (فتح نافذة التأكيد)
+// =========================================================
+let deletingUnitId = null;
+
+function deleteUnit(btn) {
+    const row = btn.closest('tr');
+    deletingUnitId = parseInt(row.dataset.id, 10);
+    const modal = document.getElementById('deleteConfirmModal');
+    if (modal) {
+        modal.classList.add('show');
+    }
+}
+
+function confirmDeleteUnit() {
+    if (!deletingUnitId) return;
+
+    const id = deletingUnitId;
+    const formData = new FormData();
+    formData.append('_method', 'DELETE');
+
+    fetch(`/setting/inventory/units/${id}`, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+        },
+        body: formData
+    })
+        .then(response => response.json().then(data => ({ status: response.status, data })))
+        .then(({ status, data }) => {
+            if (status !== 200 || !data.success) {
+                throw new Error(data.message || 'حدث خطأ غير معروف');
+            }
+            showSystemToast(data.message || 'تم حذف الوحدة بنجاح', 'success');
+            closeDeleteModal();
+            reloadUnitsTable();
+        })
+        .catch(error => {
+            console.error('خطأ:', error);
+            showSystemToast(error.message || 'حدث خطأ في الاتصال بالخادم', 'danger');
+            closeDeleteModal();
+        });
+}
+
+function closeDeleteModal() {
+    const modal = document.getElementById('deleteConfirmModal');
+    if (modal) {
+        modal.classList.remove('show');
+    }
+    deletingUnitId = null;
+}
+
+// =========================================================
+// تبديل حالة الوحدة
+// =========================================================
+function toggleUnitStatus(btn) {
+    const row = btn.closest('tr');
+    const id = parseInt(row.dataset.id, 10);
+
+    const formData = new FormData();
+    formData.append('_method', 'PATCH');
+
+    fetch(`/setting/inventory/units/${id}/toggle-status`, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+        },
+        body: formData
+    })
+        .then(response => response.json().then(data => ({ status: response.status, data })))
+        .then(({ status, data }) => {
+            if (status !== 200 || !data.success) {
+                throw new Error(data.message || 'حدث خطأ غير معروف');
+            }
+            showSystemToast(data.message || 'تم تغيير حالة الوحدة بنجاح', 'success');
+            reloadUnitsTable();
+        })
+        .catch(error => {
+            console.error('خطأ:', error);
+            showSystemToast(error.message || 'حدث خطأ في الاتصال بالخادم', 'danger');
+        });
+}
+
+// =========================================================
+// تحميل البيانات من الخادم
+// =========================================================
+function reloadUnitsTable() {
+    fetch('/setting/inventory/units/list', {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                allUnitsData = data.data || [];
+                filteredUnitsData = [...allUnitsData];
+                applyFiltersAndRender();
+            } else {
+                showSystemToast('حدث خطأ أثناء تحميل الوحدات', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('خطأ:', error);
+            showSystemToast('حدث خطأ في الاتصال بالخادم', 'danger');
+        });
+}
+
+// =========================================================
+// البحث (على العميل)
+// =========================================================
+function filterUnits() {
+    const searchText = document.getElementById('searchUnitInput').value.toLowerCase().trim();
+    if (!searchText) {
+        filteredUnitsData = [...allUnitsData];
+    } else {
+        filteredUnitsData = allUnitsData.filter(unit =>
+            unit.UnitName.toLowerCase().includes(searchText)
+        );
+    }
+    currentPage = 1;
+    applyFiltersAndRender();
+}
+
+function applyFiltersAndRender() {
+    renderUnits(filteredUnitsData);
+    updateUnitsCount(filteredUnitsData.length);
+    renderPagination(filteredUnitsData.length);
+}
+
+// =========================================================
+// عرض الوحدات (الجزء المعدل)
+// =========================================================
+function renderUnits(units) {
+    const tbody = document.getElementById('unitsTableBody');
+    if (!tbody) return;
+
+    const start = (currentPage - 1) * rowsPerPage;
+    const end = Math.min(start + rowsPerPage, units.length);
+    const pageUnits = units.slice(start, end);
+
+    if (pageUnits.length === 0) {
+        tbody.innerHTML = `
+            <tr id="emptyUnitRow">
+                <td colspan="4" class="text-center text-muted py-5">
+                    <i class="bi bi-rulers fs-2 d-block mb-2"></i>
+                    لا توجد وحدات مسجلة
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    let html = '';
+    pageUnits.forEach((unit, index) => {
+        const serial = start + index + 1;
+        const isActive = unit.is_active == 1;
+
+        // زر الحالة (نصي)
+        const statusBtnClass = isActive ? 'btn-success' : 'btn-secondary';
+        const statusText = isActive ? 'نشط' : 'غير نشط';
+        const statusTitle = isActive ? 'تعطيل' : 'تفعيل';
+
+        html += `
+            <tr class="unit-row text-center" data-id="${unit.UnitID}">
+                <td>${serial}</td>
+                <td class="row-name">${escapeHtml(unit.UnitName)}</td>
+                <td class="row-status">
+                    <button type="button" 
+                            class="btn btn-sm ${statusBtnClass} toggle-status-btn"
+                            onclick="toggleUnitStatus(this)"
+                            title="${statusTitle}">
+                        ${statusText}
+                    </button>
+                </td>
+                <td class="no-print">
+                    <div class="btn-action-group">
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="editUnit(this)" title="تعديل">
+                            <i class="bi bi-pencil d-md-none"></i>
+                            <span class="d-none d-md-inline">تعديل</span>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteUnit(this)" title="حذف">
+                            <i class="bi bi-trash d-md-none"></i>
+                            <span class="d-none d-md-inline">حذف</span>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+}
+
+// =========================================================
+// تحديث العداد
+// =========================================================
+function updateUnitsCount(count) {
+    const badge = document.getElementById('unitsCountBadge');
+    if (badge) {
+        badge.innerText = count;
+    }
+}
+
+// =========================================================
+// Pagination
+// =========================================================
+function renderPagination(totalItems) {
+    const paginationList = document.getElementById('unitsPaginationList');
+    if (!paginationList) return;
+
+    const totalPages = Math.ceil(totalItems / rowsPerPage);
+    if (totalPages <= 1) {
+        paginationList.innerHTML = '';
+        return;
+    }
+
+    let html = '';
+
+    html += `
+        <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+            <button type="button" class="page-link" data-page="${currentPage - 1}" ${currentPage === 1 ? 'disabled' : ''}>
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        </li>
+    `;
+
+    for (let page = 1; page <= totalPages; page++) {
+        html += `
+            <li class="page-item ${page === currentPage ? 'active' : ''}">
+                <button type="button" class="page-link" data-page="${page}">${page}</button>
+            </li>
+        `;
+    }
+
+    html += `
+        <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+            <button type="button" class="page-link" data-page="${currentPage + 1}" ${currentPage === totalPages ? 'disabled' : ''}>
+                <i class="bi bi-chevron-left"></i>
+            </button>
+        </li>
+    `;
+
+    paginationList.innerHTML = html;
+}
+
+// أحداث التنقل بين الصفحات
+document.addEventListener('click', function (e) {
+    const target = e.target.closest('#unitsPaginationList .page-link');
+    if (!target) return;
+
+    const page = parseInt(target.dataset.page, 10);
+    if (!page || page < 1) return;
+
+    const totalPages = Math.ceil(filteredUnitsData.length / rowsPerPage);
+    if (page > totalPages) return;
+
+    currentPage = page;
+    renderUnits(filteredUnitsData);
+    renderPagination(filteredUnitsData.length);
+});
+
+// =========================================================
+// أدوات مساعدة
+// =========================================================
+function escapeHtml(text) {
+    if (text === null || text === undefined) return '';
+    const div = document.createElement('div');
+    div.textContent = String(text);
+    return div.innerHTML;
+}
+
+// =========================================================
+// طباعة
+// =========================================================
+function printUnits() {
+    const table = document.getElementById('unitsTable');
+    let printContents = `
+        <html dir="rtl" lang="ar">
+        <head>
+            <title>طباعة قائمة الوحدات</title>
+            <style>
+                body { font-family: Arial, sans-serif; padding: 20px; }
+                h2 { text-align: center; margin-bottom: 20px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; text-align: center; }
+                th, td { border: 1px solid #000; padding: 8px; }
+                th { background-color: #f8f9fa; }
+                .no-print { display: none !important; }
+                .btn { display: none; }
+            </style>
+        </head>
+        <body>
+            <h2>قائمة وحدات القياس</h2>
+            <table>
+                <thead>${table.querySelector('thead').innerHTML}</thead>
+                <tbody>
+    `;
+
+    const allRows = document.querySelectorAll('#unitsTableBody tr.unit-row');
+    allRows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        let rowHtml = '<tr>';
+        for (let i = 0; i < Math.min(cells.length - 1, 3); i++) {
+            rowHtml += cells[i].outerHTML;
+        }
+        rowHtml += '</tr>';
+        printContents += rowHtml;
+    });
+
+    printContents += `</tbody></table></body></html>`;
+
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(printContents);
+    printWindow.document.close();
+    setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+    }, 250);
+}
+
+// =========================================================
+// دالة احتياطية لـ showSystemToast
+// =========================================================
+if (typeof showSystemToast !== 'function') {
+    window.showSystemToast = function (message, type) {
+        alert(message);
+    };
+}

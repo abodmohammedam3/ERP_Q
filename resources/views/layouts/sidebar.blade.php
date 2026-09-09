@@ -204,9 +204,9 @@
                                {{ request()->routeIs('types.*') ? 'bg-success text-white' : 'text-white-50' }}">
                                 <i class="bi bi-upc-scan"></i> <span>الانواع</span>
                             </a>
-                            <a href="{{ route('unites.index') }}"
+                            <a href="{{ route('units.index') }}"
                                class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
-                               {{ request()->routeIs('unites.*') ? 'bg-success text-white' : 'text-white-50' }}">
+                               {{ request()->routeIs('units.*') ? 'bg-success text-white' : 'text-white-50' }}">
                                 <i class="bi bi-rulers"></i> <span>الوحدات</span>
                             </a>
                             <a href="{{ route('warehouses.index') }}"

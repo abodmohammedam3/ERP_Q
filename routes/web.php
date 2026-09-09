@@ -4,6 +4,12 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\accounting\CharAccountController;
 use App\Http\Controllers\CustomerController;
 
+use App\Http\Controllers\Inventory\ItemController;
+use App\Http\Controllers\Inventory\TypeController;
+use App\Http\Controllers\Inventory\UnitController;
+use App\Http\Controllers\Inventory\StockController;
+
+
 Route::get('/', function () {
     return view('dashboard.index');
 });
@@ -11,6 +17,7 @@ Route::get('/', function () {
 Route::get('/dashboard', function () {
     return view('dashboard.index');
 });
+
 
 // =====================================================
 // دوال دليل الحسابات
@@ -21,30 +28,25 @@ Route::get(
     [CharAccountController::class, 'index']
 )->name('chartOfAccounts.index');
 
-
 Route::get(
     '/settings/accounting/chartOfAccounts/list',
     [CharAccountController::class, 'list']
 )->name('chartOfAccounts.list');
-
 
 Route::post(
     '/settings/accounting/chartOfAccounts',
     [CharAccountController::class, 'store']
 )->name('chartOfAccounts.store');
 
-
 Route::get(
     '/settings/accounting/chartOfAccounts/{account}',
     [CharAccountController::class, 'edit']
 )->name('chartOfAccounts.edit');
 
-
 Route::put(
     '/settings/accounting/chartOfAccounts/{account}',
     [CharAccountController::class, 'update']
 )->name('chartOfAccounts.update');
-
 
 Route::delete(
     '/settings/accounting/chartOfAccounts/{account}',
@@ -91,7 +93,10 @@ Route::delete(
     [CustomerController::class, 'destroy']
 )->name('customers.destroy');
 
-/////////////////////////////////////////////////////////////
+
+// =====================================================
+// الصفحات الأخرى (الإعدادات)
+// =====================================================
 
 Route::get('/setting/accounting/boxes', function () {
     return view('setting.accounting.boxes.index');
@@ -113,21 +118,160 @@ Route::get('/setting/suppliers', function () {
     return view('setting.suppliers.index');
 })->name('suppliers.index');
 
-Route::get('/setting/inventory/warehouses', function () {
-    return view('setting.inventory.warehouses.index');
-})->name('warehouses.index');
 
-Route::get('/setting/inventory/units', function () {
-    return view('setting.inventory.units.index');
-})->name('unites.index');
+// =====================================================
+// Routes الخاصة بالأصناف
+// =====================================================
 
-Route::get('/setting/inventory/types', function () {
-    return view('setting.inventory.types.index');
-})->name('types.index');
+Route::get(
+    '/setting/inventory/items',
+    [ItemController::class, 'index']
+)->name('items.index');
 
-Route::get('/setting/inventory/items', function () {
-    return view('setting.inventory.items.index');
-})->name('items.index');
+Route::get(
+    '/setting/inventory/items/list',
+    [ItemController::class, 'list']
+)->name('items.list');
+
+Route::post(
+    '/setting/inventory/items',
+    [ItemController::class, 'store']
+)->name('items.store');
+
+Route::put(
+    '/setting/inventory/items/{item}',
+    [ItemController::class, 'update']
+)->name('items.update');
+
+Route::delete(
+    '/setting/inventory/items/{item}',
+    [ItemController::class, 'destroy']
+)->name('items.destroy');
+
+Route::patch(
+    '/setting/inventory/items/{item}/toggle-status',
+    [ItemController::class, 'toggleStatus']
+)->name('items.toggleStatus');
+
+Route::get(
+    '/setting/inventory/items/search',
+    [ItemController::class, 'search']
+)->name('items.search');
+
+
+// =====================================================
+// Routes الخاصة بالأنواع
+// =====================================================
+
+Route::get(
+    '/setting/inventory/types',
+    [TypeController::class, 'index']
+)->name('types.index');
+
+Route::get(
+    '/setting/inventory/types/list',
+    [TypeController::class, 'list']
+)->name('types.list');
+
+Route::post(
+    '/setting/inventory/types',
+    [TypeController::class, 'store']
+)->name('types.store');
+
+Route::put(
+    '/setting/inventory/types/{type}',
+    [TypeController::class, 'update']
+)->name('types.update');
+
+Route::delete(
+    '/setting/inventory/types/{type}',
+    [TypeController::class, 'destroy']
+)->name('types.destroy');
+
+Route::patch(
+    '/setting/inventory/types/{type}/toggle-status',
+    [TypeController::class, 'toggleStatus']
+)->name('types.toggleStatus');
+
+
+// =====================================================
+// Routes الخاصة بالوحدات
+// =====================================================
+
+Route::get(
+    '/setting/inventory/units',
+    [UnitController::class, 'index']
+)->name('units.index');
+
+Route::get(
+    '/setting/inventory/units/list',
+    [UnitController::class, 'list']
+)->name('units.list');
+
+Route::post(
+    '/setting/inventory/units',
+    [UnitController::class, 'store']
+)->name('units.store');
+
+Route::put(
+    '/setting/inventory/units/{unit}',
+    [UnitController::class, 'update']
+)->name('units.update');
+
+Route::delete(
+    '/setting/inventory/units/{unit}',
+    [UnitController::class, 'destroy']
+)->name('units.destroy');
+
+Route::patch(
+    '/setting/inventory/units/{unit}/toggle-status',
+    [UnitController::class, 'toggleStatus']
+)->name('units.toggleStatus');
+
+
+// =====================================================
+// Routes الخاصة بالمخازن
+// =====================================================
+
+Route::get(
+    '/setting/inventory/warehouses',
+    [StockController::class, 'index']
+)->name('warehouses.index');
+
+Route::get(
+    '/setting/inventory/warehouses/list',
+    [StockController::class, 'list']
+)->name('warehouses.list');
+
+Route::post(
+    '/setting/inventory/warehouses',
+    [StockController::class, 'store']
+)->name('warehouses.store');
+
+Route::get(
+    '/setting/inventory/warehouses/next-code',
+    [StockController::class, 'getNextCode']
+)->name('warehouses.nextCode');
+
+Route::put(
+    '/setting/inventory/warehouses/{stock}',
+    [StockController::class, 'update']
+)->name('warehouses.update');
+
+Route::delete(
+    '/setting/inventory/warehouses/{stock}',
+    [StockController::class, 'destroy']
+)->name('warehouses.destroy');
+
+Route::patch(
+    '/setting/inventory/warehouses/{stock}/toggle-status',
+    [StockController::class, 'toggleStatus']
+)->name('warehouses.toggleStatus');
+
+
+// =====================================================
+// الصفحات التشغيلية
+// =====================================================
 
 Route::get('/operation/sales/invoices', function () {
     return view('operation.sales.invoices.index');

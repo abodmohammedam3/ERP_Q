@@ -94,6 +94,7 @@ Route::delete(
     [CustomerController::class, 'destroy']
 )->name('customers.destroy');
 
+
 // =====================================================
 // الموردون
 // =====================================================
@@ -128,6 +129,7 @@ Route::delete(
     [SupplierController::class, 'destroy']
 )->name('suppliers.destroy');
 
+
 // =====================================================
 // الصفحات الأخرى (الإعدادات)
 // =====================================================
@@ -148,9 +150,8 @@ Route::get('/setting/accounting/openingBalances', function () {
     return view('setting.accounting.openingBalances.index');
 })->name('openingBalances.index');
 
-Route::get('/setting/suppliers', function () {
-    return view('setting.suppliers.index');
-})->name('suppliers.index');
+// ⚠️ تم حذف الراوت المكرر الخاص بـ /setting/suppliers
+// لأنه كان يتعارض مع Controller ويسبب عدم ظهور البيانات
 
 
 // =====================================================

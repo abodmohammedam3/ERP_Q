@@ -4,9 +4,7 @@
 
 @section('content')
 
-<div class="container-fluid py-3">
-
-   <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="container-fluid py-3"><div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h4 class="mb-1">
             <i class="bi bi-truck"></i> الموردون
@@ -14,80 +12,40 @@
         <small class="text-muted">إدارة الموردين المسجلين في النظام</small>
     </div>
 
-    <div class="d-flex gap-2">
-        <button type="button" class="btn btn-secondary" onclick="printSuppliers()">
-            <i class="bi bi-printer"></i> طباعة
-        </button>
+    <div class="btn-group">
 
-        <button type="button" class="btn btn-primary" onclick="openSupplierModal()">
-            <i class="bi bi-plus-lg"></i> إضافة مورد
-        </button>
-    </div>
+    <button
+        type="button"
+        class="btn btn-outline-secondary"
+        onclick="printSuppliers()">
+        <i class="bi bi-printer"></i> طباعة
+    </button>
+
+    <button
+        type="button"
+        class="btn btn-sm btn-primary"
+        id="addSupplierBtn">
+        <i class="bi bi-plus-lg me-1"></i> إضافة مورد
+    </button>
+
+</div>
 </div>
 
-    <!-- استدعاء ملف البحث وملف الجدول -->
-    @include('setting.suppliers.search')
+<!-- استدعاء ملف البحث -->
+@include('setting.suppliers.search')
+
+<div id="suppliersTableContainer">
     @include('setting.suppliers.table')
-
 </div>
 
+</div>
 <!-- النافذة المنبثقة (Modal) لإضافة/تعديل مورد -->
-<div class="modal fade" id="supplierModal" tabindex="-1" aria-labelledby="supplierModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="supplierModalLabel">إضافة مورد جديد</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="supplierForm">
-                    <input type="hidden" id="suplierID">
-                    
-                    <div class="mb-3">
-                        <label for="supName" class="form-label">اسم المورد <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="supName" required>
-                    </div>
+@include('setting.suppliers.addUpdate')
 
-                    <div class="mb-3">
-                        <label for="supPhone" class="form-label">رقم الهاتف <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="supPhone" required>
-                    </div>
+@include('setting.suppliers.deletModel')
 
-                    <div class="mb-3">
-                        <label for="supArea" class="form-label">المنطقة</label>
-                        <input type="text" class="form-control" id="supArea">
-                    </div>
+<!-- تضمين ملف الجافا سكربت الخاص بالشاشة -->@endsection
 
-                    <div class="mb-3">
-                        <label for="analyticalAccount" class="form-label">رقم الحساب التحليلي</label>
-                        <input type="text" class="form-control" id="analyticalAccount" readonly>
-                        <small class="text-muted">يتم تعبئته تلقائياً</small>
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="supStatus" class="form-label">الحالة</label>
-                        <select class="form-select" id="supStatus">
-                            <option value="0">نشط</option>
-                            <option value="1">متوقف</option>
-                        </select>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
-                <button type="button" class="btn btn-primary" onclick="saveSupplier()">حفظ البيانات</button>
-            </div>
-        </div>
-
-    </div>
-
-</div>
-
-<!-- تضمين ملف الجافا سكربت الخاص بالشاشة -->
-
-@endsection
 @push('scripts')
 
-<script src="{{ asset('js/supplier.js') }}"></script>
-
-@endpush
+<script src="{{ asset('js/supplier.js') }}"></script>@endpush

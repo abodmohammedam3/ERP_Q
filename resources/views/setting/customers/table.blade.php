@@ -13,57 +13,111 @@
     {{-- جسم البطاقة والجدول --}}
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-striped table-hover mb-0 align-middle" id="customersTable">
+            <table
+                class="table table-striped table-hover mb-0 align-middle"
+                id="customersTable"
+                style="width: 100%; table-layout: fixed;"
+            >
+                <colgroup>
+                    <col style="width: 6%;">
+                    <col style="width: 18%;">
+                    <col style="width: 15%;">
+                    <col style="width: 20%;">
+                    <col style="width: 14%;">
+                    <col style="width: 10%;">
+                    <col style="width: 17%;">
+                </colgroup>
+
                 <thead class="table-light">
                     <tr>
                         <th>#</th>
                         <th>اسم العميل</th>
                         <th>رقم الهاتف</th>
                         <th>العنوان</th>
-                        <th>الحساب المحاسبي المرتبط</th>
+                        <th>رقم الحساب التحليلي</th>
                         <th>الحالة</th>
                         <th class="text-center">الإجراءات</th>
                     </tr>
                 </thead>
+
                 <tbody id="customersTableBody">
 
                     @forelse($customers ?? [] as $index => $customer)
-                        <tr class="customer-row" data-id="{{ $customer->CustomersID }}">
+
+                        <tr
+                            class="customer-row"
+                            data-id="{{ $customer->CustomersID }}"
+                        >
 
                             {{-- # --}}
-                            <td>{{ $loop->iteration }}</td>
+                            <td>
+                                {{ $loop->iteration }}
+                            </td>
 
                             {{-- اسم العميل --}}
-                            <td class="fw-semibold">{{ $customer->CustomersName2 }}</td>
+                            <td
+                                class="fw-semibold"
+                                style="
+                                    overflow: hidden;
+                                    text-overflow: ellipsis;
+                                    white-space: nowrap;
+                                    max-width: 0;
+                                "
+                            >
+                                {{ $customer->CustomersName2 }}
+                            </td>
 
                             {{-- رقم الهاتف --}}
-                            <td>{{ $customer->CusPhone ?? '--' }}</td>
+                            <td
+                                style="
+                                    overflow: hidden;
+                                    text-overflow: ellipsis;
+                                    white-space: nowrap;
+                                    max-width: 0;
+                                "
+                            >
+                                {{ $customer->CusPhone ?? '--' }}
+                            </td>
 
                             {{-- العنوان --}}
-                            <td>{{ $customer->CusAddress ?? '--' }}</td>
+                            <td
+                                style="
+                                    overflow: hidden;
+                                    text-overflow: ellipsis;
+                                    white-space: nowrap;
+                                    max-width: 0;
+                                "
+                            >
+                                {{ $customer->CusAddress ?? '--' }}
+                            </td>
 
-                            {{-- الحساب المحاسبي المرتبط --}}
+                            {{-- رقم الحساب التحليلي --}}
                             <td>
-                                @if($customer->account)
-                                    <span class="badge bg-light text-dark border">
-                                        {{ $customer->account->accCode }} - {{ $customer->account->accName }}
-                                    </span>
-                                @else
-                                    <span class="text-muted">--</span>
-                                @endif
+                                <span class="badge bg-light text-dark border">
+                                    {{ 110000 + (int) $customer->CustomersID }}
+                                </span>
                             </td>
 
                             {{-- الحالة --}}
                             <td>
-                                @if($customer->CusIsStopped == 0)
-                                    <span class="badge bg-primary">نشط</span>
+                                @if($customer->CusIsStopeed == 0)
+
+                                    <span class="badge bg-primary">
+                                        نشط
+                                    </span>
+
                                 @else
-                                    <span class="badge bg-secondary">متوقف</span>
+
+                                    <span class="badge bg-secondary">
+                                        غير نشط
+                                    </span>
+
                                 @endif
                             </td>
 
                             {{-- الإجراءات --}}
                             <td class="text-center">
+
                                 <button
                                     type="button"
                                     class="btn btn-sm btn-outline-primary me-1 edit-customer"
@@ -81,16 +135,24 @@
                                     <i class="bi bi-trash"></i>
                                     حذف
                                 </button>
+
                             </td>
 
                         </tr>
+
                     @empty
+
                         <tr>
-                            <td colspan="7" class="text-center py-4 text-muted">
+                            <td
+                                colspan="7"
+                                class="text-center py-4 text-muted"
+                            >
                                 <i class="bi bi-people fs-2 d-block mb-2 text-secondary"></i>
+
                                 لا يوجد عملاء مسجلون
                             </td>
                         </tr>
+
                     @endforelse
 
                 </tbody>
@@ -103,6 +165,7 @@
         class="card-footer d-flex flex-wrap justify-content-between align-items-center"
         id="customersPagination"
     >
+
         <span
             class="text-muted small"
             id="customersPaginationInfo"
@@ -117,6 +180,7 @@
             >
             </ul>
         </nav>
+
     </div>
 
 </div>

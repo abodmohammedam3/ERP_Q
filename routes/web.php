@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\accounting\CharAccountController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\SupplierController;
 
 use App\Http\Controllers\Inventory\ItemController;
 use App\Http\Controllers\Inventory\TypeController;
@@ -60,39 +61,72 @@ Route::get(
 
 
 // =====================================================
-// دوال إدارة العملاء
+// العملاء
 // =====================================================
 
 Route::get(
-    '/settings/customers',
+    '/setting/customers',
     [CustomerController::class, 'index']
 )->name('customers.index');
 
 Route::get(
-    '/settings/customers/list',
+    '/setting/customers/list',
     [CustomerController::class, 'list']
 )->name('customers.list');
 
-Route::post(
-    '/settings/customers',
-    [CustomerController::class, 'store']
-)->name('customers.store');
-
 Route::get(
-    '/settings/customers/{id}',
+    '/setting/customers/{id}',
     [CustomerController::class, 'show']
 )->name('customers.show');
 
+Route::post(
+    '/setting/customers',
+    [CustomerController::class, 'store']
+)->name('customers.store');
+
 Route::put(
-    '/settings/customers/{id}',
+    '/setting/customers/{id}',
     [CustomerController::class, 'update']
 )->name('customers.update');
 
 Route::delete(
-    '/settings/customers/{id}',
+    '/setting/customers/{id}',
     [CustomerController::class, 'destroy']
 )->name('customers.destroy');
 
+// =====================================================
+// الموردون
+// =====================================================
+
+Route::get(
+    '/setting/suppliers',
+    [SupplierController::class, 'index']
+)->name('suppliers.index');
+
+Route::get(
+    '/setting/suppliers/list',
+    [SupplierController::class, 'list']
+)->name('suppliers.list');
+
+Route::get(
+    '/setting/suppliers/{id}',
+    [SupplierController::class, 'show']
+)->name('suppliers.show');
+
+Route::post(
+    '/setting/suppliers',
+    [SupplierController::class, 'store']
+)->name('suppliers.store');
+
+Route::put(
+    '/setting/suppliers/{id}',
+    [SupplierController::class, 'update']
+)->name('suppliers.update');
+
+Route::delete(
+    '/setting/suppliers/{id}',
+    [SupplierController::class, 'destroy']
+)->name('suppliers.destroy');
 
 // =====================================================
 // الصفحات الأخرى (الإعدادات)

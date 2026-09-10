@@ -62,7 +62,8 @@
                                 for="cusName"
                                 class="form-label"
                             >
-                                اسم العميل <span class="text-danger">*</span>
+                                اسم العميل
+                                <span class="text-danger">*</span>
                             </label>
 
                             <input
@@ -71,52 +72,36 @@
                                 name="CustomersName2"
                                 id="cusName"
                                 autocomplete="off"
-                                
                             >
 
                         </div>
 
 
                         {{-- ================================
-                             2 - الحساب المحاسبي المرتبط
+                             2 - رقم الحساب التحليلي
                         ================================= --}}
 
                         <div class="col-md-6">
 
                             <label
-                                for="accountDisplay"
+                                for="customerAccountCode"
                                 class="form-label"
                             >
-                                الحساب المحاسبي المرتبط <span class="text-danger">*</span>
+                                رقم الحساب التحليلي
                             </label>
 
-                            {{-- الحقل الظاهر للمستخدم --}}
                             <input
                                 type="text"
                                 class="form-control"
-                                id="accountDisplay"
-                                placeholder="اضغط لاختيار الحساب المحاسبي"
+                                id="customerAccountCode"
+                                value=""
                                 readonly
-                                style="cursor: pointer; background-color: #fff;"
+                                style="background-color: var(--bs-tertiary-bg);"
                             >
 
-                            {{-- الحقل المخفي الذي يحمل رقم الحساب accountID --}}
-                            <select
-                                name="accountID"
-                                id="accountID"
-                                style="display: none;"
-                            >
-                                <option value="">اختر الحساب</option>
-                                @foreach($accounts as $acc)
-                                    <option
-                                        value="{{ $acc->accountID }}"
-                                        data-code="{{ $acc->accCode }}"
-                                        data-name="{{ $acc->accName }}"
-                                    >
-                                        {{ $acc->accCode }} - {{ $acc->accName }}
-                                    </option>
-                                @endforeach
-                            </select>
+                            <small class="text-muted">
+                                يتم توليده تلقائيًا بواسطة النظام
+                            </small>
 
                         </div>
 
@@ -146,7 +131,7 @@
 
 
                         {{-- ================================
-                             4 - الحالة (نشط / متوقف)
+                             4 - الحالة
                         ================================= --}}
 
                         <div class="col-md-6">
@@ -160,7 +145,7 @@
 
                             <select
                                 class="form-select"
-                                name="CusIsStopped"
+                                name="CusIsStopeed"
                                 id="cusStatus"
                             >
 
@@ -169,7 +154,7 @@
                                 </option>
 
                                 <option value="1">
-                                    متوقف
+                                    غير نشط
                                 </option>
 
                             </select>
@@ -228,101 +213,6 @@
                     </div>
 
                 </form>
-
-            </div>
-
-        </div>
-
-    </div>
-</div>
-
-
-{{-- ================================================
-     مودال البحث عن الحساب المحاسبي
-================================================ --}}
-
-<div
-    class="modal fade"
-    id="accountSearchModal"
-    tabindex="-1"
-    aria-hidden="true"
->
-    <div class="modal-dialog modal-dialog-centered">
-
-        <div
-            class="modal-content"
-            style="height: 550px;"
-        >
-
-            {{-- رأس المودال --}}
-            <div class="modal-header position-relative">
-
-                <h5 class="modal-title">
-                    اختيار الحساب المحاسبي
-                </h5>
-
-                <button
-                    type="button"
-                    class="btn-close position-absolute top-0 start-0 m-3"
-                    data-bs-dismiss="modal"
-                    aria-label="إغلاق"
-                ></button>
-
-            </div>
-
-
-            {{-- جسم المودال --}}
-            <div
-                class="modal-body d-flex flex-column p-0"
-                style="overflow: hidden;"
-            >
-
-                {{-- حقل البحث --}}
-                <div class="p-3 border-bottom">
-
-                    <input
-                        type="text"
-                        class="form-control"
-                        id="accountSearchInput"
-                        placeholder="ابحث بالاسم أو رقم الحساب..."
-                        autocomplete="off"
-                    >
-
-                </div>
-
-
-                {{-- قائمة النتائج --}}
-                <div
-                    id="accountSearchResults"
-                    class="flex-grow-1"
-                    style="overflow-y: auto;"
-                >
-
-                    <ul
-                        class="list-group list-group-flush"
-                        id="accountSearchList"
-                    >
-
-                        @foreach($accounts as $acc)
-
-                            <li
-                                class="list-group-item list-group-item-action account-search-item"
-                                data-id="{{ $acc->accountID }}"
-                                data-code="{{ $acc->accCode }}"
-                                data-name="{{ $acc->accName }}"
-                                style="cursor: pointer;"
-                            >
-                                <span class="badge bg-secondary me-2">
-                                    {{ $acc->accCode }}
-                                </span>
-                                {{ $acc->accName }}
-                            </li>
-
-                        @endforeach
-
-                    </ul>
-
-                </div>
 
             </div>
 

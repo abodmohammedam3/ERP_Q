@@ -13,7 +13,7 @@
                         <th style="width:150px;">رقم الحساب التحليلي</th>
                         <th style="width:100px;">الحالة</th>
                         @if($hasParent)
-                            <th style="width:130px;" class="no-print">الإجراءات</th>
+                            <th style="width:150px;" class="no-print">الإجراءات</th>
                         @endif
                     </tr>
                 </thead>
@@ -32,11 +32,11 @@
                                 <td class="no-print">
                                     <div class="btn-action-group">
                                         <button type="button" class="btn btn-sm btn-outline-primary" onclick="editStock(this)" title="تعديل">
-                                            <i class="bi bi-pencil d-md-none"></i>
+                                            <i class="bi bi-pencil"></i>
                                             <span class="d-none d-md-inline">تعديل</span>
                                         </button>
                                         <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteStock(this)" title="حذف">
-                                            <i class="bi bi-trash d-md-none"></i>
+                                            <i class="bi bi-trash"></i>
                                             <span class="d-none d-md-inline">حذف</span>
                                         </button>
                                     </div>

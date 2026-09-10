@@ -25,9 +25,7 @@ class StockController extends Controller
         $parent = CharAccount::where('accName', 'LIKE', '%مخازن%')->first();
         if ($parent) return $parent;
 
-        // 3. البحث عن حساب برقم 113 (كحل أخير)
-        $parent = CharAccount::where('accCode', 113)->first();
-        if ($parent) return $parent;
+        
 
         // 4. لم نجد شيئاً
         throw new \Exception('لم يتم العثور على حساب "المخازن" في دليل الحسابات. يرجى إنشاؤه أولاً.');

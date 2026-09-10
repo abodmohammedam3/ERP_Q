@@ -3,149 +3,130 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\Accounting\CharAccount;
-use App\Models\Customer;
+use App\Models\Supplier;
 use Illuminate\Http\Request;
 
-class CustomerController extends Controller
+class SupplierController extends Controller
 {
-    // =====================================================
-    // عرض قائمة العملاء
-    // =====================================================
+        // =====================================================
+        // عرض قائمة الموردين
+        // =====================================================
 
-    public function index()
-    {
-        $customers =
-            Customer::with('account')
-                ->orderBy(
-                    'CustomersID',
+        public function index()
+        {
+            $suppliers =
+                Supplier::orderBy(
+                    'suplierID',
                     'DESC'
+                )->get();
+
+            return view(
+                'setting.suppliers.index',
+                compact(
+                    'suppliers'
                 )
-                ->get();
-
-        $accounts =
-            CharAccount::where(
-                'IsActive',
-                1
-            )->get();
-
-        return view(
-            'setting.customers.index',
-            compact(
-                'customers',
-                'accounts'
-            )
-        );
-    }
+            );
+        }
 
     // =====================================================
-    // جلب عميل للتعديل
+    // جلب مورد للتعديل
     // =====================================================
 
     public function show(
         int|string $id
     ) {
-        $customer =
-            Customer::with('account')
-                ->find($id);
+        $supplier =
+            Supplier::find($id);
 
-        if (!$customer) {
+        if (!$supplier) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'العميل غير موجود',
+                'message' => 'المورد غير موجود',
             ], 404);
         }
 
         $statusVal =
-            $customer->CusIsStopeed ?? 0;
+            $supplier->supStoped ?? 0;
 
         $accountCode =
-            110000 +
-            (int) $customer->CustomersID;
+            2101000 +
+            (int) $supplier->suplierID;
 
         return response()->json([
             'success' => true,
 
-            'customer' => [
-                'CustomersID' =>
-                    $customer->CustomersID,
+            'supplier' => [
+                'suplierID' =>
+                    $supplier->suplierID,
 
-                'CustomersName2' =>
-                    $customer->CustomersName2,
+                'supName' =>
+                    $supplier->supName,
 
-                'CusPhone' =>
-                    $customer->CusPhone,
+                'supPhone' =>
+                    $supplier->supPhone,
 
-                'CusAddress' =>
-                    $customer->CusAddress,
+                'supArea' =>
+                    $supplier->supArea,
 
-                'CusIsStopeed' =>
+                'supStoped' =>
                     $statusVal,
 
                 'accountID' =>
-                    $customer->accountID,
+                    $supplier->accountID,
 
                 'accountCode' =>
                     $accountCode,
-
-                'account' =>
-                    $customer->account,
             ],
         ]);
     }
 
     // =====================================================
-    // إضافة عميل
+    // إضافة مورد
     // =====================================================
 
     public function store(
         Request $request
     ) {
         $request->validate([
-            'CustomersName2' =>
+            'supName' =>
                 'required|string|max:255',
-
-            'accountID' =>
-                'nullable|exists:characcount,accountID',
 
         ], [
 
-            'CustomersName2.required' =>
-                'اسم العميل مطلوب',
+            'supName.required' =>
+                'اسم المورد مطلوب',
 
-            'accountID.exists' =>
-                'الحساب المحاسبي المختار غير صالح',
+            'supName.string' =>
+                'اسم المورد يجب أن يكون نصًا',
+
         ]);
 
         $status =
             $request->input(
-                'CusIsStopeed',
+                'supStoped',
                 0
             );
 
-        $customer =
-            Customer::create([
+        $supplier =
+            Supplier::create([
 
-                'CustomersName2' =>
-                    $request->CustomersName2,
+                'supName' =>
+                    $request->supName,
 
-                'accountID' =>
-                    $request->accountID,
+                'supPhone' =>
+                    $request->supPhone,
 
-                'CusPhone' =>
-                    $request->CusPhone,
+                'supArea' =>
+                    $request->supArea,
 
-                'CusAddress' =>
-                    $request->CusAddress,
-
-                'CusIsStopeed' =>
+                'supStoped' =>
                     $status,
             ]);
 
         $accountCode =
-            110000 +
-            (int) $customer->CustomersID;
+            2101000 +
+            (int) $supplier->suplierID;
 
         return response()->json([
 
@@ -153,27 +134,27 @@ class CustomerController extends Controller
                 true,
 
             'message' =>
-                'تم إضافة العميل بنجاح',
+                'تم إضافة المورد بنجاح',
 
-            'customer' => [
+            'supplier' => [
 
-                'CustomersID' =>
-                    $customer->CustomersID,
+                'suplierID' =>
+                    $supplier->suplierID,
 
-                'CustomersName2' =>
-                    $customer->CustomersName2,
+                'supName' =>
+                    $supplier->supName,
 
-                'CusPhone' =>
-                    $customer->CusPhone,
+                'supPhone' =>
+                    $supplier->supPhone,
 
-                'CusAddress' =>
-                    $customer->CusAddress,
+                'supArea' =>
+                    $supplier->supArea,
 
-                'CusIsStopeed' =>
-                    $customer->CusIsStopeed,
+                'supStoped' =>
+                    $supplier->supStoped,
 
                 'accountID' =>
-                    $customer->accountID,
+                    $supplier->accountID,
 
                 'accountCode' =>
                     $accountCode,
@@ -182,7 +163,7 @@ class CustomerController extends Controller
     }
 
     // =====================================================
-    // تحديث العميل
+    // تحديث المورد
     // =====================================================
 
     public function update(
@@ -190,59 +171,54 @@ class CustomerController extends Controller
         int|string $id
     ) {
         $request->validate([
-            'CustomersName2' =>
+            'supName' =>
                 'required|string|max:255',
-
-            'accountID' =>
-                'nullable|exists:characcount,accountID',
 
         ], [
 
-            'CustomersName2.required' =>
-                'اسم العميل مطلوب',
+            'supName.required' =>
+                'اسم المورد مطلوب',
 
-            'accountID.exists' =>
-                'الحساب المحاسبي المختار غير صالح',
+            'supName.string' =>
+                'اسم المورد يجب أن يكون نصًا',
+
         ]);
 
-        $customer =
-            Customer::find($id);
+        $supplier =
+            Supplier::find($id);
 
-        if (!$customer) {
+        if (!$supplier) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'العميل غير موجود',
+                'message' => 'المورد غير موجود',
             ], 404);
         }
 
         $status =
             $request->input(
-                'CusIsStopeed',
+                'supStoped',
                 0
             );
 
-        $customer->update([
+        $supplier->update([
 
-            'CustomersName2' =>
-                $request->CustomersName2,
+            'supName' =>
+                $request->supName,
 
-            'accountID' =>
-                $request->accountID,
+            'supPhone' =>
+                $request->supPhone,
 
-            'CusPhone' =>
-                $request->CusPhone,
+            'supArea' =>
+                $request->supArea,
 
-            'CusAddress' =>
-                $request->CusAddress,
-
-            'CusIsStopeed' =>
+            'supStoped' =>
                 $status,
         ]);
 
         $accountCode =
-            110000 +
-            (int) $customer->CustomersID;
+            2101000 +
+            (int) $supplier->suplierID;
 
         return response()->json([
 
@@ -250,27 +226,27 @@ class CustomerController extends Controller
                 true,
 
             'message' =>
-                'تم تحديث بيانات العميل بنجاح',
+                'تم تحديث بيانات المورد بنجاح',
 
-            'customer' => [
+            'supplier' => [
 
-                'CustomersID' =>
-                    $customer->CustomersID,
+                'suplierID' =>
+                    $supplier->suplierID,
 
-                'CustomersName2' =>
-                    $customer->CustomersName2,
+                'supName' =>
+                    $supplier->supName,
 
-                'CusPhone' =>
-                    $customer->CusPhone,
+                'supPhone' =>
+                    $supplier->supPhone,
 
-                'CusAddress' =>
-                    $customer->CusAddress,
+                'supArea' =>
+                    $supplier->supArea,
 
-                'CusIsStopeed' =>
-                    $customer->CusIsStopeed,
+                'supStoped' =>
+                    $supplier->supStoped,
 
                 'accountID' =>
-                    $customer->accountID,
+                    $supplier->accountID,
 
                 'accountCode' =>
                     $accountCode,
@@ -279,29 +255,29 @@ class CustomerController extends Controller
     }
 
     // =====================================================
-    // حذف العميل
+    // حذف المورد
     // =====================================================
 
     public function destroy(
         int|string $id
     ) {
-        $customer =
-            Customer::find($id);
+        $supplier =
+            Supplier::find($id);
 
-        if (!$customer) {
+        if (!$supplier) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'العميل غير موجود',
+                'message' => 'المورد غير موجود',
             ], 404);
         }
 
         try {
 
-            $customerID =
-                $customer->CustomersID;
+            $supplierID =
+                $supplier->suplierID;
 
-            $customer->delete();
+            $supplier->delete();
 
             return response()->json([
 
@@ -309,10 +285,10 @@ class CustomerController extends Controller
                     true,
 
                 'message' =>
-                    'تم حذف العميل بنجاح',
+                    'تم حذف المورد بنجاح',
 
-                'customerID' =>
-                    $customerID,
+                'supplierID' =>
+                    $supplierID,
             ]);
 
         } catch (\Throwable $e) {
@@ -323,27 +299,27 @@ class CustomerController extends Controller
                     false,
 
                 'message' =>
-                    'لا يمكن حذف العميل لوجود حركات أو فواتير مرتبطة به',
+                    'لا يمكن حذف المورد لوجود حركات أو فواتير مرتبطة به',
 
             ], 422);
         }
     }
 
     // =====================================================
-    // البحث في قائمة العملاء
+    // البحث في قائمة الموردين
     // =====================================================
- 
+
     public function list(
         Request $request
     ) {
         $query =
-            Customer::orderBy(
-                'CustomersID',
+            Supplier::orderBy(
+                'suplierID',
                 'DESC'
             );
 
         // =================================================
-        // البحث باسم العميل
+        // البحث باسم المورد
         // =================================================
 
         if (
@@ -358,7 +334,7 @@ class CustomerController extends Controller
                 );
 
             $query->where(
-                'CustomersName2',
+                'supName',
                 'like',
                 '%' . $searchName . '%'
             );
@@ -380,7 +356,7 @@ class CustomerController extends Controller
                 );
 
             $query->where(
-                'CusPhone',
+                'supPhone',
                 'like',
                 '%' . $searchPhone . '%'
             );
@@ -408,7 +384,7 @@ class CustomerController extends Controller
             ) {
 
                 $query->whereRaw(
-                    "CAST(110000 + CustomersID AS CHAR) LIKE ?",
+                    "CAST(2101000 + suplierID AS CHAR) LIKE ?",
                     [
                         '%' .
                         $searchCode .
@@ -425,10 +401,10 @@ class CustomerController extends Controller
         }
 
         // =================================================
-        // جلب العملاء
+        // جلب الموردين
         // =================================================
 
-        $customers =
+        $suppliers =
             $query->get();
 
         // =================================================
@@ -437,9 +413,9 @@ class CustomerController extends Controller
 
         $html =
             view(
-                'setting.customers.table',
+                'setting.suppliers.table',
                 compact(
-                    'customers'
+                    'suppliers'
                 )
             )->render();
 

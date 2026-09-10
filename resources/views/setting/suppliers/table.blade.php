@@ -1,61 +1,219 @@
-<!-- ========================= -->
-<!-- جدول عرض الموردين -->
-<!-- ========================= -->
-<div class="card">
-    <div class="card-header">
-        <i class="bi bi-list-ul"></i> قائمة الموردين
+<!-- ========================= --><!-- جدول عرض الموردين --><!-- ========================= --><div class="card" id="suppliersTableCard"><div class="card-header bg-body border-bottom d-flex justify-content-between align-items-center">
+
+    <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-truck text-primary"></i>
+        <h6 class="mb-0 fw-bold">قائمة الموردين</h6>
     </div>
-    
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover table-bordered mb-0 align-middle" id="suppliersTable">
-                <thead class="table-light">
-                    <tr class="text-center">
-                        <th>الرقم</th>
-                        <th>اسم المورد</th>
-                        <th>الهاتف</th>
-                        <th>المنطقة</th>
-                        <th>رقم الحساب التحليلي</th>
-                        <th>الحالة</th>
-                        <th>الإجراءات</th>
+
+</div>
+
+<div class="card-body p-0">
+
+    <div class="table-responsive">
+
+        <table
+            class="table table-striped table-hover mb-0 align-middle"
+            id="suppliersTable"
+            style="width: 100%; table-layout: fixed;"
+        >
+
+            <colgroup>
+                <col style="width: 6%;">
+                <col style="width: 18%;">
+                <col style="width: 15%;">
+                <col style="width: 20%;">
+                <col style="width: 14%;">
+                <col style="width: 10%;">
+                <col style="width: 17%;">
+            </colgroup>
+
+            <thead class="table-light">
+
+                <tr>
+
+                    <th>#</th>
+
+                    <th>اسم المورد</th>
+
+                    <th>رقم الهاتف</th>
+
+                    <th>العنوان</th>
+
+                    <th>رقم الحساب التحليلي</th>
+
+                    <th>الحالة</th>
+
+                    <th class="text-center">
+                        الإجراءات
+                    </th>
+
+                </tr>
+
+            </thead>
+
+            <tbody id="suppliersTableBody">
+
+                @forelse($suppliers ?? [] as $index => $supplier)
+
+                    <tr
+                        class="supplier-row"
+                        data-id="{{ $supplier->suplierID }}"
+                    >
+
+                        {{-- # --}}
+                        <td>
+                            {{ $loop->iteration }}
+                        </td>
+
+
+                        {{-- اسم المورد --}}
+                        <td
+                            class="fw-semibold"
+                            style="
+                                overflow: hidden;
+                                text-overflow: ellipsis;
+                                white-space: nowrap;
+                                max-width: 0;
+                            "
+                        >
+                            {{ $supplier->supName }}
+                        </td>
+
+
+                        {{-- رقم الهاتف --}}
+                        <td
+                            style="
+                                overflow: hidden;
+                                text-overflow: ellipsis;
+                                white-space: nowrap;
+                                max-width: 0;
+                            "
+                        >
+                            {{ $supplier->supPhone ?? '--' }}
+                        </td>
+
+
+                        {{-- العنوان --}}
+                        <td
+                            style="
+                                overflow: hidden;
+                                text-overflow: ellipsis;
+                                white-space: nowrap;
+                                max-width: 0;
+                            "
+                        >
+                            {{ $supplier->supArea ?? '--' }}
+                        </td>
+
+
+                        {{-- رقم الحساب التحليلي --}}
+                        <td>
+
+                            <span class="badge bg-light text-dark border">
+
+                                {{ 2101000 + (int) $supplier->suplierID }}
+
+                            </span>
+
+                        </td>
+
+
+                        {{-- الحالة --}}
+                        <td>
+
+                            @if($supplier->supStoped == 0)
+
+                                <span class="badge bg-primary">
+                                    نشط
+                                </span>
+
+                            @else
+
+                                <span class="badge bg-secondary">
+                                    غير نشط
+                                </span>
+
+                            @endif
+
+                        </td>
+
+
+                        {{-- الإجراءات --}}
+                        <td class="text-center">
+
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-outline-primary me-1 edit-supplier"
+                                data-id="{{ $supplier->suplierID }}"
+                            >
+                                <i class="bi bi-pencil"></i>
+                                تعديل
+                            </button>
+
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-outline-danger delete-supplier"
+                                data-id="{{ $supplier->suplierID }}"
+                            >
+                                <i class="bi bi-trash"></i>
+                                حذف
+                            </button>
+
+                        </td>
+
                     </tr>
-                </thead>
-                <tbody id="suppliersTableBody">
 
-                    @forelse($suppliers ?? [] as $supplier)
-                        <tr class="text-center supplier-row">
-                            <td class="row-id">{{ $supplier->suplierID }}</td>
-                            <td class="row-name">{{ $supplier->supName2 }}</td>
-                            <td class="row-phone">{{ $supplier->supPhone2 }}</td>
-                            <td class="row-area">{{ $supplier->supArea2 }}</td>
-                            <td class="row-analytical">{{ $supplier->analytical_account ?? '' }}</td>
-                            <td class="row-status" data-status="{{ $supplier->supStoped2 }}">
-                                @if($supplier->supStoped2 == 1)
-                                    <span class="badge bg-danger">متوقف</span>
-                                @else
-                                    <span class="badge bg-success">نشط</span>
-                                @endif
-                            </td>
-                            <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="editSupplier(this)">
-                                    <i class="bi bi-pencil"></i> تعديل
-                                </button>
-                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteSupplier(this)">
-                                    <i class="bi bi-trash"></i> حذف
-                                </button>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr id="emptyRow">
-                            <td colspan="7" class="text-center text-muted py-5">
-                                <i class="bi bi-truck fs-2 d-block mb-2"></i>
-                                لا يوجد موردون مسجلون
-                            </td>
-                        </tr>
-                    @endforelse
+                @empty
 
-                </tbody>
-            </table>
-        </div>
+                    <tr>
+
+                        <td
+                            colspan="7"
+                            class="text-center py-4 text-muted"
+                        >
+
+                            <i class="bi bi-truck fs-2 d-block mb-2 text-secondary"></i>
+
+                            لا يوجد موردون مسجلون
+
+                        </td>
+
+                    </tr>
+
+                @endforelse
+
+            </tbody>
+
+        </table>
+
     </div>
+
+</div>
+
+
+{{-- تذييل الجدول (ترقيم الصفحات) --}}
+<div
+    class="card-footer d-flex flex-wrap justify-content-between align-items-center"
+    id="suppliersPagination"
+>
+
+    <span
+        class="text-muted small"
+        id="suppliersPaginationInfo"
+    >
+        عرض 0-0 من 0 مورد
+    </span>
+
+    <nav>
+
+        <ul
+            class="pagination pagination-sm mb-0"
+            id="suppliersPaginationList"
+        >
+        </ul>
+
+    </nav>
+
+</div>
+
 </div>

@@ -16,13 +16,13 @@ class Customer extends Model
 
     public $timestamps = false;
 
-    protected $fillable = [
-        'accountID',
-        'CustomersName2',
-        'CusPhone',
-        'CusAddress',
-        'CusIsStoopeed',
-    ];
+   protected $fillable = [
+    'accountID',
+    'CustomersName2',
+    'CusPhone',
+    'CusAddress',
+    'CusIsStopeed',
+];
 
     public function account()
     {

@@ -16,26 +16,31 @@
 
         <div class="btn-group">
             <button type="button" class="btn btn-outline-secondary" onclick="printCustomers()">
-                <i class="bi bi-printer"></i> طباعة القائمة
+                <i class="bi bi-printer"></i> طباعة 
             </button>
             <button
-            type="button"
-            class="btn btn-sm btn-primary"
-            id="addCustomerBtn">
-            <i class="bi bi-plus-lg me-1"></i>
-            إضافة عميل 
-        </button>
+                type="button"
+                class="btn btn-sm btn-primary"
+                id="addCustomerBtn">
+                <i class="bi bi-plus-lg me-1"></i>
+                إضافة عميل 
+            </button>
         </div>
     </div>
 
     @include('setting.customers.search')
-    @include('setting.customers.table')
+
+    <div id="customersTableContainer">
+        @include('setting.customers.table')
+    </div>
 
 </div>
 
-    @include('setting.customers.deletModel')
-    @include('setting.customers.addUpdate')
+@include('setting.customers.deletModel')
+@include('setting.customers.addUpdate')
+
 @endsection
+
 @push('scripts')
 <script src="{{ asset('js/customer.js') }}"></script>
 @endpush

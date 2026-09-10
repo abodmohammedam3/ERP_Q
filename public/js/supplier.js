@@ -1,318 +1,1712 @@
-let supplierModalInstance;
-let lastAnalyticalAccount = 12310000; // القيمة الأولية، سيتم تحديثها عند التحميل
+/**
+ * =========================================================
+ * supplier.js
+ * إدارة الموردين
+ * =========================================================
+ */
 
-// تهيئة النافذة المنبثقة وتحديد آخر رقم محاسبي من الجدول
-document.addEventListener('DOMContentLoaded', function() {
-    const modalElement = document.getElementById('supplierModal');
-    if(modalElement) {
-        supplierModalInstance = new bootstrap.Modal(modalElement);
+document.addEventListener('DOMContentLoaded', function () {
+
+    // =====================================================
+    // عناصر الصفحة
+    // =====================================================
+
+    const addSupplierBtn =
+        document.getElementById('addSupplierBtn');
+
+    const supplierForm =
+        document.getElementById('supplierForm');
+
+    const supplierModalElement =
+        document.getElementById('supplierModal');
+
+    const saveSupplierBtn =
+        document.getElementById('saveSupplierBtn');
+
+    const supplierModalTitle =
+        document.getElementById('supplierModalLabel');
+
+    let suppliersTableContainer =
+        document.getElementById(
+            'suppliersTableContainer'
+        );
+
+    let suppliersTbody =
+        document.getElementById(
+            'suppliersTableBody'
+        );
+
+    // عناصر البحث
+    const searchName =
+        document.getElementById('searchSupplierName');
+
+    const searchPhone =
+        document.getElementById('searchSupplierPhone');
+
+    const searchCode =
+        document.getElementById('searchSupplierCode');
+
+    // حقول النموذج
+    const supplierID =
+        document.getElementById('supplierID');
+
+    const supName =
+        document.getElementById('supName');
+
+    const supPhone =
+        document.getElementById('supPhone');
+
+    const supArea =
+        document.getElementById('supArea');
+
+    const supStatus =
+        document.getElementById('supStatus');
+
+    // رقم الحساب التحليلي
+    const supplierAccountCode =
+        document.getElementById('supplierAccountCode');
+
+    // نافذة الحذف
+    const deleteConfirmModal =
+        document.getElementById('deleteConfirmModal');
+
+    const deleteCancelBtn =
+        document.getElementById('deleteCancelBtn');
+
+    const deleteConfirmBtn =
+        document.getElementById('deleteConfirmBtn');
+
+    // =====================================================
+    // Modals
+    // =====================================================
+
+    let supplierModal = null;
+
+    if (supplierModalElement) {
+
+        supplierModal =
+            bootstrap.Modal.getOrCreateInstance(
+                supplierModalElement
+            );
     }
 
-    // حساب آخر رقم محاسبي مستخدم من الجدول
-    const rows = document.querySelectorAll('tr.supplier-row');
-    let maxAccount = 12310000;
-    rows.forEach(row => {
-        const accText = row.querySelector('.row-analytical')?.innerText.trim();
-        if (accText) {
-            const num = parseInt(accText, 10);
-            if (!isNaN(num) && num > maxAccount) {
-                maxAccount = num;
+    let formMode = 'add';
+
+    let editingSupplierId = null;
+
+    let deletingSupplierId = null;
+
+    let searchController = null;
+
+    let currentPage = 1;
+
+    const rowsPerPage = 10;
+
+    // =====================================================
+    // بيانات المورد الأصلية قبل التعديل
+    // =====================================================
+
+    let originalSupplierData = null;
+
+    // =====================================================
+    // CSRF Token
+    // =====================================================
+
+    function getCsrfToken() {
+
+        const token =
+            document.querySelector(
+                'meta[name="csrf-token"]'
+            );
+
+        return token
+            ? token.getAttribute('content')
+            : '';
+    }
+
+    // =====================================================
+    // إدارة النموذج
+    // =====================================================
+
+    function setAddMode() {
+
+        formMode = 'add';
+
+        editingSupplierId = null;
+
+        originalSupplierData = null;
+
+        if (supplierModalTitle) {
+
+            supplierModalTitle.textContent =
+                'إضافة مورد جديد';
+        }
+
+        if (saveSupplierBtn) {
+
+            saveSupplierBtn.textContent =
+                'حفظ البيانات';
+        }
+
+        if (supplierForm) {
+
+            supplierForm.reset();
+        }
+
+        if (supplierID) {
+
+            supplierID.value = '';
+        }
+
+        if (supplierAccountCode) {
+
+            supplierAccountCode.value = '';
+        }
+
+        if (supStatus) {
+
+            supStatus.value = '0';
+        }
+
+        setFormMethod('POST');
+    }
+
+    // =====================================================
+    // تعديل المورد
+    // =====================================================
+
+    window.editSupplier = async function (id) {
+
+        try {
+
+            const response =
+                await fetch(
+                    `/setting/suppliers/${id}`,
+                    {
+                        headers: {
+                            'Accept':
+                                'application/json',
+
+                            'X-Requested-With':
+                                'XMLHttpRequest'
+                        }
+                    }
+                );
+
+            const data =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !data.success
+            ) {
+
+                throw new Error(
+                    data.message ||
+                    'تعذر تحميل بيانات المورد'
+                );
+            }
+
+            const supplier =
+                data.supplier;
+
+            // =================================================
+            // حفظ البيانات الأصلية قبل التعديل
+            // =================================================
+
+            originalSupplierData = {
+
+                supName:
+                    supplier.supName ?? '',
+
+                supPhone:
+                    supplier.supPhone ?? '',
+
+                supArea:
+                    supplier.supArea ?? '',
+
+                supStoped:
+                    String(
+                        supplier.supStoped ?? 0
+                    )
+            };
+
+            formMode = 'edit';
+
+            editingSupplierId =
+                supplier.suplierID;
+
+            if (supplierModalTitle) {
+
+                supplierModalTitle.textContent =
+                    'تعديل المورد';
+            }
+
+            if (saveSupplierBtn) {
+
+                saveSupplierBtn.textContent =
+                    'تحديث البيانات';
+            }
+
+            if (supplierID) {
+
+                supplierID.value =
+                    supplier.suplierID ?? '';
+            }
+
+            if (supName) {
+
+                supName.value =
+                    supplier.supName ?? '';
+            }
+
+            if (supPhone) {
+
+                supPhone.value =
+                    supplier.supPhone ?? '';
+            }
+
+            if (supArea) {
+
+                supArea.value =
+                    supplier.supArea ?? '';
+            }
+
+            if (supStatus) {
+
+                supStatus.value =
+                    String(
+                        supplier.supStoped ?? 0
+                    );
+            }
+
+            // =================================================
+            // رقم الحساب التحليلي
+            // =================================================
+
+            if (supplierAccountCode) {
+
+                supplierAccountCode.value =
+                    supplier.accountCode ?? '';
+            }
+
+            setFormMethod('PUT');
+
+            if (supplierModal) {
+
+                supplierModal.show();
+            }
+
+        } catch (error) {
+
+            console.error('خطأ:', error);
+
+            if (
+                typeof showSystemToast ===
+                'function'
+            ) {
+
+                showSystemToast(
+                    error.message,
+                    'danger'
+                );
             }
         }
-    });
-    lastAnalyticalAccount = maxAccount;
-});
-
-// الحصول على الرقم المحاسبي التالي
-function getNextAnalyticalAccount() {
-    return lastAnalyticalAccount + 1;
-}
-
-// فتح نافذة الإضافة (تفريغ الحقول أولاً)
-function openSupplierModal() {
-    document.getElementById('supplierForm').reset();
-    document.getElementById('suplierID').value = '';
-    document.getElementById('supplierModalLabel').innerText = 'إضافة مورد جديد';
-
-    // تعيين الرقم المحاسبي التالي
-    const nextAccount = getNextAnalyticalAccount();
-    document.getElementById('analyticalAccount').value = nextAccount;
-    
-    supplierModalInstance.show();
-}
-
-// فتح نافذة التعديل (تعبئة الحقول ببيانات الصف المحدد)
-function editSupplier(btn) {
-    const row = btn.closest('tr');
-    
-    const id = row.querySelector('.row-id').innerText.trim();
-    const name = row.querySelector('.row-name').innerText.trim();
-    const phone = row.querySelector('.row-phone').innerText.trim();
-    const area = row.querySelector('.row-area').innerText.trim();
-    const analytical = row.querySelector('.row-analytical').innerText.trim();
-    const status = row.querySelector('.row-status').getAttribute('data-status');
-
-    document.getElementById('suplierID').value = id;
-    document.getElementById('supName').value = name;
-    document.getElementById('supPhone').value = phone;
-    document.getElementById('supArea').value = area;
-    document.getElementById('analyticalAccount').value = analytical;
-    document.getElementById('supStatus').value = status;
-
-    document.getElementById('supplierModalLabel').innerText = 'تعديل بيانات المورد';
-    
-    supplierModalInstance.show();
-}
-
-// حفظ بيانات المورد (إضافة أو تعديل)
-function saveSupplier() {
-    const form = document.getElementById('supplierForm');
-    
-    // تحقق بسيط من الحقول الإلزامية
-    if (!form.checkValidity()) {
-        form.reportValidity();
-        return;
-    }
-
-    const id = document.getElementById('suplierID').value;
-    const name = document.getElementById('supName').value.trim();
-    const phone = document.getElementById('supPhone').value.trim();
-    const area = document.getElementById('supArea').value.trim();
-    const analytical = document.getElementById('analyticalAccount').value.trim();
-    const status = document.getElementById('supStatus').value;
-
-    // كائن بيانات المورد
-    const supplierData = {
-        id: id ? parseInt(id) : null,
-        name: name,
-        phone: phone,
-        area: area,
-        analytical: analytical,
-        status: status
     };
 
-    if (id) {
-        // تعديل موجود
-        updateSupplierRow(id, supplierData);
-        alert('تم تعديل بيانات المورد: ' + name + ' بنجاح!');
-    } else {
-        // إضافة جديد
-        // نتحقق من أن الرقم المحاسبي لم يتغير (قد يكون تم تغييره يدوياً، لكنه readonly)
-        // نضيف الصف
-        addSupplierRow(supplierData);
-        // تحديث آخر رقم محاسبي
-        lastAnalyticalAccount = parseInt(analytical, 10);
-        alert('تم إضافة المورد: ' + name + ' بنجاح!');
-    }
+    // =====================================================
+    // تحديد طريقة الإرسال
+    // =====================================================
 
-    supplierModalInstance.hide();
-}
+    function setFormMethod(method) {
 
-// إضافة صف جديد إلى الجدول
-function addSupplierRow(data) {
-    const tbody = document.getElementById('suppliersTableBody');
-    // إزالة رسالة "لا يوجد موردون" إن وجدت
-    const emptyRow = document.getElementById('emptyRow');
-    if (emptyRow) {
-        emptyRow.remove();
-    }
+        if (!supplierForm) return;
 
-    // إنشاء صف جديد
-    const row = document.createElement('tr');
-    row.className = 'text-center supplier-row';
-    row.setAttribute('data-id', data.id || 'new');
+        let methodInput =
+            supplierForm.querySelector(
+                'input[name="_method"]'
+            );
 
-    // نعطي id مؤقت إذا كان جديداً (يمكن استخدام وقت)
-    const tempId = data.id || Date.now();
+        if (
+            method.toUpperCase() ===
+            'POST'
+        ) {
 
-    // تحديد نص الحالة
-    const statusBadge = data.status == 1 
-        ? '<span class="badge bg-danger">متوقف</span>' 
-        : '<span class="badge bg-success">نشط</span>';
+            if (methodInput) {
 
-    row.innerHTML = `
-        <td class="row-id">${tempId}</td>
-        <td class="row-name">${escapeHtml(data.name)}</td>
-        <td class="row-phone">${escapeHtml(data.phone)}</td>
-        <td class="row-area">${escapeHtml(data.area)}</td>
-        <td class="row-analytical">${escapeHtml(data.analytical)}</td>
-        <td class="row-status" data-status="${data.status}">${statusBadge}</td>
-        <td class="text-center">
-            <button type="button" class="btn btn-sm btn-outline-primary" onclick="editSupplier(this)">
-                <i class="bi bi-pencil"></i> تعديل
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteSupplier(this)">
-                <i class="bi bi-trash"></i> حذف
-            </button>
-        </td>
-    `;
+                methodInput.remove();
+            }
 
-    tbody.appendChild(row);
-}
+            supplierForm.method =
+                'POST';
 
-// تحديث صف موجود
-function updateSupplierRow(id, data) {
-    const rows = document.querySelectorAll('tr.supplier-row');
-    let targetRow = null;
-    rows.forEach(row => {
-        if (row.querySelector('.row-id').innerText.trim() == id) {
-            targetRow = row;
+            return;
         }
-    });
 
-    if (!targetRow) {
-        alert('الصف غير موجود');
-        return;
+        if (!methodInput) {
+
+            methodInput =
+                document.createElement(
+                    'input'
+                );
+
+            methodInput.type =
+                'hidden';
+
+            methodInput.name =
+                '_method';
+
+            supplierForm.appendChild(
+                methodInput
+            );
+        }
+
+        methodInput.value =
+            method.toUpperCase();
+
+        supplierForm.method =
+            'POST';
     }
 
-    // تحديث البيانات
-    targetRow.querySelector('.row-name').innerText = data.name;
-    targetRow.querySelector('.row-phone').innerText = data.phone;
-    targetRow.querySelector('.row-area').innerText = data.area;
-    targetRow.querySelector('.row-analytical').innerText = data.analytical;
-    const statusTd = targetRow.querySelector('.row-status');
-    statusTd.setAttribute('data-status', data.status);
-    statusTd.innerHTML = data.status == 1 
-        ? '<span class="badge bg-danger">متوقف</span>' 
-        : '<span class="badge bg-success">نشط</span>';
-}
+    // =====================================================
+    // حفظ / تحديث المورد
+    // =====================================================
 
-// حذف مورد
-function deleteSupplier(btn) {
-    const row = btn.closest('tr');
-    const name = row.querySelector('.row-name').innerText.trim();
+    if (supplierForm) {
 
-    if (confirm('هل أنت متأكد من حذف المورد: ' + name + '؟')) {
-        row.remove();
-        alert('تم الحذف بنجاح');
-        
-        // التحقق مما إذا كان الجدول فارغاً لإظهار رسالة "لا يوجد موردون"
-        const tbody = document.getElementById('suppliersTableBody');
-        if (tbody.querySelectorAll('tr.supplier-row').length === 0) {
-            tbody.innerHTML = `
-                <tr id="emptyRow">
-                    <td colspan="7" class="text-center text-muted py-5">
-                        <i class="bi bi-truck fs-2 d-block mb-2"></i>
-                        لا يوجد موردون مسجلون
-                    </td>
-                </tr>
-            `;
+        supplierForm.addEventListener(
+            'submit',
+            async function (event) {
+
+                event.preventDefault();
+
+                if (
+                    saveSupplierBtn &&
+                    saveSupplierBtn.disabled
+                ) {
+
+                    return;
+                }
+
+                // =================================================
+                // التحقق من وجود تعديل
+                // =================================================
+
+                if (
+                    formMode === 'edit' &&
+                    originalSupplierData
+                ) {
+
+                    const currentSupplierData = {
+
+                        supName:
+                            supName?.value.trim() ?? '',
+
+                        supPhone:
+                            supPhone?.value.trim() ?? '',
+
+                        supArea:
+                            supArea?.value.trim() ?? '',
+
+                        supStoped:
+                            String(
+                                supStatus?.value ?? '0'
+                            )
+                    };
+
+                    const hasChanges =
+                        currentSupplierData.supName !==
+                            originalSupplierData.supName ||
+
+                        currentSupplierData.supPhone !==
+                            originalSupplierData.supPhone ||
+
+                        currentSupplierData.supArea !==
+                            originalSupplierData.supArea ||
+
+                        currentSupplierData.supStoped !==
+                            originalSupplierData.supStoped;
+
+                    if (!hasChanges) {
+
+                        if (
+                            typeof showSystemToast ===
+                            'function'
+                        ) {
+
+                            showSystemToast(
+                                'لم يتم إجراء أي تعديل على بيانات المورد',
+                                'danger'
+                            );
+                        }
+
+                        return;
+                    }
+                }
+
+                if (saveSupplierBtn) {
+
+                    saveSupplierBtn.disabled =
+                        true;
+                }
+
+                try {
+
+                    const formData =
+                        new FormData(
+                            supplierForm
+                        );
+
+                    // لا نرسل accountID
+                    formData.delete(
+                        'accountID'
+                    );
+
+                    let url =
+                        '/setting/suppliers';
+
+                    const isEdit =
+                        formMode === 'edit' &&
+                        editingSupplierId;
+
+                    if (isEdit) {
+
+                        url =
+                            `/setting/suppliers/${editingSupplierId}`;
+
+                        formData.set(
+                            '_method',
+                            'PUT'
+                        );
+                    }
+
+                    const response =
+                        await fetch(
+                            url,
+                            {
+                                method: 'POST',
+
+                                headers: {
+                                    'Accept':
+                                        'application/json',
+
+                                    'X-Requested-With':
+                                        'XMLHttpRequest',
+
+                                    'X-CSRF-TOKEN':
+                                        getCsrfToken()
+                                },
+
+                                body: formData
+                            }
+                        );
+
+                    const data =
+                        await response.json();
+
+                    if (
+                        !response.ok ||
+                        !data.success
+                    ) {
+
+                        let message =
+                            data.message ||
+                            'حدث خطأ أثناء الحفظ';
+
+                        if (
+                            data.errors &&
+                            typeof data.errors ===
+                                'object'
+                        ) {
+
+                            const firstError =
+                                Object.values(
+                                    data.errors
+                                )[0];
+
+                            if (
+                                Array.isArray(
+                                    firstError
+                                )
+                            ) {
+
+                                message =
+                                    firstError[0];
+                            }
+                        }
+
+                        throw new Error(
+                            message
+                        );
+                    }
+
+                    // =================================================
+                    // عرض الرقم التحليلي
+                    // =================================================
+
+                    if (
+                        supplierAccountCode &&
+                        data.supplier &&
+                        data.supplier.accountCode
+                    ) {
+
+                        supplierAccountCode.value =
+                            data.supplier.accountCode;
+                    }
+
+                    // =================================================
+                    // إعادة تحميل الجدول من Blade
+                    // =================================================
+
+                    await reloadSuppliersTable();
+
+                    if (
+                        typeof showSystemToast ===
+                        'function'
+                    ) {
+
+                        showSystemToast(
+                            data.message ||
+                            (
+                                formMode === 'edit'
+                                    ? 'تم التحديث بنجاح'
+                                    : 'تمت الإضافة بنجاح'
+                            ),
+                            'success'
+                        );
+                    }
+
+                    if (supplierModal) {
+
+                        supplierModal.hide();
+                    }
+
+                    setAddMode();
+
+                } catch (error) {
+
+                    console.error(
+                        'خطأ:',
+                        error
+                    );
+
+                    if (
+                        typeof showSystemToast ===
+                        'function'
+                    ) {
+
+                        showSystemToast(
+                            error.message,
+                            'danger'
+                        );
+                    }
+
+                } finally {
+
+                    if (saveSupplierBtn) {
+
+                        saveSupplierBtn.disabled =
+                            false;
+                    }
+                }
+            }
+        );
+    }
+
+    // =====================================================
+    // إضافة مورد
+    // =====================================================
+
+    if (addSupplierBtn) {
+
+        addSupplierBtn.addEventListener(
+            'click',
+            function () {
+
+                setAddMode();
+
+                if (supplierModal) {
+
+                    supplierModal.show();
+                }
+            }
+        );
+    }
+
+    // =====================================================
+    // إغلاق نافذة المورد
+    // =====================================================
+
+    if (supplierModalElement) {
+
+        supplierModalElement.addEventListener(
+            'hidden.bs.modal',
+            function () {
+
+                setAddMode();
+            }
+        );
+    }
+
+    // =====================================================
+    // الحذف
+    // =====================================================
+
+    window.deleteSupplier =
+        function (id) {
+
+            deletingSupplierId = id;
+
+            if (deleteConfirmModal) {
+
+                deleteConfirmModal.classList.add(
+                    'show'
+                );
+
+                deleteConfirmModal.style.display =
+                    'flex';
+
+                document.body.classList.add(
+                    'delete-confirm-open'
+                );
+            }
+        };
+
+    function closeDeleteConfirm() {
+
+        deletingSupplierId = null;
+
+        if (deleteConfirmModal) {
+
+            deleteConfirmModal.classList.remove(
+                'show'
+            );
+
+            deleteConfirmModal.style.display =
+                'none';
+        }
+
+        document.body.classList.remove(
+            'delete-confirm-open'
+        );
+    }
+
+    if (deleteCancelBtn) {
+
+        deleteCancelBtn.addEventListener(
+            'click',
+            closeDeleteConfirm
+        );
+    }
+
+    if (deleteConfirmBtn) {
+
+        deleteConfirmBtn.addEventListener(
+            'click',
+            async function () {
+
+                if (!deletingSupplierId) {
+
+                    return;
+                }
+
+                const supplierID =
+                    deletingSupplierId;
+
+                deleteConfirmBtn.disabled =
+                    true;
+
+                try {
+
+                    const response =
+                        await fetch(
+                            `/setting/suppliers/${supplierID}`,
+                            {
+                                method: 'DELETE',
+
+                                headers: {
+                                    'Accept':
+                                        'application/json',
+
+                                    'X-Requested-With':
+                                        'XMLHttpRequest',
+
+                                    'X-CSRF-TOKEN':
+                                        getCsrfToken()
+                                }
+                            }
+                        );
+
+                    const data =
+                        await response.json();
+
+                    if (
+                        !response.ok ||
+                        !data.success
+                    ) {
+
+                        throw new Error(
+                            data.message ||
+                            'لا يمكن حذف المورد لوجود حركات مرتبطة به'
+                        );
+                    }
+
+                    // =================================================
+                    // إعادة تحميل الجدول من Blade
+                    // =================================================
+
+                    await reloadSuppliersTable();
+
+                    closeDeleteConfirm();
+
+                    if (
+                        typeof showSystemToast ===
+                        'function'
+                    ) {
+
+                        showSystemToast(
+                            data.message ||
+                            'تم حذف المورد بنجاح',
+                            'success'
+                        );
+                    }
+
+                } catch (error) {
+
+                    closeDeleteConfirm();
+
+                    if (
+                        typeof showSystemToast ===
+                        'function'
+                    ) {
+
+                        showSystemToast(
+                            error.message,
+                            'danger'
+                        );
+                    }
+
+                } finally {
+
+                    deleteConfirmBtn.disabled =
+                        false;
+                }
+            }
+        );
+    }
+
+    // =====================================================
+    // Pagination
+    // =====================================================
+
+    function applyPagination() {
+
+        if (!suppliersTbody) return;
+
+        const rows =
+            Array.from(
+                suppliersTbody.querySelectorAll(
+                    'tr.supplier-row'
+                )
+            );
+
+        const totalRows =
+            rows.length;
+
+        const totalPages =
+            Math.max(
+                1,
+                Math.ceil(
+                    totalRows /
+                    rowsPerPage
+                )
+            );
+
+        if (
+            currentPage >
+            totalPages
+        ) {
+
+            currentPage =
+                totalPages;
+        }
+
+        const start =
+            (currentPage - 1) *
+            rowsPerPage;
+
+        const end =
+            start +
+            rowsPerPage;
+
+        rows.forEach(
+            function (row, index) {
+
+                row.style.display =
+                    (
+                        index >= start &&
+                        index < end
+                    )
+                        ? ''
+                        : 'none';
+
+                const firstCell =
+                    row.querySelector(
+                        'td:first-child'
+                    );
+
+                if (firstCell) {
+
+                    firstCell.textContent =
+                        index + 1;
+                }
+            }
+        );
+
+        renderPagination(
+            totalRows,
+            totalPages,
+            start,
+            end
+        );
+    }
+
+    function renderPagination(
+        totalRows,
+        totalPages,
+        start,
+        end
+    ) {
+
+        const paginationList =
+            document.getElementById(
+                'suppliersPaginationList'
+            );
+
+        const paginationInfo =
+            document.getElementById(
+                'suppliersPaginationInfo'
+            );
+
+        if (paginationInfo) {
+
+            if (totalRows === 0) {
+
+                paginationInfo.textContent =
+                    'عرض 0-0 من 0 مورد';
+
+            } else {
+
+                paginationInfo.textContent =
+                    `عرض ${start + 1}-${Math.min(
+                        end,
+                        totalRows
+                    )} من ${totalRows} مورد`;
+            }
+        }
+
+        if (!paginationList) return;
+
+        paginationList.innerHTML = '';
+
+        if (totalPages <= 1) return;
+
+        const prevLi =
+            document.createElement(
+                'li'
+            );
+
+        prevLi.className =
+            `page-item ${
+                currentPage === 1
+                    ? 'disabled'
+                    : ''
+            }`;
+
+        prevLi.innerHTML =
+            `<button
+                type="button"
+                class="page-link"
+                data-page="${currentPage - 1}">
+                السابق
+            </button>`;
+
+        paginationList.appendChild(
+            prevLi
+        );
+
+        for (
+            let page = 1;
+            page <= totalPages;
+            page++
+        ) {
+
+            const li =
+                document.createElement(
+                    'li'
+                );
+
+            li.className =
+                `page-item ${
+                    page === currentPage
+                        ? 'active'
+                        : ''
+                }`;
+
+            li.innerHTML =
+                `<button
+                    type="button"
+                    class="page-link"
+                    data-page="${page}">
+                    ${page}
+                </button>`;
+
+            paginationList.appendChild(
+                li
+            );
+        }
+
+        const nextLi =
+            document.createElement(
+                'li'
+            );
+
+        nextLi.className =
+            `page-item ${
+                currentPage === totalPages
+                    ? 'disabled'
+                    : ''
+            }`;
+
+        nextLi.innerHTML =
+            `<button
+                type="button"
+                class="page-link"
+                data-page="${currentPage + 1}">
+                التالي
+            </button>`;
+
+        paginationList.appendChild(
+            nextLi
+        );
+    }
+
+    const paginationList =
+        document.getElementById(
+            'suppliersPaginationList'
+        );
+
+    // =====================================================
+    // البحث
+    // =====================================================
+
+    let searchTimer = null;
+
+    function handleSearch() {
+
+        clearTimeout(searchTimer);
+
+        searchTimer = setTimeout(() => {
+
+            currentPage = 1;
+
+            reloadSuppliersTable();
+
+        }, 300);
+    }
+
+    if (searchName) {
+
+        searchName.addEventListener(
+            'focus',
+            function () {
+
+                if (
+                    searchName.value.trim() !== ''
+                ) {
+                    return;
+                }
+
+                if (searchPhone) {
+                    searchPhone.value = '';
+                }
+
+                if (searchCode) {
+                    searchCode.value = '';
+                }
+
+                currentPage = 1;
+
+                reloadSuppliersTable();
+            }
+        );
+
+        searchName.addEventListener(
+            'input',
+            handleSearch
+        );
+    }
+
+    if (searchPhone) {
+
+        searchPhone.addEventListener(
+            'focus',
+            function () {
+
+                if (
+                    searchPhone.value.trim() !== ''
+                ) {
+                    return;
+                }
+
+                if (searchName) {
+                    searchName.value = '';
+                }
+
+                if (searchCode) {
+                    searchCode.value = '';
+                }
+
+                currentPage = 1;
+
+                reloadSuppliersTable();
+            }
+        );
+
+        searchPhone.addEventListener(
+            'input',
+            handleSearch
+        );
+    }
+
+    if (searchCode) {
+
+        searchCode.addEventListener(
+            'focus',
+            function () {
+
+                if (
+                    searchCode.value.trim() !== ''
+                ) {
+                    return;
+                }
+
+                if (searchName) {
+                    searchName.value = '';
+                }
+
+                if (searchPhone) {
+                    searchPhone.value = '';
+                }
+
+                currentPage = 1;
+
+                reloadSuppliersTable();
+            }
+        );
+
+        searchCode.addEventListener(
+            'input',
+            handleSearch
+        );
+    }
+
+    // =====================================================
+    // إعادة تحميل جدول الموردين
+    // =====================================================
+
+    async function reloadSuppliersTable() {
+
+        // إلغاء الطلب السابق إن وجد
+        if (searchController) {
+
+            searchController.abort();
+        }
+
+        searchController =
+            new AbortController();
+
+        try {
+
+            const params =
+                new URLSearchParams();
+
+            if (
+                searchName &&
+                searchName.value.trim()
+            ) {
+
+                params.set(
+                    'search_name',
+                    searchName.value.trim()
+                );
+            }
+
+            if (
+                searchPhone &&
+                searchPhone.value.trim()
+            ) {
+
+                params.set(
+                    'search_phone',
+                    searchPhone.value.trim()
+                );
+            }
+
+            if (
+                searchCode &&
+                searchCode.value.trim()
+            ) {
+
+                params.set(
+                    'search_code',
+                    searchCode.value.trim()
+                );
+            }
+
+            const query =
+                params.toString();
+
+            const url =
+                query
+                    ? `/setting/suppliers/list?${query}`
+                    : '/setting/suppliers/list';
+
+            const response =
+                await fetch(
+                    url,
+                    {
+                        headers: {
+                            'Accept':
+                                'application/json',
+
+                            'X-Requested-With':
+                                'XMLHttpRequest'
+                        },
+
+                        signal:
+                            searchController.signal
+                    }
+                );
+
+            const data =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !data.success
+            ) {
+
+                throw new Error(
+                    data.message ||
+                    'تعذر تحميل الموردين'
+                );
+            }
+
+            // =================================================
+            // Blade هو الذي أنشأ الجدول والصفوف
+            // =================================================
+
+            if (
+                suppliersTableContainer
+            ) {
+
+                suppliersTableContainer.innerHTML =
+                    data.html || '';
+
+                suppliersTbody =
+                    document.getElementById(
+                        'suppliersTableBody'
+                    );
+            }
+
+            applyPagination();
+
+        } catch (error) {
+
+            // تجاهل خطأ الإلغاء
+            if (
+                error.name ===
+                'AbortError'
+            ) {
+
+                return;
+            }
+
+            console.error(
+                'خطأ:',
+                error
+            );
+
+            if (
+                typeof showSystemToast ===
+                'function'
+            ) {
+
+                showSystemToast(
+                    error.message,
+                    'danger'
+                );
+            }
         }
     }
-}
 
-// فلترة وبحث في الجدول محلياً
-function filterSuppliers() {
-    const searchText = document.getElementById('searchInput').value.toLowerCase();
-    const statusValue = document.getElementById('statusFilter').value;
-    const rows = document.querySelectorAll('tr.supplier-row');
+    // =====================================================
+    // أحداث الجدول
+    // =====================================================
 
-    rows.forEach(row => {
-        const name = row.querySelector('.row-name').innerText.toLowerCase();
-        const phone = row.querySelector('.row-phone').innerText.toLowerCase();
-        const status = row.querySelector('.row-status').getAttribute('data-status');
+    if (
+        suppliersTableContainer
+    ) {
 
-        const matchSearch = name.includes(searchText) || phone.includes(searchText);
-        const matchStatus = statusValue === "" || status === statusValue;
+        suppliersTableContainer.addEventListener(
+            'click',
+            function (event) {
 
-        if (matchSearch && matchStatus) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
-        }
-    });
-}
+                // =================================================
+                // التنقل بين الصفحات
+                // =================================================
 
-// دالة الطباعة
+                const paginationBtn =
+                    event.target.closest(
+                        '[data-page]'
+                    );
+
+                if (paginationBtn) {
+
+                    event.preventDefault();
+
+                    const page =
+                        parseInt(
+                            paginationBtn.dataset.page,
+                            10
+                        );
+
+                    if (
+                        !page ||
+                        page < 1
+                    ) {
+                        return;
+                    }
+
+                    currentPage =
+                        page;
+
+                    applyPagination();
+
+                    return;
+                }
+
+                // =================================================
+                // تعديل المورد
+                // =================================================
+
+                const editBtn =
+                    event.target.closest(
+                        '.edit-supplier'
+                    );
+
+                if (editBtn) {
+
+                    event.preventDefault();
+
+                    editSupplier(
+                        editBtn.dataset.id
+                    );
+
+                    return;
+                }
+
+                // =================================================
+                // حذف المورد
+                // =================================================
+
+                const deleteBtn =
+                    event.target.closest(
+                        '.delete-supplier'
+                    );
+
+                if (deleteBtn) {
+
+                    event.preventDefault();
+
+                    deleteSupplier(
+                        deleteBtn.dataset.id
+                    );
+
+                    return;
+                }
+            }
+        );
+    }
+
+    // =====================================================
+    // التهيئة الأولية
+    // =====================================================
+
+    if (suppliersTbody) {
+
+        applyPagination();
+    }
+
+    // تحميل الموردين عند فتح الصفحة
+
+});
+
+
+// =====================================================
+// طباعة التقرير
+// =====================================================
+
 function printSuppliers() {
-    // نأخذ الصفوف المرئية فقط (حسب الفلترة)
-    const rows = document.querySelectorAll('tr.supplier-row');
-    let visibleRows = [];
-    rows.forEach(row => {
-        if (row.style.display !== 'none') {
-            visibleRows.push(row);
-        }
-    });
 
-    if (visibleRows.length === 0) {
-        alert('لا توجد بيانات للطباعة');
+    const table =
+        document.getElementById(
+            'suppliersTable'
+        );
+
+    if (!table) {
+
         return;
     }
 
-    // بناء محتوى الطباعة
-    let tableHtml = `
-        <table border="1" cellpadding="5" style="width:100%; border-collapse:collapse; text-align:center;">
-            <thead>
-                <tr>
-                    <th>الرقم</th>
-                    <th>اسم المورد</th>
-                    <th>الهاتف</th>
-                    <th>المنطقة</th>
-                    <th>رقم الحساب التحليلي</th>
-                    <th>الحالة</th>
-                </tr>
-            </thead>
-            <tbody>
-    `;
+    const printTable =
+        table.cloneNode(true);
 
-    visibleRows.forEach(row => {
-        const id = row.querySelector('.row-id').innerText.trim();
-        const name = row.querySelector('.row-name').innerText.trim();
-        const phone = row.querySelector('.row-phone').innerText.trim();
-        const area = row.querySelector('.row-area').innerText.trim();
-        const analytical = row.querySelector('.row-analytical').innerText.trim();
-        const statusText = row.querySelector('.row-status .badge').innerText.trim();
+    // حذف عمود الإجراءات
+    printTable
+        .querySelectorAll(
+            'th:last-child, td:last-child'
+        )
+        .forEach(
+            cell => cell.remove()
+        );
 
-        tableHtml += `
-            <tr>
-                <td>${id}</td>
-                <td>${name}</td>
-                <td>${phone}</td>
-                <td>${area}</td>
-                <td>${analytical}</td>
-                <td>${statusText}</td>
-            </tr>
-        `;
-    });
+    // =================================================
+    // جلب جميع صفوف الموردين
+    // =================================================
 
-    tableHtml += `</tbody></table>`;
+    const allRows =
+        Array.from(
+            table.querySelectorAll(
+                'tbody tr.supplier-row'
+            )
+        );
 
+    const printTbody =
+        printTable.querySelector(
+            'tbody'
+        );
+
+    if (printTbody) {
+
+        printTbody.innerHTML = '';
+
+        allRows.forEach(
+            row => {
+
+                const clonedRow =
+                    row.cloneNode(true);
+
+                clonedRow.style.display =
+                    'table-row';
+
+                clonedRow.classList.remove(
+                    'd-none'
+                );
+
+                clonedRow
+                    .querySelectorAll(
+                        'td:last-child'
+                    )
+                    .forEach(
+                        cell => cell.remove()
+                    );
+
+                printTbody.appendChild(
+                    clonedRow
+                );
+            }
+        );
+    }
+
+    // =================================================
+    // إعداد عرض الجدول للطباعة
+    // =================================================
+
+    printTable.style.width =
+        '100%';
+
+    printTable.style.tableLayout =
+        'auto';
+
+    printTable
+        .querySelectorAll(
+            'th, td'
+        )
+        .forEach(
+            cell => {
+
+                cell.style.overflow =
+                    'visible';
+
+                cell.style.textOverflow =
+                    'clip';
+
+                cell.style.whiteSpace =
+                    'normal';
+
+                cell.style.wordBreak =
+                    'normal';
+
+                cell.style.overflowWrap =
+                    'break-word';
+
+            }
+        );
+
+    // =================================================
+    // حساب عدد الموردين
+    // =================================================
+
+    const totalSuppliers =
+        allRows.length;
+
+    let activeSuppliers =
+        0;
+
+    let inactiveSuppliers =
+        0;
+
+    allRows.forEach(
+        row => {
+
+            const statusCell =
+                row.cells[5];
+
+            if (!statusCell) {
+
+                return;
+            }
+
+            const status =
+                statusCell.textContent.trim();
+
+            if (status === 'نشط') {
+
+                activeSuppliers++;
+
+            } else if (
+                status === 'غير نشط'
+            ) {
+
+                inactiveSuppliers++;
+            }
+
+        }
+    );
+
+    // =================================================
+    // التاريخ والوقت
+    // =================================================
+
+    const printDate =
+        new Date().toLocaleString(
+            'ar-YE',
+            {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            }
+        );
+
+    // =================================================
     // فتح نافذة الطباعة
-    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    // =================================================
+
+    const printWindow =
+        window.open(
+            '',
+            '_blank'
+        );
+
+    if (!printWindow) {
+
+        return;
+    }
+
     printWindow.document.write(`
         <!DOCTYPE html>
-        <html dir="rtl" lang="ar">
+
+        <html lang="ar" dir="rtl">
+
         <head>
+
             <meta charset="UTF-8">
-            <title>طباعة الموردين</title>
+
+            <title>تقرير الموردين</title>
+
             <style>
-                body { font-family: Arial, sans-serif; padding: 20px; direction: rtl; }
-                h2 { text-align: center; }
-                table { width: 100%; border-collapse: collapse; }
-                th, td { border: 1px solid #000; padding: 8px; text-align: center; }
-                th { background: #eee; }
-                .date { text-align: left; margin-bottom: 15px; }
+
+                body {
+                    font-family: Arial, sans-serif;
+                    direction: rtl;
+                    margin: 30px;
+                    color: #000;
+                }
+
+                .report-header {
+                    text-align: center;
+                    margin-bottom: 20px;
+                }
+
+                .report-header h2 {
+                    margin-bottom: 10px;
+                }
+
+                .report-date {
+                    font-size: 14px;
+                }
+
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    table-layout: auto !important;
+                }
+
+                thead {
+                    display: table-header-group;
+                }
+
+                tbody {
+                    display: table-row-group;
+                }
+
+                th,
+                td {
+                    border: 1px solid #000;
+                    padding: 8px;
+                    vertical-align: middle;
+
+                    white-space: normal !important;
+
+                    overflow: visible !important;
+
+                    text-overflow: clip !important;
+
+                    word-break: normal;
+
+                    overflow-wrap: break-word;
+                }
+
+                th {
+                    font-weight: bold;
+                    text-align: center;
+                }
+
+                td {
+                    text-align: right;
+                }
+
+                tr {
+                    page-break-inside: avoid;
+                    break-inside: avoid;
+                }
+
+                .report-footer {
+                    margin-top: 25px;
+                    padding-top: 15px;
+
+                    border-top: 1px solid #000;
+
+                    display: flex;
+
+                    justify-content: space-between;
+
+                    font-weight: bold;
+                }
+
+                @media print {
+
+                    body {
+                        margin: 15mm;
+                    }
+
+                    table {
+                        page-break-inside: auto;
+                    }
+
+                    thead {
+                        display: table-header-group;
+                    }
+
+                    tbody {
+                        display: table-row-group;
+                    }
+
+                    tr {
+                        page-break-inside: avoid;
+                        break-inside: avoid;
+                    }
+
+                }
+
             </style>
+
         </head>
+
         <body>
-            <h2>قائمة الموردين</h2>
-            <div class="date">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-YE')}</div>
-            ${tableHtml}
-            <script>
-                window.onload = function() { window.print(); };
-            <\/script>
+
+            <div class="report-header">
+
+                <h2>
+                    تقرير الموردين
+                </h2>
+
+                <div class="report-date">
+                    تاريخ الطباعة: ${printDate}
+                </div>
+
+            </div>
+
+            ${printTable.outerHTML}
+
+            <div class="report-footer">
+
+                <span>
+                    إجمالي الموردين:
+                    ${totalSuppliers}
+                </span>
+
+                <span>
+                    الموردون النشطون:
+                    ${activeSuppliers}
+                </span>
+
+                <span>
+                    الموردون غير النشطين:
+                    ${inactiveSuppliers}
+                </span>
+
+            </div>
+
         </body>
+
         </html>
     `);
-    printWindow.document.close();
-}
 
-// دالة لتجنب injection (حماية)
-function escapeHtml(value) {
-    return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+    printWindow.document.close();
+
+    printWindow.focus();
+
+    printWindow.onload =
+        function () {
+
+            printWindow.print();
+
+            printWindow.close();
+
+        };
 }

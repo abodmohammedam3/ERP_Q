@@ -1,396 +1,1769 @@
+console.log('===== stocks.js تم تحميله =====');
 let stockModalInstance;
 let currentStockId = null;
+
 let allStocksData = [];
 let filteredStocksData = [];
+
 let currentPage = 1;
+
 const rowsPerPage = 5;
+
 let deletingStockId = null;
 let nextAccountCode = null;
 
+let stockRowTemplate = null;
+
+
+/*
+ * =========================================================
+ * عند تحميل الصفحة
+ * =========================================================
+ */
+
 document.addEventListener('DOMContentLoaded', function () {
-    const modalElement = document.getElementById('stockModal');
+
+    const modalElement =
+        document.getElementById('stockModal');
+
     if (modalElement) {
-        stockModalInstance = new bootstrap.Modal(modalElement);
+
+        stockModalInstance =
+            new bootstrap.Modal(modalElement);
     }
 
-    const rows = document.querySelectorAll('#stocksTableBody tr.stock-row');
-    if (rows.length > 0) {
-        rows.forEach(row => {
-            const stock = {
-                StockID: parseInt(row.dataset.id, 10),
-                StockName: row.querySelector('.row-name').innerText.trim(),
-                accountDisplay: row.querySelector('.row-account') ? row.querySelector('.row-account').innerText.trim() : '',
-                is_active: row.querySelector('.row-status .toggle-status-btn')?.classList.contains('btn-success') ? 1 : 0
-            };
-            allStocksData.push(stock);
-        });
-    } else {
-        reloadStocksTable();
+
+    /*
+     * تحميل قالب الصف مرة واحدة
+     */
+
+    const template =
+        document.getElementById('stockRowTemplate');
+
+    if (template) {
+
+        const row =
+            template.content.firstElementChild;
+
+        if (row) {
+
+            stockRowTemplate =
+                row.cloneNode(true);
+        }
     }
 
-    filteredStocksData = [...allStocksData];
-    applyFiltersAndRender();
 
-    const cancelBtn = document.getElementById('deleteCancelBtn');
+    /*
+     * تحميل البيانات من الخادم
+     *
+     * مهم:
+     * لا نقرأ صفوف Blade القديمة.
+     */
+
+    reloadStocksTable();
+
+
+    /*
+     * أزرار الحذف
+     */
+
+    const cancelBtn =
+        document.getElementById(
+            'deleteCancelBtn'
+        );
+
     if (cancelBtn) {
-        cancelBtn.addEventListener('click', closeDeleteModal);
-    }
-    const confirmBtn = document.getElementById('deleteConfirmBtn');
-    if (confirmBtn) {
-        confirmBtn.addEventListener('click', confirmDeleteStock);
-    }
-    const overlay = document.getElementById('deleteConfirmModal');
-    if (overlay) {
-        overlay.addEventListener('click', function (e) {
-            if (e.target === this) closeDeleteModal();
-        });
-    }
-});
 
-function openStockModal() {
-    document.getElementById('stockForm').reset();
-    document.getElementById('stockID').value = '';
-    document.getElementById('accountDisplay').value = '';
-    currentStockId = null;
-    document.getElementById('stockModalLabel').innerText = 'إضافة مخزن جديد';
-
-    // جلب رقم الحساب التالي من الخادم
-    fetch('/setting/inventory/warehouses/next-code', {
-        method: 'GET',
-        headers: {
-            'Accept': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                document.getElementById('accountDisplay').value = data.code;
-                nextAccountCode = data.code;
-            } else {
-                showSystemToast(data.message || 'تعذر الحصول على رقم الحساب التالي', 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('خطأ:', error);
-            showSystemToast('حدث خطأ في الاتصال بالخادم', 'danger');
-        });
-
-    stockModalInstance.show();
-}
-
-function editStock(btn) {
-    const row = btn.closest('tr');
-    const id = parseInt(row.dataset.id, 10);
-    const name = row.querySelector('.row-name').innerText.trim();
-    const accountDisplay = row.querySelector('.row-account') ? row.querySelector('.row-account').innerText.trim() : '';
-
-    document.getElementById('stockID').value = id;
-    document.getElementById('stockName').value = name;
-    document.getElementById('accountDisplay').value = accountDisplay;
-    currentStockId = id;
-    document.getElementById('stockModalLabel').innerText = 'تعديل بيانات المخزن';
-    stockModalInstance.show();
-}
-
-function saveStock() {
-    const form = document.getElementById('stockForm');
-    if (!form.checkValidity()) {
-        form.reportValidity();
-        return;
-    }
-
-    const id = document.getElementById('stockID').value;
-    const name = document.getElementById('stockName').value.trim();
-
-    const url = id ? `/setting/inventory/warehouses/${id}` : '/setting/inventory/warehouses';
-    const formData = new FormData();
-    formData.append('StockName', name);
-    if (id) formData.append('_method', 'PUT');
-
-    fetch(url, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json'
-        },
-        body: formData
-    })
-        .then(response => response.json().then(data => ({ status: response.status, data })))
-        .then(({ status, data }) => {
-            if (status !== 200 || !data.success) {
-                throw new Error(data.message || 'حدث خطأ غير معروف');
-            }
-            showSystemToast(data.message || 'تم حفظ المخزن بنجاح', 'success');
-            stockModalInstance.hide();
-            reloadStocksTable();
-        })
-        .catch(error => {
-            console.error('خطأ:', error);
-            showSystemToast(error.message || 'حدث خطأ في الاتصال بالخادم', 'danger');
-        });
-}
-
-function deleteStock(btn) {
-    const row = btn.closest('tr');
-    deletingStockId = parseInt(row.dataset.id, 10);
-    document.getElementById('deleteConfirmModal').classList.add('show');
-}
-
-function confirmDeleteStock() {
-    if (!deletingStockId) return;
-
-    const id = deletingStockId;
-    const formData = new FormData();
-    formData.append('_method', 'DELETE');
-
-    fetch(`/setting/inventory/warehouses/${id}`, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json'
-        },
-        body: formData
-    })
-        .then(response => response.json().then(data => ({ status: response.status, data })))
-        .then(({ status, data }) => {
-            if (status !== 200 || !data.success) {
-                throw new Error(data.message || 'حدث خطأ غير معروف');
-            }
-            showSystemToast(data.message || 'تم حذف المخزن بنجاح', 'success');
-            closeDeleteModal();
-            reloadStocksTable();
-        })
-        .catch(error => {
-            console.error('خطأ:', error);
-            showSystemToast(error.message || 'حدث خطأ في الاتصال بالخادم', 'danger');
-            closeDeleteModal();
-        });
-}
-
-function closeDeleteModal() {
-    document.getElementById('deleteConfirmModal').classList.remove('show');
-    deletingStockId = null;
-}
-
-function toggleStockStatus(btn) {
-    const row = btn.closest('tr');
-    const id = parseInt(row.dataset.id, 10);
-
-    const formData = new FormData();
-    formData.append('_method', 'PATCH');
-
-    fetch(`/setting/inventory/warehouses/${id}/toggle-status`, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json'
-        },
-        body: formData
-    })
-        .then(response => response.json().then(data => ({ status: response.status, data })))
-        .then(({ status, data }) => {
-            if (status !== 200 || !data.success) {
-                throw new Error(data.message || 'حدث خطأ غير معروف');
-            }
-            showSystemToast(data.message || 'تم تغيير حالة المخزن بنجاح', 'success');
-            reloadStocksTable();
-        })
-        .catch(error => {
-            console.error('خطأ:', error);
-            showSystemToast(error.message || 'حدث خطأ في الاتصال بالخادم', 'danger');
-        });
-}
-
-function reloadStocksTable() {
-    fetch('/setting/inventory/warehouses/list', {
-        method: 'GET',
-        headers: {
-            'Accept': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                allStocksData = data.data || [];
-                filteredStocksData = [...allStocksData];
-                applyFiltersAndRender();
-            } else {
-                showSystemToast('حدث خطأ أثناء تحميل المخازن', 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('خطأ:', error);
-            showSystemToast('حدث خطأ في الاتصال بالخادم', 'danger');
-        });
-}
-
-function filterStocks() {
-    const searchText = document.getElementById('searchStockInput').value.toLowerCase().trim();
-    if (!searchText) {
-        filteredStocksData = [...allStocksData];
-    } else {
-        filteredStocksData = allStocksData.filter(stock =>
-            stock.StockName.toLowerCase().includes(searchText) ||
-            (stock.accountDisplay && stock.accountDisplay.toString().includes(searchText))
+        cancelBtn.addEventListener(
+            'click',
+            closeDeleteModal
         );
     }
-    currentPage = 1;
-    applyFiltersAndRender();
-}
 
-function applyFiltersAndRender() {
-    renderStocks(filteredStocksData);
-    updateStocksCount(filteredStocksData.length);
-    renderPagination(filteredStocksData.length);
-}
 
-function renderStocks(stocks) {
-    const tbody = document.getElementById('stocksTableBody');
-    if (!tbody) return;
+    const confirmBtn =
+        document.getElementById(
+            'deleteConfirmBtn'
+        );
 
-    const start = (currentPage - 1) * rowsPerPage;
-    const end = Math.min(start + rowsPerPage, stocks.length);
-    const pageStocks = stocks.slice(start, end);
+    if (confirmBtn) {
 
-    if (pageStocks.length === 0) {
-        tbody.innerHTML = `
-            <tr id="emptyStockRow">
-                <td colspan="5" class="text-center text-muted py-5">
-                    <i class="bi bi-building fs-2 d-block mb-2"></i>
-                    لا توجد مخازن مسجلة
-                </td>
-            </tr>
-        `;
-        return;
+        confirmBtn.addEventListener(
+            'click',
+            confirmDeleteStock
+        );
     }
 
-    let html = '';
-    pageStocks.forEach((stock, index) => {
-        const serial = start + index + 1;
-        const isActive = stock.is_active == 1;
-        const statusBtnClass = isActive ? 'btn-success' : 'btn-secondary';
-        const statusText = isActive ? 'نشط' : 'غير نشط';
-        const statusTitle = isActive ? 'تعطيل' : 'تفعيل';
 
-        html += `
-            <tr class="stock-row text-center" data-id="${stock.StockID}">
-                <td>${serial}</td>
-                <td class="row-name">${escapeHtml(stock.StockName)}</td>
-                <td class="row-account">${stock.accountDisplay || '---'}</td>
-                <td class="row-status">
-                    <button type="button" class="btn btn-sm ${statusBtnClass} toggle-status-btn" onclick="toggleStockStatus(this)" title="${statusTitle}">
-                        ${statusText}
-                    </button>
-                </td>
-                <td class="no-print">
-                    <div class="btn-action-group">
-                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="editStock(this)" title="تعديل">
-                            <i class="bi bi-pencil d-md-none"></i>
-                            <span class="d-none d-md-inline">تعديل</span>
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteStock(this)" title="حذف">
-                            <i class="bi bi-trash d-md-none"></i>
-                            <span class="d-none d-md-inline">حذف</span>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        `;
-    });
+    const overlay =
+        document.getElementById(
+            'deleteConfirmModal'
+        );
 
-    tbody.innerHTML = html;
-}
+    if (overlay) {
 
-function updateStocksCount(count) {
-    const badge = document.getElementById('stocksCountBadge');
-    if (badge) badge.innerText = count;
-}
+        overlay.addEventListener(
+            'click',
+            function (e) {
 
-function renderPagination(totalItems) {
-    const paginationList = document.getElementById('stocksPaginationList');
-    if (!paginationList) return;
-    const totalPages = Math.ceil(totalItems / rowsPerPage);
-    if (totalPages <= 1) { paginationList.innerHTML = ''; return; }
+                if (e.target === this) {
 
-    let html = '';
-    html += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}"><button type="button" class="page-link" data-page="${currentPage - 1}" ${currentPage === 1 ? 'disabled' : ''}><i class="bi bi-chevron-right"></i></button></li>`;
-    for (let page = 1; page <= totalPages; page++) {
-        html += `<li class="page-item ${page === currentPage ? 'active' : ''}"><button type="button" class="page-link" data-page="${page}">${page}</button></li>`;
+                    closeDeleteModal();
+                }
+            }
+        );
     }
-    html += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}"><button type="button" class="page-link" data-page="${currentPage + 1}" ${currentPage === totalPages ? 'disabled' : ''}><i class="bi bi-chevron-left"></i></button></li>`;
-    paginationList.innerHTML = html;
-}
 
-document.addEventListener('click', function (e) {
-    const target = e.target.closest('#stocksPaginationList .page-link');
-    if (!target) return;
-    const page = parseInt(target.dataset.page, 10);
-    if (!page || page < 1) return;
-    const totalPages = Math.ceil(filteredStocksData.length / rowsPerPage);
-    if (page > totalPages) return;
-    currentPage = page;
-    renderStocks(filteredStocksData);
-    renderPagination(filteredStocksData.length);
 });
 
-function escapeHtml(text) {
-    if (text === null || text === undefined) return '';
-    const div = document.createElement('div');
-    div.textContent = String(text);
-    return div.innerHTML;
+
+/*
+ * =========================================================
+ * إعادة تحميل البيانات
+ * =========================================================
+ */
+
+function reloadStocksTable() {
+   
+
+    fetch(
+        '/setting/inventory/warehouses/list',
+        {
+            method: 'GET',
+
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        }
+    )
+
+    .then(response => {
+
+        if (!response.ok) {
+
+            throw new Error(
+                'فشل تحميل بيانات المخازن'
+            );
+        }
+
+        return response.json();
+    })
+
+    .then(data => {
+
+    console.log('DATA FROM SERVER:', data.data);
+    console.log('DATA LENGTH:', data.data?.length);
+    console.table(data.data);
+
+    if (!data.success) {
+
+            throw new Error(
+                data.message ||
+                'حدث خطأ أثناء تحميل المخازن'
+            );
+        }
+
+
+        /*
+         * مصدر البيانات الوحيد
+         */
+
+        allStocksData =
+            Array.isArray(data.data)
+                ? data.data
+                : [];
+
+
+        filteredStocksData =
+            [...allStocksData];
+
+
+        /*
+         * دائماً نبدأ من الصفحة الأولى
+         */
+
+        currentPage = 1;
+
+
+        /*
+         * دالة العرض المركزية
+         */
+
+        displayStocks();
+
+    })
+
+    .catch(error => {
+
+        console.error(
+            'reloadStocksTable:',
+            error
+        );
+
+        showSystemToast(
+            error.message ||
+            'حدث خطأ في الاتصال بالخادم',
+            'danger'
+        );
+
+    });
+
 }
 
-function printStocks() {
-    const table = document.getElementById('stocksTable');
-    let printContents = `
-        <html dir="rtl" lang="ar">
-        <head>
-            <title>طباعة المخازن</title>
-            <style>
-                body { font-family: Arial, sans-serif; padding: 20px; }
-                h2 { text-align: center; margin-bottom: 20px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; text-align: center; }
-                th, td { border: 1px solid #000; padding: 8px; }
-                th { background-color: #f8f9fa; }
-                .no-print { display: none !important; }
-                .btn { display: none; }
-            </style>
-        </head>
-        <body>
-            <h2>قائمة المخازن</h2>
-            <table>
-                <thead>${table.querySelector('thead').innerHTML}</thead>
-                <tbody>
-    `;
-    const allRows = document.querySelectorAll('#stocksTableBody tr.stock-row');
-    allRows.forEach(row => {
-        const cells = row.querySelectorAll('td');
-        let rowHtml = '<tr>';
-        for (let i = 0; i < Math.min(cells.length - 1, 4); i++) {
-            rowHtml += cells[i].outerHTML;
-        }
-        rowHtml += '</tr>';
-        printContents += rowHtml;
-    });
-    printContents += `</tbody></table></body></html>`;
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-        alert('تعذر فتح نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة.');
+/*
+ * =========================================================
+ * دالة العرض المركزية
+ *
+ * تستدعى عند:
+ *
+ * 1. فتح الصفحة
+ * 2. البحث
+ * 3. الإضافة
+ * 4. التعديل
+ * 5. الحذف
+ * 6. تغيير الحالة
+ * 7. Pagination
+ * =========================================================
+ */
+
+function displayStocks() {
+
+    const tbody =
+        document.getElementById(
+            'stocksTableBody'
+        );
+
+    if (!tbody) {
         return;
     }
-    printWindow.document.write(printContents);
-    printWindow.document.close();
-    setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
+
+
+    /*
+     * -----------------------------------------------------
+     * حذف كل الصفوف المعروضة سابقاً
+     * -----------------------------------------------------
+     */
+
+    tbody
+        .querySelectorAll(
+            'tr.stock-row'
+        )
+        .forEach(row => {
+
+            row.remove();
+
+        });
+
+
+    /*
+     * -----------------------------------------------------
+     * حذف رسالة البيانات الفارغة القديمة
+     * -----------------------------------------------------
+     */
+
+    const oldEmptyRow =
+        document.getElementById(
+            'emptyStockRow'
+        );
+
+    if (oldEmptyRow) {
+
+        oldEmptyRow.remove();
+    }
+
+
+    /*
+     * -----------------------------------------------------
+     * حساب Pagination
+     * -----------------------------------------------------
+     */
+
+    const totalItems =
+        filteredStocksData.length;
+
+    const totalPages =
+        Math.ceil(
+            totalItems /
+            rowsPerPage
+        );
+
+
+    if (totalPages > 0 &&
+        currentPage > totalPages) {
+
+        currentPage =
+            totalPages;
+    }
+
+
+    if (currentPage < 1) {
+
+        currentPage = 1;
+    }
+
+
+    const start =
+        (currentPage - 1) *
+        rowsPerPage;
+
+
+    const end =
+        start + rowsPerPage;
+
+
+    const pageStocks =
+        filteredStocksData.slice(
+            start,
+            end
+        );
+
+
+    /*
+     * -----------------------------------------------------
+     * لا توجد بيانات
+     * -----------------------------------------------------
+     */
+
+    if (pageStocks.length === 0) {
+
+        const emptyRow =
+            document.createElement('tr');
+
+        emptyRow.id =
+            'emptyStockRow';
+
+
+        const emptyCell =
+            document.createElement('td');
+
+
+        const columnCount =
+            document.querySelectorAll(
+                '#stocksTable thead th'
+            ).length;
+
+
+        emptyCell.colSpan =
+            columnCount;
+
+
+        emptyCell.className =
+            'text-center text-muted py-5';
+
+
+        const icon =
+            document.createElement('i');
+
+        icon.className =
+            'bi bi-building fs-2 d-block mb-2';
+
+
+        emptyCell.appendChild(icon);
+
+
+        emptyCell.appendChild(
+            document.createTextNode(
+                'لا توجد مخازن مسجلة'
+            )
+        );
+
+
+        emptyRow.appendChild(
+            emptyCell
+        );
+
+
+        tbody.appendChild(
+            emptyRow
+        );
+
+
+        updateStocksCount(
+            totalItems
+        );
+
+
+        renderPagination(
+            totalItems
+        );
+
+
+        return;
+    }
+
+
+    /*
+     * -----------------------------------------------------
+     * التأكد من وجود Template
+     * -----------------------------------------------------
+     */
+
+    if (!stockRowTemplate) {
+
+        const template =
+            document.getElementById(
+                'stockRowTemplate'
+            );
+
+        if (template) {
+
+            const row =
+                template.content
+                    .firstElementChild;
+
+            if (row) {
+
+                stockRowTemplate =
+                    row.cloneNode(true);
+            }
+        }
+    }
+
+
+    if (!stockRowTemplate) {
+
+        console.error(
+            'stockRowTemplate غير موجود'
+        );
+
+        return;
+    }
+
+
+    /*
+     * -----------------------------------------------------
+     * إنشاء الصفوف
+     * -----------------------------------------------------
+     */
+
+    pageStocks.forEach(
+        (stock, index) => {
+
+            const row =
+                stockRowTemplate
+                    .cloneNode(true);
+
+
+            /*
+             * ID
+             */
+
+            row.dataset.id =
+                stock.StockID;
+
+
+            /*
+             * الرقم
+             */
+
+            const numberCell =
+                row.querySelector(
+                    '.row-number'
+                );
+
+            if (numberCell) {
+
+                numberCell.textContent =
+                    start + index + 1;
+            }
+
+
+            /*
+             * الاسم
+             */
+
+            const nameCell =
+                row.querySelector(
+                    '.row-name'
+                );
+
+            if (nameCell) {
+
+                nameCell.textContent =
+                    stock.StockName || '';
+            }
+
+
+            /*
+             * الحساب
+             */
+
+            const accountCell =
+                row.querySelector(
+                    '.row-account'
+                );
+
+            if (accountCell) {
+
+                accountCell.textContent =
+                    stock.accountDisplay ||
+                    '---';
+            }
+
+
+            /*
+             * الحالة
+             */
+
+            const statusButton =
+                row.querySelector(
+                    '.toggle-status-btn'
+                );
+
+
+            if (statusButton) {
+
+                const active =
+                    Number(
+                        stock.is_active
+                    ) === 1;
+
+
+                statusButton.classList.remove(
+                    'btn-success',
+                    'btn-secondary'
+                );
+
+
+                if (active) {
+
+                    statusButton.classList.add(
+                        'btn-success'
+                    );
+
+                    statusButton.textContent =
+                        'نشط';
+
+                    statusButton.title =
+                        'تعطيل';
+
+                } else {
+
+                    statusButton.classList.add(
+                        'btn-secondary'
+                    );
+
+                    statusButton.textContent =
+                        'غير نشط';
+
+                    statusButton.title =
+                        'تفعيل';
+                }
+            }
+
+
+            /*
+             * إضافة الصف
+             */
+
+            tbody.appendChild(
+                row
+            );
+
+        }
+    );
+
+
+    /*
+     * -----------------------------------------------------
+     * تحديث العدد
+     * -----------------------------------------------------
+     */
+
+    updateStocksCount(
+        totalItems
+    );
+
+
+    /*
+     * -----------------------------------------------------
+     * تحديث Pagination
+     * -----------------------------------------------------
+ */
+
+    renderPagination(
+        totalItems
+    );
+
 }
 
-if (typeof showSystemToast !== 'function') {
-    window.showSystemToast = function (message, type) {
-        alert(message);
-    };
+
+/*
+ * =========================================================
+ * البحث
+ * =========================================================
+ */
+
+function filterStocks() {
+
+    const searchInput =
+        document.getElementById(
+            'searchStockInput'
+        );
+
+    if (!searchInput) {
+        return;
+    }
+
+
+    const searchText =
+        searchInput.value
+            .toLowerCase()
+            .trim();
+
+
+    if (!searchText) {
+
+        filteredStocksData =
+            [...allStocksData];
+
+    } else {
+
+        filteredStocksData =
+            allStocksData.filter(
+                stock => {
+
+                    const stockName =
+                        String(
+                            stock.StockName || ''
+                        ).toLowerCase();
+
+
+                    const accountCode =
+                        String(
+                            stock.accountDisplay || ''
+                        ).toLowerCase();
+
+
+                    return (
+                        stockName.includes(
+                            searchText
+                        ) ||
+                        accountCode.includes(
+                            searchText
+                        )
+                    );
+
+                }
+            );
+    }
+
+
+    currentPage = 1;
+
+
+    /*
+     * العرض المركزي
+     */
+
+    displayStocks();
+
+}
+
+
+/*
+ * =========================================================
+ * تحديث العدد
+ * =========================================================
+ */
+
+function updateStocksCount(count) {
+
+    const badge =
+        document.getElementById(
+            'stocksCountBadge'
+        );
+
+    if (badge) {
+
+        badge.innerText =
+            count;
+    }
+
+}
+
+
+/*
+ * =========================================================
+ * Pagination
+ * =========================================================
+ */
+
+function renderPagination(totalItems) {
+
+    const paginationList =
+        document.getElementById(
+            'stocksPaginationList'
+        );
+
+    if (!paginationList) {
+        return;
+    }
+
+
+    const totalPages =
+        Math.ceil(
+            totalItems /
+            rowsPerPage
+        );
+
+
+    if (totalPages <= 1) {
+
+        paginationList.innerHTML =
+            '';
+
+        return;
+    }
+
+
+    let html = '';
+
+
+    /*
+     * السابق
+     */
+
+    html += `
+        <li class="page-item ${
+            currentPage === 1
+                ? 'disabled'
+                : ''
+        }">
+
+            <button
+                type="button"
+                class="page-link"
+                data-page="${currentPage - 1}"
+                ${
+                    currentPage === 1
+                        ? 'disabled'
+                        : ''
+                }
+            >
+
+                <i class="bi bi-chevron-right"></i>
+
+            </button>
+
+        </li>
+    `;
+
+
+    /*
+     * الصفحات
+     */
+
+    for (
+        let page = 1;
+        page <= totalPages;
+        page++
+    ) {
+
+        html += `
+            <li class="page-item ${
+                page === currentPage
+                    ? 'active'
+                    : ''
+            }">
+
+                <button
+                    type="button"
+                    class="page-link"
+                    data-page="${page}"
+                >
+                    ${page}
+                </button>
+
+            </li>
+        `;
+    }
+
+
+    /*
+     * التالي
+     */
+
+    html += `
+        <li class="page-item ${
+            currentPage === totalPages
+                ? 'disabled'
+                : ''
+        }">
+
+            <button
+                type="button"
+                class="page-link"
+                data-page="${currentPage + 1}"
+                ${
+                    currentPage === totalPages
+                        ? 'disabled'
+                        : ''
+                }
+            >
+
+                <i class="bi bi-chevron-left"></i>
+
+            </button>
+
+        </li>
+    `;
+
+
+    paginationList.innerHTML =
+        html;
+
+}
+
+
+/*
+ * =========================================================
+ * حدث Pagination
+ * =========================================================
+ */
+
+document.addEventListener(
+    'click',
+    function (e) {
+
+        const button =
+            e.target.closest(
+                '#stocksPaginationList .page-link'
+            );
+
+
+        if (!button) {
+            return;
+        }
+
+
+        const page =
+            parseInt(
+                button.dataset.page,
+                10
+            );
+
+
+        if (!page || page < 1) {
+            return;
+        }
+
+
+        const totalPages =
+            Math.ceil(
+                filteredStocksData.length /
+                rowsPerPage
+            );
+
+
+        if (page > totalPages) {
+            return;
+        }
+
+
+        currentPage =
+            page;
+
+
+        /*
+         * العرض المركزي
+         */
+
+        displayStocks();
+
+    }
+);
+
+
+/*
+ * =========================================================
+ * فتح الإضافة
+ * =========================================================
+ */
+
+function openStockModal() {
+
+    const form =
+        document.getElementById(
+            'stockForm'
+        );
+
+
+    if (form) {
+
+        form.reset();
+    }
+
+
+    document.getElementById(
+        'stockID'
+    ).value = '';
+
+
+    document.getElementById(
+        'accountDisplay'
+    ).value = '';
+
+
+    currentStockId = null;
+
+
+    document.getElementById(
+        'stockModalLabel'
+    ).innerText =
+        'إضافة مخزن جديد';
+
+
+    fetch(
+        '/setting/inventory/warehouses/next-code',
+        {
+            method: 'GET',
+
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        }
+    )
+
+    .then(response => {
+
+        if (!response.ok) {
+
+            throw new Error(
+                'تعذر الحصول على رقم الحساب التالي'
+            );
+        }
+
+        return response.json();
+
+    })
+
+    .then(data => {
+
+        if (data.success) {
+
+            document.getElementById(
+                'accountDisplay'
+            ).value =
+                data.code;
+
+            nextAccountCode =
+                data.code;
+
+        } else {
+
+            showSystemToast(
+                data.message ||
+                'تعذر الحصول على رقم الحساب التالي',
+                'danger'
+            );
+        }
+
+    })
+
+    .catch(error => {
+
+        console.error(
+            'خطأ:',
+            error
+        );
+
+        showSystemToast(
+            error.message ||
+            'حدث خطأ في الاتصال بالخادم',
+            'danger'
+        );
+
+    });
+
+
+    if (stockModalInstance) {
+
+        stockModalInstance.show();
+    }
+
+}
+
+
+/*
+ * =========================================================
+ * تعديل
+ * =========================================================
+ */
+
+function editStock(btn) {
+
+    const row =
+        btn.closest(
+            'tr.stock-row'
+        );
+
+
+    if (!row) {
+        return;
+    }
+
+
+    const id =
+        parseInt(
+            row.dataset.id,
+            10
+        );
+
+
+    const name =
+        row.querySelector(
+            '.row-name'
+        )?.innerText.trim() || '';
+
+
+    const account =
+        row.querySelector(
+            '.row-account'
+        )?.innerText.trim() || '';
+
+
+    document.getElementById(
+        'stockID'
+    ).value =
+        id;
+
+
+    document.getElementById(
+        'stockName'
+    ).value =
+        name;
+
+
+    document.getElementById(
+        'accountDisplay'
+    ).value =
+        account;
+
+
+    currentStockId =
+        id;
+
+
+    document.getElementById(
+        'stockModalLabel'
+    ).innerText =
+        'تعديل بيانات المخزن';
+
+
+    if (stockModalInstance) {
+
+        stockModalInstance.show();
+    }
+
+}
+
+
+/*
+ * =========================================================
+ * الحفظ
+ * =========================================================
+ */
+
+function saveStock() {
+
+    const form =
+        document.getElementById(
+            'stockForm'
+        );
+
+
+    if (!form) {
+        return;
+    }
+
+
+    if (!form.checkValidity()) {
+
+        form.reportValidity();
+
+        return;
+    }
+
+
+    const id =
+        document.getElementById(
+            'stockID'
+        ).value;
+
+
+    const name =
+        document.getElementById(
+            'stockName'
+        ).value.trim();
+
+
+    /*
+     * منع الحفظ إذا لم يتغير الاسم
+     */
+
+    if (id) {
+
+        const row =
+            document.querySelector(
+                `#stocksTableBody tr.stock-row[data-id="${id}"]`
+            );
+
+
+        if (row) {
+
+            const originalName =
+                row.querySelector(
+                    '.row-name'
+                )?.innerText.trim() || '';
+
+
+            if (
+                name === originalName
+            ) {
+
+                showSystemToast(
+                    'لم يتم إجراء أي تعديل على بيانات المخزن.',
+                    'danger'
+                );
+
+                return;
+            }
+        }
+    }
+
+
+    const url =
+        id
+            ? `/setting/inventory/warehouses/${id}`
+            : '/setting/inventory/warehouses';
+
+
+    const formData =
+        new FormData();
+
+
+    formData.append(
+        'StockName',
+        name
+    );
+
+
+    if (id) {
+
+        formData.append(
+            '_method',
+            'PUT'
+        );
+    }
+
+
+    fetch(
+        url,
+        {
+            method: 'POST',
+
+            headers: {
+
+                'X-CSRF-TOKEN':
+                    document.querySelector(
+                        'meta[name="csrf-token"]'
+                    ).getAttribute('content'),
+
+                'X-Requested-With':
+                    'XMLHttpRequest',
+
+                'Accept':
+                    'application/json'
+            },
+
+            body: formData
+        }
+    )
+
+    .then(response =>
+        response.json()
+            .then(data => ({
+                status: response.status,
+                data
+            }))
+    )
+
+    .then(({status, data}) => {
+
+        if (
+            status !== 200 ||
+            !data.success
+        ) {
+
+            throw new Error(
+                data.message ||
+                'حدث خطأ غير معروف'
+            );
+        }
+
+
+        showSystemToast(
+            data.message ||
+            'تم حفظ المخزن بنجاح',
+            'success'
+        );
+
+
+        if (stockModalInstance) {
+
+            stockModalInstance.hide();
+        }
+
+
+        /*
+         * reload
+         * ↓
+         * displayStocks
+         */
+
+        reloadStocksTable();
+
+    })
+
+    .catch(error => {
+
+        console.error(
+            'خطأ:',
+            error
+        );
+
+        showSystemToast(
+            error.message ||
+            'حدث خطأ في الاتصال بالخادم',
+            'danger'
+        );
+
+    });
+
+}
+
+
+/*
+ * =========================================================
+ * حذف
+ * =========================================================
+ */
+
+function deleteStock(btn) {
+
+    const row =
+        btn.closest(
+            'tr.stock-row'
+        );
+
+
+    if (!row) {
+        return;
+    }
+
+
+    deletingStockId =
+        parseInt(
+            row.dataset.id,
+            10
+        );
+
+
+    const modal =
+        document.getElementById(
+            'deleteConfirmModal'
+        );
+
+
+    if (modal) {
+
+        modal.classList.add(
+            'show'
+        );
+    }
+
+}
+
+
+/*
+ * =========================================================
+ * تأكيد الحذف
+ * =========================================================
+ */
+
+function confirmDeleteStock() {
+
+    if (!deletingStockId) {
+        return;
+    }
+
+
+    const id =
+        deletingStockId;
+
+
+    const formData =
+        new FormData();
+
+
+    formData.append(
+        '_method',
+        'DELETE'
+    );
+
+
+    fetch(
+        `/setting/inventory/warehouses/${id}`,
+        {
+            method: 'POST',
+
+            headers: {
+
+                'X-CSRF-TOKEN':
+                    document.querySelector(
+                        'meta[name="csrf-token"]'
+                    ).getAttribute('content'),
+
+                'X-Requested-With':
+                    'XMLHttpRequest',
+
+                'Accept':
+                    'application/json'
+            },
+
+            body: formData
+        }
+    )
+
+    .then(response =>
+        response.json()
+            .then(data => ({
+                status: response.status,
+                data
+            }))
+    )
+
+    .then(({status, data}) => {
+
+        if (
+            status !== 200 ||
+            !data.success
+        ) {
+
+            throw new Error(
+                data.message ||
+                'حدث خطأ غير معروف'
+            );
+        }
+
+
+        showSystemToast(
+            data.message ||
+            'تم حذف المخزن بنجاح',
+            'success'
+        );
+
+
+        closeDeleteModal();
+
+
+        /*
+         * reload
+         * ↓
+         * displayStocks
+         */
+
+        reloadStocksTable();
+
+    })
+
+    .catch(error => {
+
+        console.error(
+            'خطأ:',
+            error
+        );
+
+        showSystemToast(
+            error.message ||
+            'حدث خطأ في الاتصال بالخادم',
+            'danger'
+        );
+
+        closeDeleteModal();
+
+    });
+
+}
+
+
+/*
+ * =========================================================
+ * إغلاق الحذف
+ * =========================================================
+ */
+
+function closeDeleteModal() {
+
+    const modal =
+        document.getElementById(
+            'deleteConfirmModal'
+        );
+
+
+    if (modal) {
+
+        modal.classList.remove(
+            'show'
+        );
+    }
+
+
+    deletingStockId =
+        null;
+
+}
+
+
+/*
+ * =========================================================
+ * تغيير الحالة
+ * =========================================================
+ */
+
+function toggleStockStatus(btn) {
+
+    const row =
+        btn.closest(
+            'tr.stock-row'
+        );
+
+
+    if (!row) {
+        return;
+    }
+
+
+    const id =
+        parseInt(
+            row.dataset.id,
+            10
+        );
+
+
+    const formData =
+        new FormData();
+
+
+    formData.append(
+        '_method',
+        'PATCH'
+    );
+
+
+    fetch(
+        `/setting/inventory/warehouses/${id}/toggle-status`,
+        {
+            method: 'POST',
+
+            headers: {
+
+                'X-CSRF-TOKEN':
+                    document.querySelector(
+                        'meta[name="csrf-token"]'
+                    ).getAttribute('content'),
+
+                'X-Requested-With':
+                    'XMLHttpRequest',
+
+                'Accept':
+                    'application/json'
+            },
+
+            body: formData
+        }
+    )
+
+    .then(response =>
+        response.json()
+            .then(data => ({
+                status: response.status,
+                data
+            }))
+    )
+
+    .then(({status, data}) => {
+
+        if (
+            status !== 200 ||
+            !data.success
+        ) {
+
+            throw new Error(
+                data.message ||
+                'حدث خطأ غير معروف'
+            );
+        }
+
+
+        showSystemToast(
+            data.message ||
+            'تم تغيير حالة المخزن بنجاح',
+            'success'
+        );
+
+
+        /*
+         * reload
+         * ↓
+         * displayStocks
+         */
+
+        reloadStocksTable();
+
+    })
+
+    .catch(error => {
+
+        console.error(
+            'خطأ:',
+            error
+        );
+
+        showSystemToast(
+            error.message ||
+            'حدث خطأ في الاتصال بالخادم',
+            'danger'
+        );
+
+    });
+
+}
+
+
+/*
+ * =========================================================
+ * escapeHtml
+ * =========================================================
+ */
+
+function escapeHtml(text) {
+
+    if (
+        text === null ||
+        text === undefined
+    ) {
+
+        return '';
+    }
+
+
+    const div =
+        document.createElement(
+            'div'
+        );
+
+
+    div.textContent =
+        String(text);
+
+
+    return div.innerHTML;
+
+}
+
+
+/*
+ * =========================================================
+ * الطباعة
+ * =========================================================
+ */
+
+function printStocks() {
+
+    const table =
+        document.getElementById(
+            'stocksTable'
+        );
+
+
+    if (!table) {
+        return;
+    }
+
+
+    let printContents = `
+        <html dir="rtl" lang="ar">
+
+        <head>
+
+            <title>طباعة المخازن</title>
+
+            <style>
+
+                body {
+                    font-family: Arial, sans-serif;
+                    padding: 20px;
+                }
+
+                h2 {
+                    text-align: center;
+                    margin-bottom: 20px;
+                }
+
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 20px;
+                    text-align: center;
+                }
+
+                th,
+                td {
+                    border: 1px solid #000;
+                    padding: 8px;
+                }
+
+                th {
+                    background-color: #f8f9fa;
+                }
+
+                .no-print {
+                    display: none !important;
+                }
+
+                .btn {
+                    display: none;
+                }
+
+            </style>
+
+        </head>
+
+        <body>
+
+            <h2>قائمة المخازن</h2>
+
+            <table>
+
+                <thead>
+                    ${table.querySelector('thead').innerHTML}
+                </thead>
+
+                <tbody>
+    `;
+
+
+    const rows =
+        document.querySelectorAll(
+            '#stocksTableBody tr.stock-row'
+        );
+
+
+    rows.forEach(row => {
+
+        const cells =
+            row.querySelectorAll('td');
+
+
+        let rowHtml =
+            '<tr>';
+
+
+        for (
+            let i = 0;
+            i < Math.min(
+                cells.length - 1,
+                4
+            );
+            i++
+        ) {
+
+            rowHtml +=
+                cells[i].outerHTML;
+        }
+
+
+        rowHtml +=
+            '</tr>';
+
+
+        printContents +=
+            rowHtml;
+
+    });
+
+
+    printContents += `
+                </tbody>
+
+            </table>
+
+        </body>
+
+        </html>
+    `;
+
+
+    const printWindow =
+        window.open(
+            '',
+            '_blank'
+        );
+
+
+    if (!printWindow) {
+
+        alert(
+            'تعذر فتح نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة.'
+        );
+
+        return;
+    }
+
+
+    printWindow.document.write(
+        printContents
+    );
+
+
+    printWindow.document.close();
+
+
+    setTimeout(() => {
+
+        printWindow.print();
+
+        printWindow.close();
+
+    }, 250);
+
+}
+
+
+/*
+ * =========================================================
+ * fallback
+ * =========================================================
+ */
+
+if (
+    typeof showSystemToast !==
+    'function'
+) {
+
+    window.showSystemToast =
+        function (
+            message,
+            type
+        ) {
+
+            alert(message);
+
+        };
+
 }

@@ -6,324 +6,366 @@ use App\Http\Controllers\Controller;
 use App\Models\Inventory\Stock;
 use App\Models\Accounting\CharAccount;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 
 class StockController extends Controller
 {
     /**
-     * الحصول على حساب "المخازن" الأب (بدقة عالية)
+     * الحصول على الحساب الأب للمخازن.
+     *
+     * الحساب النظامي:
+     * 1104 - المخزون
      */
     private function getParentAccount()
     {
-        // 1. البحث عن حساب اسمه "المخازن" بالضبط
-        $parent = CharAccount::where('accName', 'المخازن')->first();
-        if ($parent) return $parent;
-
-        // 2. البحث عن حساب يحتوي اسمه على "مخازن" (كحل بديل)
-        $parent = CharAccount::where('accName', 'LIKE', '%مخازن%')->first();
-        if ($parent) return $parent;
-
-        
-
-        // 4. لم نجد شيئاً
-        throw new \Exception('لم يتم العثور على حساب "المخازن" في دليل الحسابات. يرجى إنشاؤه أولاً.');
+        return CharAccount::where('system_key', 'inventory')
+            ->where('isPostable', 0)
+            ->first();
     }
 
     /**
-     * توليد رقم الحساب الفرعي التالي (مع دعم الأعماق المختلفة)
+     * توليد رقم الحساب التحليلي التالي.
+     *
+     * مثال:
+     * 110401
+     * 110402
+     * 110403
      */
-    private function generateNextChildCode($parent)
+    private function generateNextChildCode(CharAccount $parent)
     {
-        $childLevel = $parent->accLevel + 1;
-        $segmentLength = ($childLevel === 2) ? 1 : 2;
+        $prefix = $parent->accCode;
 
         $children = CharAccount::where('accParent', $parent->accountID)
-            ->orderBy('accCode')
-            ->get(['accCode']);
+            ->where('isPostable', 1)
+            ->pluck('accCode');
 
-        $maxSequence = 0;
-        $parentCode = (string) $parent->accCode;
+        $maxNumber = 0;
 
-        foreach ($children as $child) {
-            $childCode = (string) $child->accCode;
-            if (!str_starts_with($childCode, $parentCode)) continue;
-            $suffix = substr($childCode, strlen($parentCode));
-            if (strlen($suffix) !== $segmentLength || !ctype_digit($suffix)) continue;
-            $seq = (int) $suffix;
-            if ($seq > $maxSequence) $maxSequence = $seq;
+        foreach ($children as $code) {
+
+            if (!str_starts_with((string) $code, $prefix)) {
+                continue;
+            }
+
+            $suffix = substr((string) $code, strlen($prefix));
+
+            if ($suffix === '' || !ctype_digit($suffix)) {
+                continue;
+            }
+
+            $number = (int) $suffix;
+
+            if ($number > $maxNumber) {
+                $maxNumber = $number;
+            }
         }
 
-        $nextSequence = $maxSequence + 1;
-        $maxAllowed = ($segmentLength === 1) ? 9 : 99;
-        if ($nextSequence > $maxAllowed) {
-            throw new \Exception('تم الوصول إلى الحد الأقصى للحسابات الفرعية في هذا المستوى');
-        }
-
-        $segment = str_pad((string) $nextSequence, $segmentLength, '0', STR_PAD_LEFT);
-        return $parentCode . $segment;
+        return $prefix . str_pad(
+            (string) ($maxNumber + 1),
+            2,
+            '0',
+            STR_PAD_LEFT
+        );
     }
 
-    // =========================================================
-    // عرض الصفحة الرئيسية (مع التحقق من وجود الأب)
-    // =========================================================
+    /**
+     * صفحة المخازن.
+     */
     public function index()
     {
-        try {
-            $this->getParentAccount();
-            $hasParent = true;
-        } catch (\Exception $e) {
-            $hasParent = false;
-        }
+        $parent = $this->getParentAccount();
 
-        $stocks = Stock::with('account')->orderBy('StockID', 'asc')->get();
-        return view('setting.inventory.warehouses.index', compact('stocks', 'hasParent'));
+        $stocks = Stock::with('account')
+            ->orderBy('StockID', 'DESC')
+            ->get();
+
+        return view('setting.inventory.warehouses.index', [
+            'stocks' => $stocks,
+            'hasParent' => (bool) $parent,
+        ]);
     }
 
-    // =========================================================
-    // جلب البيانات عبر AJAX
-    // =========================================================
-    public function list(Request $request)
+    /**
+     * قائمة المخازن AJAX.
+     */
+    public function list()
     {
-        $stocks = Stock::with('account')->orderBy('StockID', 'asc')->get();
-        $stocks->each(function ($stock) {
-            $stock->accountDisplay = $stock->account ? $stock->account->accCode : '---';
-        });
+        $stocks = Stock::with('account')
+            ->orderBy('StockID', 'DESC')
+            ->get()
+            ->map(function ($stock) {
+
+                return [
+                    'StockID' => $stock->StockID,
+                    'StockName' => $stock->StockName,
+                    'accountDisplay' => $stock->account
+                        ? $stock->account->accCode
+                        : null,
+                    'is_active' => (int) $stock->is_active,
+                ];
+            });
+
         return response()->json([
             'success' => true,
             'data' => $stocks,
         ]);
     }
 
-    // =========================================================
-    // جلب رقم الحساب التالي (للعرض في المودال)
-    // =========================================================
+    /**
+     * الحصول على رقم الحساب التحليلي التالي.
+     *
+     * يستخدمه JavaScript لعرض الرقم داخل المودال
+     * قبل عملية الحفظ.
+     */
     public function getNextCode()
     {
-        try {
-            $parent = $this->getParentAccount();
-            $nextCode = $this->generateNextChildCode($parent);
-            return response()->json([
-                'success' => true,
-                'code' => $nextCode,
-            ]);
-        } catch (\Exception $e) {
+        $parent = $this->getParentAccount();
+
+        if (!$parent) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
-            ], 422);
+                'message' => 'لم يتم العثور على الحساب الأب للمخازن.',
+            ], 404);
         }
+
+        $nextCode = $this->generateNextChildCode($parent);
+
+        return response()->json([
+            'success' => true,
+            'code' => $nextCode,
+        ]);
     }
 
-    // =========================================================
-    // إضافة مخزن جديد (ينشئ الحساب فقط، والمخزن يتم عبر Observer)
-    // =========================================================
+    /**
+     * إضافة مخزن جديد.
+     */
     public function store(Request $request)
     {
-        // التحقق من وجود الأب أولاً
-        try {
-            $this->getParentAccount();
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 422);
-        }
-
-        $validator = Validator::make($request->all(), [
-            'StockName' => 'required|string|max:255|unique:stocks,StockName',
+        $request->validate([
+            'StockName' => [
+                'required',
+                'string',
+                'max:255',
+            ],
         ], [
-            'StockName.unique' => 'هذا المخزن موجود بالفعل',
-            'StockName.required' => 'اسم المخزن مطلوب',
+            'StockName.required' => 'اسم المخزن مطلوب.',
+            'StockName.string' => 'اسم المخزن غير صحيح.',
+            'StockName.max' => 'اسم المخزن يجب ألا يتجاوز 255 حرفاً.',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => $validator->errors()->first('StockName'),
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
         try {
-            DB::transaction(function () use ($request) {
+
+            $result = DB::transaction(function () use ($request) {
+
+                /*
+                 * 1. الحصول على الحساب الأب
+                 */
                 $parent = $this->getParentAccount();
+
+                if (!$parent) {
+                    throw new \Exception(
+                        'لم يتم العثور على الحساب الأب للمخازن.'
+                    );
+                }
+
+                /*
+                 * 2. توليد رقم الحساب التحليلي
+                 */
                 $nextCode = $this->generateNextChildCode($parent);
 
-                // إنشاء الحساب فقط (سيقوم Observer بإنشاء المخزن تلقائياً)
-                CharAccount::create([
+                /*
+                 * 3. إنشاء الحساب التحليلي أولاً
+                 *
+                 * مهم جداً:
+                 * stocks.accountID لا يقبل NULL
+                 */
+                $account = CharAccount::create([
+                    'accParent' => $parent->accountID,
                     'accTypeID' => $parent->accTypeID,
                     'accCode' => $nextCode,
-                    'accParent' => $parent->accountID,
                     'accName' => $request->StockName,
                     'nature' => $parent->nature,
                     'accLevel' => $parent->accLevel + 1,
                     'IsActive' => 1,
                     'isPostable' => 1,
+                    'is_system' => 0,
+                    'system_key' => null,
                 ]);
+
+                /*
+                 * 4. إنشاء المخزن وربطه بالحساب
+                 */
+                $stock = Stock::create([
+                    'StockName' => $request->StockName,
+                    'accountID' => $account->accountID,
+                    'is_active' => 1,
+                ]);
+
+                return [
+                    'stock' => $stock,
+                    'account' => $account,
+                ];
             });
 
             return response()->json([
                 'success' => true,
-                'message' => 'تم إضافة المخزن والحساب المحاسبي بنجاح',
-            ]);
+                'message' => 'تم إضافة المخزن وربطه بالحساب التحليلي بنجاح.',
+                'data' => [
+                    'StockID' => $result['stock']->StockID,
+                    'StockName' => $result['stock']->StockName,
+                    'accountID' => $result['account']->accountID,
+                    'accountCode' => $result['account']->accCode,
+                ],
+            ], 200);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
-            ], 422);
+            ], 500);
         }
     }
 
-    // =========================================================
-    // تحديث المخزن (اسم فقط)
-    // =========================================================
+    /**
+     * تعديل المخزن.
+     */
     public function update(Request $request, $id)
     {
+        $request->validate([
+            'StockName' => [
+                'required',
+                'string',
+                'max:255',
+            ],
+        ], [
+            'StockName.required' => 'اسم المخزن مطلوب.',
+            'StockName.string' => 'اسم المخزن غير صحيح.',
+            'StockName.max' => 'اسم المخزن يجب ألا يتجاوز 255 حرفاً.',
+        ]);
+
         try {
+
             $stock = Stock::findOrFail($id);
 
-            $validator = Validator::make($request->all(), [
-                'StockName' => [
-                    'required',
-                    'string',
-                    'max:255',
-                    Rule::unique('stocks', 'StockName')->ignore($stock->StockID, 'StockID'),
-                ],
-            ], [
-                'StockName.unique' => 'هذا المخزن موجود بالفعل',
-                'StockName.required' => 'اسم المخزن مطلوب',
-            ]);
-
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $validator->errors()->first('StockName'),
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            DB::transaction(function () use ($request, $stock) {
-                $stock->update(['StockName' => $request->StockName]);
-
-                $account = CharAccount::find($stock->accountID);
-                if ($account) {
-                    $account->accName = $request->StockName;
-                    $account->save();
-                }
-            });
+            /*
+             * Observer سيتولى مزامنة اسم الحساب
+             * بعد تحديث المخزن.
+             */
+            $stock->StockName = $request->StockName;
+            $stock->save();
 
             return response()->json([
                 'success' => true,
-                'message' => 'تم تحديث المخزن بنجاح',
-                'data' => $stock->fresh('account'),
-            ]);
+                'message' => 'تم تحديث بيانات المخزن بنجاح.',
+            ], 200);
 
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (\Throwable $e) {
+
             return response()->json([
                 'success' => false,
-                'message' => 'المخزن غير موجود',
-            ], 404);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'حدث خطأ أثناء التحديث: ' . $e->getMessage(),
-            ], 422);
+                'message' => $e->getMessage(),
+            ], 500);
         }
     }
 
-    // =========================================================
-    // حذف المخزن (مع حذف الحساب إن لم يكن له أبناء)
-    // =========================================================
+    /**
+     * حذف المخزن.
+     */
     public function destroy($id)
     {
         try {
-            $stock = Stock::findOrFail($id);
-            $accountId = $stock->accountID;
 
-            DB::transaction(function () use ($stock, $accountId) {
-                // حذف المخزن
+            DB::transaction(function () use ($id) {
+
+                $stock = Stock::findOrFail($id);
+
+                $accountID = $stock->accountID;
+
+                /*
+                 * حذف المخزن أولاً.
+                 */
                 $stock->delete();
 
-                // حذف الحساب إن لم يكن له أبناء
-                $account = CharAccount::find($accountId);
-                if ($account) {
-                    $hasChildren = CharAccount::where('accParent', $accountId)->exists();
-                    if (!$hasChildren) {
-                        $account->delete();
-                    } else {
-                        // إذا كان له أبناء، نعطله (بدلاً من الحذف)
-                        $account->update(['IsActive' => 0]);
+                /*
+                 * التعامل مع الحساب التحليلي المرتبط.
+                 */
+                if ($accountID) {
+
+                    $account = CharAccount::find($accountID);
+
+                    if ($account) {
+
+                        /*
+                         * إذا كان الحساب لا يحتوي على أبناء
+                         * يتم حذفه.
+                         */
+                        $hasChildren = CharAccount::where(
+                            'accParent',
+                            $account->accountID
+                        )->exists();
+
+                        if (!$hasChildren) {
+
+                            $account->delete();
+
+                        } else {
+
+                            /*
+                             * إذا كان له أبناء، لا نحذفه.
+                             * فقط نعطله.
+                             */
+                            $account->IsActive = 0;
+                            $account->save();
+                        }
                     }
                 }
             });
 
             return response()->json([
                 'success' => true,
-                'message' => 'تم حذف المخزن بنجاح',
-            ]);
+                'message' => 'تم حذف المخزن بنجاح.',
+            ], 200);
 
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (\Throwable $e) {
+
             return response()->json([
                 'success' => false,
-                'message' => 'المخزن غير موجود',
-            ], 404);
-        } catch (\Illuminate\Database\QueryException $e) {
-            if ($e->getCode() == 23000) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'لا يمكن حذف المخزن لأن الحساب المرتبط به مستخدم في مكان آخر.',
-                ], 422);
-            }
-            return response()->json([
-                'success' => false,
-                'message' => 'حدث خطأ أثناء الحذف: ' . $e->getMessage(),
-            ], 422);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'حدث خطأ أثناء الحذف: ' . $e->getMessage(),
-            ], 422);
+                'message' => $e->getMessage(),
+            ], 500);
         }
     }
 
-    // =========================================================
-    // تبديل حالة التفعيل
-    // =========================================================
+    /**
+     * تفعيل / تعطيل المخزن.
+     */
     public function toggleStatus($id)
     {
         try {
+
             $stock = Stock::findOrFail($id);
-            $newStatus = !$stock->is_active;
 
-            DB::transaction(function () use ($stock, $newStatus) {
-                $stock->update(['is_active' => $newStatus]);
+            $stock->is_active = !$stock->is_active;
+            $stock->save();
 
-                $account = CharAccount::find($stock->accountID);
-                if ($account) {
-                    $account->update(['IsActive' => $newStatus ? 1 : 0]);
-                }
-            });
+            /*
+             * StockObserver سيقوم بمزامنة
+             * حالة الحساب التحليلي.
+             */
 
-            $statusText = $newStatus ? 'تم التفعيل' : 'تم التعطيل';
             return response()->json([
                 'success' => true,
-                'message' => $statusText . ' بنجاح',
-                'data' => $stock->fresh('account'),
-            ]);
+                'message' => $stock->is_active
+                    ? 'تم تفعيل المخزن بنجاح.'
+                    : 'تم تعطيل المخزن بنجاح.',
+            ], 200);
 
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (\Throwable $e) {
+
             return response()->json([
                 'success' => false,
-                'message' => 'المخزن غير موجود',
-            ], 404);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'حدث خطأ أثناء تغيير الحالة: ' . $e->getMessage(),
-            ], 422);
+                'message' => $e->getMessage(),
+            ], 500);
         }
     }
 }

@@ -7,28 +7,52 @@ use App\Models\Accounting\CharAccount;
 
 class StockObserver
 {
+    /**
+     * بعد إنشاء المخزن:
+     * الحساب التحليلي يكون قد أُنشئ مسبقاً من Controller
+     * لذلك لا ننشئ حساباً جديداً هنا.
+     */
     public function created(Stock $stock)
     {
         $account = CharAccount::find($stock->accountID);
-        if ($account && $account->accName !== $stock->StockName) {
+
+        if (!$account) {
+            return;
+        }
+
+        // ضمان تطابق اسم الحساب مع اسم المخزن
+        if ($account->accName !== $stock->StockName) {
             $account->accName = $stock->StockName;
             $account->save();
         }
     }
 
+    /**
+     * عند تعديل المخزن:
+     * مزامنة اسم وحالة الحساب التحليلي المرتبط به.
+     */
     public function updated(Stock $stock)
     {
         $account = CharAccount::find($stock->accountID);
-        if (!$account) return;
+
+        if (!$account) {
+            return;
+        }
 
         $changed = false;
 
-        if ($stock->isDirty('StockName') && $account->accName !== $stock->StockName) {
+        if (
+            $stock->wasChanged('StockName') &&
+            $account->accName !== $stock->StockName
+        ) {
             $account->accName = $stock->StockName;
             $changed = true;
         }
 
-        if ($stock->isDirty('is_active') && $account->IsActive != $stock->is_active) {
+        if (
+            $stock->wasChanged('is_active') &&
+            (int) $account->IsActive !== (int) $stock->is_active
+        ) {
             $account->IsActive = $stock->is_active;
             $changed = true;
         }
@@ -38,8 +62,12 @@ class StockObserver
         }
     }
 
+    /**
+     * الحذف يتم التحكم به من StockController
+     * لأن الحساب المرتبط يجب التعامل معه حسب وجود أبناء له.
+     */
     public function deleted(Stock $stock)
     {
-        // التعامل مع الحذف في Controller
+        // يتم التعامل مع حذف الحساب في Controller
     }
 }

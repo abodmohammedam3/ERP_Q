@@ -1,232 +1,106 @@
-<!-- بطاقة جدول الحسابات -->
-<div class="card" id="accountsTable">
+
+{{-- =====================================================
+     بطاقة عرض شجرة الحسابات التجميعية
+===================================================== --}}
+
+<div class="card mb-4" id="accountsTable">
+
+    <div class="card-header bg-body border-bottom">
+
+        <div class="d-flex align-items-center gap-2  ">
+
+            <i class="bi bi-diagram-3 text-primary"></i>
+
+            <h6 class="mb-0 fw-bold">
+                شجرة الحسابات التجميعية
+            </h6>
+
+        </div>
+
+    </div>
+
     <div class="card-body p-0">
+
         <div class="table-responsive">
+
             <table class="table table-striped table-hover mb-0">
+
                 <thead class="table-light">
+
                     <tr>
+
                         <th>#</th>
-                        <th>رقم الحساب التحليلي</th>
-                        <th>اسم الحساب</th>
-                        <th>طبيعة الحساب</th>
-                        <th>الحساب الأب</th>
-                        <th>الحالة</th>
-                        <th>الإجراءات</th>
+
+                        <th>
+                            رقم الحساب
+                        </th>
+
+                        <th>
+                            اسم الحساب
+                        </th>
+
+                        <th>
+                            طبيعة الحساب
+                        </th>
+
+                        <th>
+                            الحساب الأب
+                        </th>
+
+                        <th>
+                            الحالة
+                        </th>
+
+                        <th>
+                            الإجراءات
+                        </th>
+
                     </tr>
+
                 </thead>
+
                 <tbody id="accountsTreeBody">
 
-                    @php
-                        /*
-                        |--------------------------------------------------------------------------
-                        | ترتيب الحسابات كشجرة
-                        |--------------------------------------------------------------------------
-                        */
+                    <tr>
 
-                        $accountsByParent = $accounts->groupBy(function ($account) {
-                            return $account->accParent ?? 0;
-                        });
-
-                        $orderedAccounts = collect();
-
-                        $addChildren = function ($parentId) use (
-                            &$addChildren,
-                            &$orderedAccounts,
-                            $accountsByParent
-                        ) {
-                            $children = $accountsByParent->get($parentId, collect());
-
-                            foreach ($children as $child) {
-
-                                $orderedAccounts->push($child);
-
-                                // إضافة أبناء هذا الحساب تحته مباشرة
-                                $addChildren($child->accountID);
-                            }
-                        };
-
-                        // الحسابات الرئيسية أولاً
-                        $addChildren(0);
-                    @endphp
-
-
-                    @forelse($orderedAccounts as $index => $account)
-
-                        @php
-                            $hasChildren = $accounts->contains(
-                                'accParent',
-                                $account->accountID
-                            );
-                        @endphp
-
-                        <tr
-                            class="account-row"
-                            data-id="{{ $account->accountID }}"
-                            data-parent="{{ $account->accParent ?? '' }}"
-                            data-level="{{ $account->accLevel }}"
+                        <td
+                            colspan="7"
+                            class="text-center py-4 text-muted"
                         >
 
-                            {{-- # --}}
-                            <td>
-                                {{ $index + 1 }}
-                            </td>
+                            <div
+                                class="d-flex justify-content-center align-items-center gap-2"
+                            >
 
+                                <div
+                                    class="spinner-border spinner-border-sm"
+                                    role="status"
+                                    aria-hidden="true"
+                                ></div>
 
-                            {{-- رقم الحساب --}}
-                            <td>
-
-                                <span
-                                    class="tree-indent"
-                                    style="
-                                        margin-right:
-                                        {{ ($account->accLevel - 1) * 25 }}px;
-                                    "
-                                >
-
-                                    @if($hasChildren)
-
-                                        <button
-                                            type="button"
-                                            class="btn btn-sm btn-link tree-toggle"
-                                            data-id="{{ $account->accountID }}"
-                                            title="فتح / إغلاق"
-                                        >
-                                            <i class="bi bi-chevron-left"></i>
-                                        </button>
-
-                                    @else
-
-                                        <span
-                                            class="tree-empty-space"
-                                            style="
-                                                display:inline-block;
-                                                width:32px;
-                                            "
-                                        ></span>
-
-                                    @endif
-
-                                    {{ $account->accCode }}
-
+                                <span>
+                                    جاري تحميل الحسابات...
                                 </span>
 
-                            </td>
+                            </div>
 
+                        </td>
 
-                            {{-- اسم الحساب --}}
-                            <td>
-                                {{ $account->accName }}
-                            </td>
-
-
-                            {{-- طبيعة الحساب --}}
-                            <td>
-
-                                @if($account->nature == 0)
-
-                                    <span class="badge bg-info">
-                                        مدين
-                                    </span>
-
-                                @else
-
-                                    <span class="badge bg-success">
-                                        دائن
-                                    </span>
-
-                                @endif
-
-                            </td>
-
-
-                            {{-- الحساب الأب --}}
-                            <td>
-
-                                @php
-
-                                    $parentAccount = $accounts->firstWhere(
-                                        'accountID',
-                                        $account->accParent
-                                    );
-
-                                @endphp
-
-                                {{ $parentAccount?->accName ?? '--' }}
-
-                            </td>
-
-
-                            {{-- الحالة --}}
-                            <td>
-
-                                @if($account->IsActive == 1)
-
-                                    <span class="badge bg-primary">
-                                        نشط
-                                    </span>
-
-                                @else
-
-                                    <span class="badge bg-secondary">
-                                        غير نشط
-                                    </span>
-
-                                @endif
-
-                            </td>
-
-
-                            {{-- الإجراءات --}}
-                            <td>
-
-                                <button
-                                    type="button"
-                                    class="btn btn-sm btn-outline-primary me-1 edit-account"
-                                    data-id="{{ $account->accountID }}"
-                                >
-                                    <i class="bi bi-pencil"></i>
-                                    تعديل
-                                </button>
-
-
-                                <button
-                                    type="button"
-                                    class="btn btn-sm btn-outline-danger delete-account"
-                                    data-id="{{ $account->accountID }}"
-                                >
-                                    <i class="bi bi-trash"></i>
-                                    حذف
-                                </button>
-
-                            </td>
-
-                        </tr>
-
-                    @empty
-
-                        <tr>
-
-                            <td
-                                colspan="7"
-                                class="text-center py-4 text-muted"
-                            >
-                                لا توجد حسابات
-                            </td>
-
-                        </tr>
-
-                    @endforelse
-
+                    </tr>
 
                 </tbody>
+
             </table>
+
         </div>
+
     </div>
-    <!-- تذييل الجدول (ترقيم الصفحات) -->
+
     <div
         class="card-footer d-flex flex-wrap justify-content-between align-items-center"
         id="accountsPagination"
     >
+
         <span
             class="text-muted small"
             id="accountsPaginationInfo"
@@ -234,12 +108,187 @@
             عرض 0-0 من 0 حساب
         </span>
 
-        <nav>
+        <nav aria-label="ترقيم الحسابات">
+
             <ul
                 class="pagination pagination-sm mb-0"
                 id="accountsPaginationList"
             >
             </ul>
+
         </nav>
+
     </div>
+
+</div>
+
+
+{{-- =====================================================
+     Modal عرض الحسابات التحليلية
+===================================================== --}}
+
+<div
+    class="modal fade"
+    id="analyticalAccountsModal"
+    tabindex="-1"
+    aria-labelledby="analyticalAccountsModalLabel"
+    aria-hidden="true"
+>
+
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+
+        <div class="modal-content">
+
+            {{-- رأس النافذة --}}
+            <div class="modal-header position-relative">
+
+                <div>
+
+                    <h5
+                        class="modal-title fw-bold"
+                        id="analyticalAccountsModalLabel"
+                    >
+                        الحسابات التحليلية
+                    </h5>
+
+                    <div
+                        class="text-muted small mt-1"
+                        id="analyticalAccountsParent"
+                    >
+                        -
+                    </div>
+
+                </div>
+
+                <button
+                    type="button"
+                    class="btn-close position-absolute top-0 start-0 m-3"
+                    data-bs-dismiss="modal"
+                    aria-label="إغلاق"
+                ></button>
+
+            </div>
+
+
+            {{-- محتوى النافذة --}}
+            <div class="modal-body">
+
+                {{-- البحث --}}
+                <div class="row g-2 mb-3">
+
+                    <div class="col-md-4">
+
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="analyticalSearchCode"
+                            placeholder="بحث برقم الحساب"
+                        >
+
+                    </div>
+
+                    <div class="col-md-4">
+
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="analyticalSearchName"
+                            placeholder="بحث باسم الحساب"
+                        >
+
+                    </div>
+
+
+
+                {{-- جدول الحسابات التحليلية --}}
+                <div
+                    class="table-responsive"
+                    style="max-height: 450px; overflow-y: auto;"
+                >
+
+                    <table class="table table-striped table-hover mb-0">
+
+                        <thead
+                            class="table-light"
+                            style="position: sticky; top: 0; z-index: 1;"
+                        >
+
+                            <tr>
+
+                                <th>#</th>
+
+                                <th>
+                                    رقم الحساب
+                                </th>
+
+                                <th>
+                                    اسم الحساب
+                                </th>
+
+                                <th>
+                                    طبيعة الحساب
+                                </th>
+
+                                <th>
+                                    الحالة
+                                </th>
+
+                                <th>
+                                    الإجراءات
+                                </th>
+
+                            </tr>
+
+                        </thead>
+
+                        <tbody id="analyticalAccountsBody">
+
+                            <tr>
+
+                                <td
+                                    colspan="6"
+                                    class="text-center text-muted py-4"
+                                >
+                                    اختر حسابًا لعرض الحسابات التحليلية
+                                </td>
+
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+
+            {{-- أسفل النافذة --}}
+            <div
+                class="modal-footer d-flex flex-wrap justify-content-between align-items-center"
+            >
+
+                <span
+                    class="text-muted small"
+                    id="analyticalPaginationInfo"
+                >
+                    عرض 0-0 من 0 حساب
+                </span>
+
+                <nav aria-label="ترقيم الحسابات التحليلية">
+
+                    <ul
+                        class="pagination pagination-sm mb-0"
+                        id="analyticalPaginationList"
+                    >
+                    </ul>
+
+                </nav>
+
+            </div>
+
+        </div>
+
+    </div>
+
 </div>

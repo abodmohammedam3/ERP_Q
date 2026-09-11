@@ -19,46 +19,88 @@ Route::get('/dashboard', function () {
     return view('dashboard.index');
 });
 
-
 // =====================================================
 // دوال دليل الحسابات
 // =====================================================
+
+// -----------------------------------------------------
+// الصفحة الرئيسية
+// -----------------------------------------------------
 
 Route::get(
     '/settings/accounting/chartOfAccounts',
     [CharAccountController::class, 'index']
 )->name('chartOfAccounts.index');
 
-Route::get(
-    '/settings/accounting/chartOfAccounts/list',
-    [CharAccountController::class, 'list']
-)->name('chartOfAccounts.list');
 
-Route::post(
-    '/settings/accounting/chartOfAccounts',
-    [CharAccountController::class, 'store']
-)->name('chartOfAccounts.store');
+// -----------------------------------------------------
+// شجرة الحسابات التجميعية
+// -----------------------------------------------------
 
 Route::get(
-    '/settings/accounting/chartOfAccounts/{account}',
-    [CharAccountController::class, 'edit']
-)->name('chartOfAccounts.edit');
+    '/settings/accounting/chartOfAccounts/tree',
+    [CharAccountController::class, 'tree']
+)->name('chartOfAccounts.tree');
 
-Route::put(
-    '/settings/accounting/chartOfAccounts/{account}',
-    [CharAccountController::class, 'update']
-)->name('chartOfAccounts.update');
 
-Route::delete(
-    '/settings/accounting/chartOfAccounts/{account}',
-    [CharAccountController::class, 'destroy']
-)->name('chartOfAccounts.destroy');
+// -----------------------------------------------------
+// الحسابات التحليلية التابعة
+// -----------------------------------------------------
+
+Route::get(
+    '/settings/accounting/chartOfAccounts/{account}/analytical',
+    [CharAccountController::class, 'analyticalAccounts']
+)->name('chartOfAccounts.analytical');
+
+
+// -----------------------------------------------------
+// رقم الحساب الفرعي التالي
+// -----------------------------------------------------
 
 Route::get(
     '/settings/accounting/chartOfAccounts/next-code/{parentId}',
     [CharAccountController::class, 'nextCode']
 )->name('chartOfAccounts.nextCode');
 
+
+// -----------------------------------------------------
+// إضافة حساب
+// -----------------------------------------------------
+
+Route::post(
+    '/settings/accounting/chartOfAccounts',
+    [CharAccountController::class, 'store']
+)->name('chartOfAccounts.store');
+
+
+// -----------------------------------------------------
+// جلب حساب للتعديل
+// -----------------------------------------------------
+
+Route::get(
+    '/settings/accounting/chartOfAccounts/{account}',
+    [CharAccountController::class, 'edit']
+)->name('chartOfAccounts.edit');
+
+
+// -----------------------------------------------------
+// تحديث حساب
+// -----------------------------------------------------
+
+Route::put(
+    '/settings/accounting/chartOfAccounts/{account}',
+    [CharAccountController::class, 'update']
+)->name('chartOfAccounts.update');
+
+
+// -----------------------------------------------------
+// حذف حساب
+// -----------------------------------------------------
+
+Route::delete(
+    '/settings/accounting/chartOfAccounts/{account}',
+    [CharAccountController::class, 'destroy']
+)->name('chartOfAccounts.destroy');
 
 // =====================================================
 // العملاء
@@ -263,7 +305,6 @@ Route::patch(
     [UnitController::class, 'toggleStatus']
 )->name('units.toggleStatus');
 
-
 // =====================================================
 // Routes الخاصة بالمخازن
 // =====================================================
@@ -278,15 +319,15 @@ Route::get(
     [StockController::class, 'list']
 )->name('warehouses.list');
 
-Route::post(
-    '/setting/inventory/warehouses',
-    [StockController::class, 'store']
-)->name('warehouses.store');
-
 Route::get(
     '/setting/inventory/warehouses/next-code',
     [StockController::class, 'getNextCode']
 )->name('warehouses.nextCode');
+
+Route::post(
+    '/setting/inventory/warehouses',
+    [StockController::class, 'store']
+)->name('warehouses.store');
 
 Route::put(
     '/setting/inventory/warehouses/{stock}',
@@ -302,8 +343,6 @@ Route::patch(
     '/setting/inventory/warehouses/{stock}/toggle-status',
     [StockController::class, 'toggleStatus']
 )->name('warehouses.toggleStatus');
-
-
 // =====================================================
 // الصفحات التشغيلية
 // =====================================================

@@ -7,71 +7,113 @@ use App\Models\Inventory\Stock;
 
 class CharAccountObserver
 {
+    /**
+     * الحصول على الحساب الأب للمخازن.
+     *
+     * الحساب النظامي:
+     * system_key = inventory
+     */
     private function getStockParent()
     {
-        $parent = CharAccount::where('accName', 'المخازن')->first();
-        if ($parent) return $parent;
-
-        $parent = CharAccount::where('accName', 'LIKE', '%مخازن%')->first();
-        if ($parent) return $parent;
-
-        $parent = CharAccount::where('accCode', 113)->first();
-        if ($parent) return $parent;
-
-        return null;
+        return CharAccount::where('system_key', 'inventory')
+            ->where('isPostable', 0)
+            ->first();
     }
 
+    /**
+     * التحقق هل الحساب يقع تحت حساب المخازن.
+     */
     private function isDescendant($account, $parent)
     {
-        if (!$parent) return false;
+        if (!$parent) {
+            return false;
+        }
 
         $current = $account;
+
         while ($current) {
-            if ($current->accParent == $parent->accountID) {
+
+            if (
+                (int) $current->accParent ===
+                (int) $parent->accountID
+            ) {
                 return true;
             }
-            if (!$current->accParent) break;
-            $current = CharAccount::find($current->accParent);
-            if (!$current) break;
+
+            if (!$current->accParent) {
+                break;
+            }
+
+            $current =
+                CharAccount::find(
+                    $current->accParent
+                );
+
+            if (!$current) {
+                break;
+            }
         }
+
         return false;
     }
 
+    /**
+     * عند إنشاء حساب.
+     *
+     * لا ننشئ Stock هنا.
+     *
+     * إنشاء المخزن يتم من StockController
+     * لأن stocks.accountID لا يقبل NULL.
+     */
     public function created(CharAccount $account)
     {
-        $parent = $this->getStockParent();
-        if (!$parent) return;
-
-        if ($account->accountID == $parent->accountID) return;
-
-        if (!$this->isDescendant($account, $parent)) return;
-
-        // منع التكرار
-        $existing = Stock::where('accountID', $account->accountID)->first();
-        if ($existing) return;
-
-        // إنشاء المخزن باسم الحساب
-        Stock::create([
-            'StockName' => $account->accName,
-            'accountID' => $account->accountID,
-            'is_active' => $account->IsActive,
-        ]);
+        return;
     }
 
+    /**
+     * عند تعديل الحساب.
+     *
+     * مزامنة اسم وحالة المخزن المرتبط.
+     */
     public function updated(CharAccount $account)
     {
-        $stock = Stock::where('accountID', $account->accountID)->first();
-        if (!$stock) return;
+        $stock = Stock::where(
+            'accountID',
+            $account->accountID
+        )->first();
+
+        if (!$stock) {
+            return;
+        }
 
         $changed = false;
 
-        if ($account->isDirty('accName') && $stock->StockName !== $account->accName) {
-            $stock->StockName = $account->accName;
+        /*
+         * مزامنة اسم الحساب
+         */
+        if (
+            $account->isDirty('accName') &&
+            $stock->StockName !== $account->accName
+        ) {
+
+            $stock->StockName =
+                $account->accName;
+
             $changed = true;
         }
 
-        if ($account->isDirty('IsActive') && $stock->is_active != $account->IsActive) {
-            $stock->is_active = $account->IsActive;
+        /*
+         * مزامنة حالة الحساب
+         */
+        if (
+            $account->isDirty('IsActive') &&
+            (int) $stock->is_active !==
+            (int) $account->IsActive
+        ) {
+
+            $stock->is_active =
+                $account->IsActive;
+
             $changed = true;
         }
 
@@ -80,9 +122,18 @@ class CharAccountObserver
         }
     }
 
+    /**
+     * عند حذف الحساب.
+     *
+     * حذف المخزن المرتبط به.
+     */
     public function deleting(CharAccount $account)
     {
-        $stock = Stock::where('accountID', $account->accountID)->first();
+        $stock = Stock::where(
+            'accountID',
+            $account->accountID
+        )->first();
+
         if ($stock) {
             $stock->delete();
         }

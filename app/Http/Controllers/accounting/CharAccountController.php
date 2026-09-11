@@ -10,60 +10,39 @@ use Illuminate\Support\Facades\DB;
 class CharAccountController extends Controller
 {
     // =====================================================
-    // عرض دليل الحسابات
+    // عرض صفحة دليل الحسابات
     // =====================================================
 
     public function index()
     {
-        $accounts =
-            CharAccount::orderBy('accCode')->get();
-
         return view(
-            'setting.accounting.chartOfAccounts.index',
-            compact('accounts')
+            'setting.accounting.chartOfAccounts.index'
         );
     }
 
 
     // =====================================================
-    // جلب حساب للتعديل
+    // جلب الحساب للتعديل
     // =====================================================
 
-    public function edit(
-        CharAccount $account
-    ) {
-
+    public function edit(CharAccount $account)
+    {
         return response()->json([
 
             'success' => true,
 
             'account' => [
-                'accountID' =>
-                    $account->accountID,
-
-                'accTypeID' =>
-                    $account->accTypeID,
-
-                'accCode' =>
-                    $account->accCode,
-
-                'accParent' =>
-                    $account->accParent,
-
-                'accName' =>
-                    $account->accName,
-
-                'nature' =>
-                    $account->nature,
-
-                'accLevel' =>
-                    $account->accLevel,
-
-                'IsActive' =>
-                    $account->IsActive,
-
-                'isPostable' =>
-                    $account->isPostable,
+                'accountID'  => $account->accountID,
+                'accTypeID'  => $account->accTypeID,
+                'accCode'    => $account->accCode,
+                'accParent'  => $account->accParent,
+                'accName'    => $account->accName,
+                'nature'     => $account->nature,
+                'accLevel'   => $account->accLevel,
+                'IsActive'   => $account->IsActive,
+                'isPostable' => $account->isPostable,
+                'is_system'  => $account->is_system,
+                'system_key' => $account->system_key,
             ],
 
         ]);
@@ -74,36 +53,17 @@ class CharAccountController extends Controller
     // إضافة حساب
     // =====================================================
 
-    public function store(
-        Request $request
-    ) {
-
-        // =================================================
-        // التحقق من البيانات الأساسية
-        // =================================================
-
+    public function store(Request $request)
+    {
         $request->validate(
             [
-                'accTypeID' =>
-                    'required|numeric',
-
-                'accParent' =>
-                    'nullable|numeric',
-
-                'accCode' =>
-                    'nullable|numeric',
-
-                'accName' =>
-                    'required|string',
-
-                'nature' =>
-                    'required|numeric',
-
-                'IsActive' =>
-                    'required|numeric',
-
-                'isPostable' =>
-                    'required|numeric',
+                'accTypeID'  => 'required|integer',
+                'accParent'  => 'nullable|integer',
+                'accCode'    => 'nullable|string',
+                'accName'    => 'required|string',
+                'nature'     => 'required|integer',
+                'IsActive'   => 'required|integer|in:0,1',
+                'isPostable' => 'required|integer|in:0,1',
             ],
             [
                 'accName.required' =>
@@ -120,35 +80,27 @@ class CharAccountController extends Controller
 
         if ($request->filled('accParent')) {
 
-            $parent =
-                CharAccount::find(
-                    $request->accParent
-                );
+            $parent = CharAccount::find(
+                (int) $request->accParent
+            );
 
             if (!$parent) {
 
                 return response()->json([
                     'success' => false,
-                    'message' =>
-                        'الحساب الأب غير موجود',
+                    'message' => 'الحساب الأب غير موجود',
                 ], 422);
             }
         }
 
 
         // =================================================
-        // تحديد المستوى
+        // تحديد مستوى الحساب
         // =================================================
 
-        if ($parent) {
-
-            $accLevel =
-                ((int) $parent->accLevel) + 1;
-
-        } else {
-
-            $accLevel = 1;
-        }
+        $accLevel = $parent
+            ? ((int) $parent->accLevel + 1)
+            : 1;
 
 
         // =================================================
@@ -157,9 +109,7 @@ class CharAccountController extends Controller
 
         if (!$parent) {
 
-            // =============================================
-            // حساب رئيسي
-            // =============================================
+            // الحساب الرئيسي
 
             if (!$request->filled('accCode')) {
 
@@ -170,8 +120,9 @@ class CharAccountController extends Controller
                 ], 422);
             }
 
-            $accCode =
-                trim($request->accCode);
+            $accCode = trim(
+                (string) $request->accCode
+            );
 
 
             if (!ctype_digit($accCode)) {
@@ -179,7 +130,7 @@ class CharAccountController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' =>
-                        'رقم الحساب الرئيسي يجب أن يكون رقماً صحيحاً',
+                        'رقم الحساب يجب أن يكون رقماً صحيحاً',
                 ], 422);
             }
 
@@ -195,9 +146,7 @@ class CharAccountController extends Controller
 
         } else {
 
-            // =============================================
-            // حساب فرعي
-            // =============================================
+            // الحساب الفرعي
 
             try {
 
@@ -210,15 +159,14 @@ class CharAccountController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message' =>
-                        $e->getMessage(),
+                    'message' => $e->getMessage(),
                 ], 422);
             }
         }
 
 
         // =================================================
-        // التأكد من عدم تكرار الرقم
+        // منع تكرار رقم الحساب
         // =================================================
 
         if (
@@ -240,39 +188,39 @@ class CharAccountController extends Controller
         // إنشاء الحساب
         // =================================================
 
-        $account =
-            CharAccount::create([
+        $account = CharAccount::create([
 
-                'accTypeID' =>
-                    $request->accTypeID,
+            'accTypeID' =>
+                (int) $request->accTypeID,
 
-                'accCode' =>
-                    $accCode,
+            'accCode' =>
+                $accCode,
 
-                'accParent' =>
-                    $parent?->accountID,
+            'accParent' =>
+                $parent?->accountID,
 
-                'accName' =>
-                    $request->accName,
+            'accName' =>
+                trim($request->accName),
 
-                'nature' =>
-                    $request->nature,
+            'nature' =>
+                (int) $request->nature,
 
-                'accLevel' =>
-                    $accLevel,
+            'accLevel' =>
+                $accLevel,
 
-                'IsActive' =>
-                    $request->IsActive,
+            'IsActive' =>
+                (int) $request->IsActive,
 
-                'isPostable' =>
-                    $request->isPostable,
+            'isPostable' =>
+                (int) $request->isPostable,
 
-            ]);
+            'is_system' =>
+                0,
 
+            'system_key' =>
+                null,
+        ]);
 
-        // =================================================
-        // إرجاع الحساب
-        // =================================================
 
         return response()->json([
 
@@ -306,23 +254,17 @@ class CharAccountController extends Controller
             $parentLevel + 1;
 
 
-        // =================================================
-        // المستوى الثاني يضيف خانة واحدة
-        // المستوى الثالث وما بعده يضيف خانتين
-        // =================================================
+        // المستوى الثاني خانة واحدة
+        // المستويات التالية خانتان
 
-        if ($childLevel === 2) {
-
-            $segmentLength = 1;
-
-        } else {
-
-            $segmentLength = 2;
-        }
+        $segmentLength =
+            $childLevel === 2
+                ? 1
+                : 2;
 
 
         // =================================================
-        // جلب أبناء الحساب الأب
+        // جلب أبناء الحساب
         // =================================================
 
         $children =
@@ -336,11 +278,8 @@ class CharAccountController extends Controller
             ]);
 
 
-        // =================================================
-        // البحث عن أكبر تسلسل
-        // =================================================
-
         $maxSequence = 0;
+
 
         foreach ($children as $child) {
 
@@ -388,7 +327,6 @@ class CharAccountController extends Controller
                 $sequence >
                 $maxSequence
             ) {
-
                 $maxSequence =
                     $sequence;
             }
@@ -402,10 +340,6 @@ class CharAccountController extends Controller
         $nextSequence =
             $maxSequence + 1;
 
-
-        // =================================================
-        // الحد الأقصى
-        // =================================================
 
         $maxAllowed =
             $segmentLength === 1
@@ -423,10 +357,6 @@ class CharAccountController extends Controller
             );
         }
 
-
-        // =================================================
-        // تكوين الجزء الجديد
-        // =================================================
 
         $segment =
             str_pad(
@@ -451,33 +381,46 @@ class CharAccountController extends Controller
     ) {
 
         // =================================================
+        // حماية الحسابات النظامية
+        // =================================================
+
+        if ((int) $account->is_system === 1) {
+
+            return response()->json([
+                'success' => false,
+                'message' =>
+                    'لا يمكن تعديل حساب نظامي',
+            ], 403);
+        }
+
+
+        // =================================================
         // التحقق من البيانات
         // =================================================
 
         $request->validate(
             [
                 'accTypeID' =>
-                    'required|numeric',
+                    'required|integer',
 
                 'accCode' =>
-                    'required|numeric|unique:characcount,accCode,'
+                    'required|string|unique:characcount,accCode,'
                     . $account->accountID
                     . ',accountID',
 
                 'accParent' =>
-                    'nullable|numeric',
+                    'nullable|integer',
 
                 'accName' =>
                     'required|string',
 
-                'nature' =>
-                    'required|numeric',
+                'nature' => 'required|integer|in:0,1',
 
                 'IsActive' =>
-                    'required|numeric',
+                    'required|integer|in:0,1',
 
                 'isPostable' =>
-                    'required|numeric',
+                    'required|integer|in:0,1',
             ],
             [
                 'accCode.unique' =>
@@ -551,7 +494,7 @@ class CharAccountController extends Controller
 
 
         // =================================================
-        // الأب القديم والجديد
+        // معرفة تغير الأب
         // =================================================
 
         $oldParentId =
@@ -570,15 +513,10 @@ class CharAccountController extends Controller
         // المستوى الجديد
         // =================================================
 
-        if ($newParent) {
-
-            $newLevel =
-                ((int) $newParent->accLevel) + 1;
-
-        } else {
-
-            $newLevel = 1;
-        }
+        $newLevel =
+            $newParent
+                ? ((int) $newParent->accLevel + 1)
+                : 1;
 
 
         // =================================================
@@ -586,12 +524,12 @@ class CharAccountController extends Controller
         // =================================================
 
         $newCode =
-            trim($request->accCode);
+            trim(
+                (string) $request->accCode
+            );
 
 
-        // =================================================
-        // إذا تغير الأب يتم إنشاء كود جديد
-        // =================================================
+        // إذا تغير الأب يتم توليد كود جديد
 
         if (
             $parentChanged &&
@@ -609,20 +547,20 @@ class CharAccountController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message' =>
-                        $e->getMessage(),
+                    'message' => $e->getMessage(),
                 ], 422);
             }
         }
 
 
         // =================================================
-        // إذا أصبح الحساب رئيسياً
+        // إذا أصبح حساباً رئيسياً
         // =================================================
 
         if (!$newParent) {
 
             $newLevel = 1;
+
 
             if (
                 !ctype_digit($newCode) ||
@@ -639,7 +577,7 @@ class CharAccountController extends Controller
 
 
         // =================================================
-        // التأكد من عدم تكرار الرقم
+        // منع التكرار
         // =================================================
 
         $duplicate =
@@ -677,7 +615,7 @@ class CharAccountController extends Controller
 
 
         // =================================================
-        // تنفيذ التحديث داخل Transaction
+        // تنفيذ التحديث
         // =================================================
 
         try {
@@ -693,12 +631,10 @@ class CharAccountController extends Controller
                 $parentChanged
             ) {
 
-                // تحديث الحساب
-
                 $account->update([
 
                     'accTypeID' =>
-                        $request->accTypeID,
+                        (int) $request->accTypeID,
 
                     'accCode' =>
                         $newCode,
@@ -707,30 +643,30 @@ class CharAccountController extends Controller
                         $newParent?->accountID,
 
                     'accName' =>
-                        $request->accName,
+                        trim($request->accName),
 
                     'nature' =>
-                        $request->nature,
+                        (int) $request->nature,
 
                     'accLevel' =>
                         $newLevel,
 
                     'IsActive' =>
-                        $request->IsActive,
+                        (int) $request->IsActive,
 
                     'isPostable' =>
-                        $request->isPostable,
+                        (int) $request->isPostable,
 
                 ]);
 
 
-                // حساب فرق المستوى
+                // =================================================
+                // تحديث مستويات الأبناء
+                // =================================================
 
                 $levelDifference =
                     $newLevel - $oldLevel;
 
-
-                // تحديث مستويات الأبناء
 
                 if (
                     $levelDifference !== 0
@@ -743,7 +679,9 @@ class CharAccountController extends Controller
                 }
 
 
+                // =================================================
                 // تحديث أكواد الأبناء
+                // =================================================
 
                 if (
                     $parentChanged ||
@@ -768,10 +706,6 @@ class CharAccountController extends Controller
             ], 500);
         }
 
-
-        // =================================================
-        // إرجاع البيانات
-        // =================================================
 
         return response()->json([
 
@@ -823,7 +757,7 @@ class CharAccountController extends Controller
 
 
     // =====================================================
-    // تحديث أكواد جميع الحسابات الفرعية
+    // تحديث أكواد الحسابات الفرعية
     // =====================================================
 
     private function updateChildrenCodes(
@@ -847,20 +781,15 @@ class CharAccountController extends Controller
                 (string) $child->accCode;
 
 
-            // التأكد أن كود الابن يبدأ بكود الأب القديم
-
             if (
                 !str_starts_with(
                     $oldChildCode,
                     $oldCode
                 )
             ) {
-
                 continue;
             }
 
-
-            // الجزء الخاص بالابن
 
             $childSuffix =
                 substr(
@@ -869,14 +798,11 @@ class CharAccountController extends Controller
                 );
 
 
-            // الكود الجديد
-
             $newChildCode =
-                $newCode .
-                $childSuffix;
+                $newCode . $childSuffix;
 
 
-            // منع تكرار الكود
+            // منع التكرار
 
             $duplicate =
                 CharAccount::where(
@@ -903,15 +829,11 @@ class CharAccountController extends Controller
             }
 
 
-            // تحديث كود الابن
-
             $child->update([
                 'accCode' =>
                     $newChildCode,
             ]);
 
-
-            // تحديث أبناء الابن
 
             $this->updateChildrenCodes(
                 $child,
@@ -923,7 +845,7 @@ class CharAccountController extends Controller
 
 
     // =====================================================
-    // التحقق من أن الحساب من أبناء الحساب
+    // التحقق من أن الحساب من أبناء حساب معين
     // =====================================================
 
     private function isDescendant(
@@ -943,7 +865,6 @@ class CharAccountController extends Controller
                 (int) $current->accParent ===
                 $accountId
             ) {
-
                 return true;
             }
 
@@ -951,7 +872,6 @@ class CharAccountController extends Controller
             if (
                 !$current->accParent
             ) {
-
                 break;
             }
 
@@ -974,6 +894,18 @@ class CharAccountController extends Controller
     public function destroy(
         CharAccount $account
     ) {
+
+        // حماية الحسابات النظامية
+
+        if ((int) $account->is_system === 1) {
+
+            return response()->json([
+                'success' => false,
+                'message' =>
+                    'لا يمكن حذف حساب نظامي',
+            ], 403);
+        }
+
 
         // منع حذف الحساب الذي لديه أبناء
 
@@ -998,7 +930,19 @@ class CharAccountController extends Controller
             $account->accountID;
 
 
-        $account->delete();
+        try {
+
+            $account->delete();
+
+        } catch (\Throwable $e) {
+
+            return response()->json([
+                'success' => false,
+                'message' =>
+                    'لا يمكن حذف الحساب: '
+                    . $e->getMessage(),
+            ], 500);
+        }
 
 
         return response()->json([
@@ -1014,50 +958,219 @@ class CharAccountController extends Controller
         ]);
     }
 
-
-   // =====================================================
-// البحث في دليل الحسابات
+// =====================================================
+// جلب شجرة الحسابات التجميعية
 // =====================================================
 
-public function list(
-Request $request
+public function tree(Request $request)
+{
+    $query = CharAccount::query()
+
+        // الحسابات التجميعية فقط
+        ->where('isPostable', 0)
+
+        // المستوى الأول والثاني وما تحته
+        ->orderBy('accCode');
+
+    // =================================================
+    // البحث برقم الحساب
+    // =================================================
+
+    if ($request->filled('search_code')) {
+
+        $query->where(
+            'accCode',
+            'like',
+            '%' . trim($request->search_code) . '%'
+        );
+    }
+
+    // =================================================
+    // البحث باسم الحساب
+    // =================================================
+
+    if ($request->filled('search_name')) {
+
+        $query->where(
+            'accName',
+            'like',
+            '%' . trim($request->search_name) . '%'
+        );
+    }
+
+    // =================================================
+    // البحث حسب الطبيعة
+    // =================================================
+
+    if ($request->filled('search_nature')) {
+
+        $query->where(
+            'nature',
+            (int) $request->search_nature
+        );
+    }
+
+    // =================================================
+    // جلب الحسابات
+    // =================================================
+
+    $accounts = $query
+        ->get([
+            'accountID',
+            'accCode',
+            'accName',
+            'accParent',
+            'accLevel',
+            'accTypeID',
+            'nature',
+            'isPostable',
+            'IsActive',
+            'is_system',
+            'system_key',
+        ]);
+        $analyticalParentIds = CharAccount::query()
+    ->where('isPostable', 1)
+    ->whereNotNull('accParent')
+    ->whereIn(
+        'accParent',
+        $accounts->pluck('accountID')
+    )
+    ->pluck('accParent')
+    ->unique();
+
+$accounts->each(function ($account) use ($analyticalParentIds) {
+
+    $account->hasAnalytical =
+        $analyticalParentIds->contains(
+            $account->accountID
+        );
+
+});
+
+    return response()->json([
+
+        'success' => true,
+
+        'accounts' => $accounts,
+
+    ]);
+}
+
+
+// =====================================================
+// جلب الحسابات التحليلية التابعة لحساب تجميعي
+// =====================================================
+
+public function analyticalAccounts(
+    Request $request,
+    CharAccount $account
 ) {
 
-// =====================================================
-// جلب جميع الحسابات
-// =====================================================
+    // =================================================
+    // التأكد أن الحساب الأب تجميعي
+    // =================================================
 
-$accounts =
-    CharAccount::query()
+    if ((int) $account->isPostable === 1) {
+
+        return response()->json([
+
+            'success' => false,
+
+            'message' =>
+                'لا يمكن عرض الحسابات التحليلية لحساب تحليلي',
+
+        ], 422);
+    }
+
+    // =================================================
+    // الحسابات التحليلية التابعة مباشرة
+    // =================================================
+
+    $query = CharAccount::query()
+
+        ->where(
+            'accParent',
+            $account->accountID
+        )
+
+        ->where(
+            'isPostable',
+            1
+        );
+
+    // =================================================
+    // البحث برقم الحساب
+    // =================================================
+
+    if ($request->filled('search_code')) {
+
+        $query->where(
+            'accCode',
+            'like',
+            '%' . trim($request->search_code) . '%'
+        );
+    }
+
+    // =================================================
+    // البحث باسم الحساب
+    // =================================================
+
+    if ($request->filled('search_name')) {
+
+        $query->where(
+            'accName',
+            'like',
+            '%' . trim($request->search_name) . '%'
+        );
+    }
+
+    // =================================================
+    // البحث حسب الطبيعة
+    // =================================================
+
+    if ($request->filled('search_nature')) {
+
+        $query->where(
+            'nature',
+            (int) $request->search_nature
+        );
+    }
+
+    // =================================================
+    // Pagination
+    // =================================================
+
+    $accounts = $query
+
         ->orderBy('accCode')
-        ->get();
 
+        ->paginate(
+            $request->integer('per_page', 10)
+        );
 
-// =====================================================
-// تجهيز HTML الجدول
-// =====================================================
+    return response()->json([
 
-$html =
-    view(
-        'setting.accounting.chartOfAccounts.display',
-        compact('accounts')
-    )->render();
+        'success' => true,
 
+        'parent' => [
 
-// =====================================================
-// إرجاع JSON
-// =====================================================
+            'accountID' =>
+                $account->accountID,
 
-return response()->json([
+            'accCode' =>
+                $account->accCode,
 
-    'success' => true,
+            'accName' =>
+                $account->accName,
 
-    'html' =>
-        $html,
+        ],
 
-]);
+        'accounts' => $accounts,
 
+    ]);
 }
+
+
     // =====================================================
     // جلب رقم الحساب الفرعي التالي
     // =====================================================
@@ -1066,11 +1179,9 @@ return response()->json([
         int|string $parentId
     ) {
 
-        // جلب الأب
-
         $parent =
             CharAccount::find(
-                $parentId
+                (int) $parentId
             );
 
 
@@ -1083,8 +1194,6 @@ return response()->json([
             ], 404);
         }
 
-
-        // توليد الرقم
 
         try {
 
@@ -1113,3 +1222,4 @@ return response()->json([
         ]);
     }
 }
+

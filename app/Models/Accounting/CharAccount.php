@@ -16,6 +16,13 @@ class CharAccount extends Model
 
     public $timestamps = false;
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | الحقول القابلة للتعبئة
+    |--------------------------------------------------------------------------
+    */
+
     protected $fillable = [
         'accParent',
         'accTypeID',
@@ -25,5 +32,26 @@ class CharAccount extends Model
         'accLevel',
         'IsActive',
         'isPostable',
+        'is_system',
+        'system_key',
+    ];
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | أنواع البيانات
+    |--------------------------------------------------------------------------
+    */
+
+    protected $casts = [
+        'accountID'  => 'integer',
+        'accParent'  => 'integer',
+        'accTypeID'  => 'integer',
+        'accLevel'   => 'integer',
+        'nature'     => 'integer',
+        'isPostable' => 'integer',
+        'IsActive'   => 'integer',
+        'is_system'  => 'integer',
     ];
 }
+

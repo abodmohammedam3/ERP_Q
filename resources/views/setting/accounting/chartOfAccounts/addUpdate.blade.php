@@ -79,34 +79,19 @@
                         >
 
                         {{-- الحقل المخفي الحقيقي الذي يحمل القيمة --}}
-                        <select
+                      
+
+                       <select
                             name="accParent"
                             id="accParent"
                             style="display: none;"
                         >
-
                             <option value="">
                                 لا يوجد (حساب رئيسي)
                             </option>
-
-                            @foreach($accounts as $parent)
-
-                                <option
-                                    value="{{ $parent->accountID }}"
-                                    data-code="{{ $parent->accCode }}"
-                                    data-type="{{ $parent->accTypeID }}"
-                                    data-nature="{{ $parent->nature }}"
-                                    data-level="{{ $parent->accLevel }}"
-                                    data-postable="{{ $parent->isPostable }}"
-                                    data-name="{{ $parent->accName }}"
-                                >
-                                    {{ $parent->accCode }} -
-                                    {{ $parent->accName }}
-                                </option>
-
-                            @endforeach
-
                         </select>
+
+                     
 
                     </div>
 
@@ -445,23 +430,7 @@
                             </strong>
                         </li>
 
-                        @foreach($accounts as $parent)
-
-                            <li
-                                class="list-group-item list-group-item-action parent-search-item"
-                                data-id="{{ $parent->accountID }}"
-                                data-code="{{ $parent->accCode }}"
-                                data-name="{{ $parent->accName }}"
-                                data-level="{{ $parent->accLevel }}"
-                                style="cursor: pointer;"
-                            >
-                                <span class="badge bg-secondary me-2">
-                                    {{ $parent->accCode }}
-                                </span>
-                                {{ $parent->accName }}
-                            </li>
-
-                        @endforeach
+                       
 
                     </ul>
 

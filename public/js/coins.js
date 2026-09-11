@@ -72,7 +72,7 @@ function renderCoins(data) {
             data-active="${coin.is_active ? 1 : 0}">
 
             <td>${i + 1}</td>
-            <td class="row-name text-start">${escapeHtml(coin.coinsName)}</td>
+            <td class="row-name text-center">${escapeHtml(coin.coinsName)}</td>
             <td class="row-code">
                 <span class="badge bg-secondary">${escapeHtml(coin.coinsCode)}</span>
             </td>

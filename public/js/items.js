@@ -69,7 +69,7 @@ function renderItems(data) {
             data-active="${item.is_active ? 1 : 0}">
 
             <td>${i + 1}</td>
-            <td class="row-name text-start">${escapeHtml(item.itemName2)}</td>
+            <td class="row-name text-center">${escapeHtml(item.itemName2)}</td>
             <td class="row-status">
                 <button type="button"
                         class="btn btn-sm ${item.is_active ? 'btn-success' : 'btn-secondary'} toggle-status-btn"

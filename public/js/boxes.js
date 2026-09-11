@@ -83,7 +83,7 @@ function renderBoxes(data) {
                 ${noCoin ? 'style="background-color: #fff3cd;"' : ''}>
 
                 <td>${i + 1}</td>
-                <td class="row-name text-start">${escapeHtml(box.boxName)}</td>
+                <td class="row-name text-center">${escapeHtml(box.boxName)}</td>
                 <td class="row-coin">${coinCell}</td>
                 <td class="row-rate">${noCoin ? '—' : formatNumber(coinRate)}</td>
                 <td class="row-account">${accCode}</td>

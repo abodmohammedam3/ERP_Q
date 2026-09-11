@@ -1,17 +1,17 @@
 /* =========================================================
-   شاشة الأنواع
+   شاشة الوحدات
 ========================================================= */
 
-let typesData = [];
-let editingTypeId = null;
-let deletingTypeId = null;
+let unitsData = [];
+let editingUnitId = null;
+let deletingUnitId = null;
 
-const typesApi = {
-    list: '/setting/inventory/types/list',
-    store: '/setting/inventory/types',
-    update: (id) => `/setting/inventory/types/${id}`,
-    destroy: (id) => `/setting/inventory/types/${id}`,
-    toggle: (id) => `/setting/inventory/types/${id}/toggle-status`,
+const unitsApi = {
+    list: '/setting/inventory/units/list',
+    store: '/setting/inventory/units',
+    update: (id) => `/setting/inventory/units/${id}`,
+    destroy: (id) => `/setting/inventory/units/${id}`,
+    toggle: (id) => `/setting/inventory/units/${id}/toggle-status`,
 };
 
 const csrfToken = document
@@ -22,19 +22,19 @@ const csrfToken = document
    تحميل البيانات
 ========================================================= */
 
-async function loadTypes() {
+async function loadUnits() {
     try {
-        const res = await fetch(typesApi.list, {
+        const res = await fetch(unitsApi.list, {
             headers: { 'Accept': 'application/json' },
         });
         const json = await res.json();
 
         if (json.success) {
-            typesData = json.data || [];
-            renderTypes();
+            unitsData = json.data || [];
+            renderUnits();
         }
     } catch (e) {
-        console.error('خطأ في تحميل الأنواع:', e);
+        console.error('خطأ في تحميل الوحدات:', e);
     }
 }
 
@@ -42,106 +42,138 @@ async function loadTypes() {
    عرض الجدول
 ========================================================= */
 
-function renderTypes(data) {
-    const list = Array.isArray(data) ? data : typesData;
-    const tbody = document.getElementById('typesTableBody');
-    const badge = document.getElementById('typesCountBadge');
+function renderUnits(data) {
+
+    const list = Array.isArray(data)
+        ? data
+        : unitsData;
+
+    const tbody =
+        document.getElementById('unitsTableBody');
+
+    const badge =
+        document.getElementById('unitsCountBadge');
 
     if (!tbody) return;
 
+    /* ---------- حالة: لا توجد بيانات ---------- */
     if (!list.length) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="5" class="text-center text-muted py-5">
-                    <i class="bi bi-upc-scan fs-2 d-block mb-2"></i>
-                    لا توجد أنواع مسجلة
-                </td>
-            </tr>
-        `;
-        if (badge) badge.textContent = '0 نوع';
+
+        const emptyTpl =
+            document.getElementById('emptyUnitRowTemplate');
+
+        tbody.innerHTML = '';
+
+        if (emptyTpl) {
+            tbody.appendChild(
+                emptyTpl.content.cloneNode(true)
+            );
+        }
+
+        if (badge) {
+            badge.textContent = '0 وحدة';
+        }
+
         return;
     }
 
-    tbody.innerHTML = list.map((type, i) => `
-        <tr class="type-row text-center"
-            data-id="${type.id}"
-            data-name="${escapeHtml(type.name)}"
-            data-code="${escapeHtml(type.code || '')}"
-            data-active="${type.is_active ? 1 : 0}">
+    /* ---------- حالة: يوجد بيانات ---------- */
+    const rowTpl =
+        document.getElementById('unitRowTemplate');
 
-            <td>${i + 1}</td>
-            <td class="row-name text-start">${escapeHtml(type.name)}</td>
-            <td class="row-code">
-                <span class="badge bg-secondary">${escapeHtml(type.code || '—')}</span>
-            </td>
-            <td class="row-status">
-                <button type="button"
-                        class="btn btn-sm ${type.is_active ? 'btn-success' : 'btn-secondary'} toggle-status-btn"
-                        onclick="toggleTypeStatus(this)">
-                    ${type.is_active ? 'نشط' : 'غير نشط'}
-                </button>
-            </td>
-            <td class="no-print">
-                <div class="btn-action-group">
-                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="editType(this)">
-                        <i class="bi bi-pencil d-md-none"></i>
-                        <span class="d-none d-md-inline">تعديل</span>
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteType(this)">
-                        <i class="bi bi-trash d-md-none"></i>
-                        <span class="d-none d-md-inline">حذف</span>
-                    </button>
-                </div>
-            </td>
-        </tr>
-    `).join('');
+    const fragment =
+        document.createDocumentFragment();
 
-    if (badge) badge.textContent = `${list.length} نوع`;
-}
+    list.forEach((unit, i) => {
 
-/* =========================================================
-   أدوات
-========================================================= */
+        const rowFragment =
+            rowTpl.content.cloneNode(true);
 
-function escapeHtml(v) {
-    return String(v ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+        const row =
+            rowFragment.querySelector('tr');
+
+        const isAct = !!unit.is_active;
+
+        /* بيانات الصف (data-*) */
+        row.dataset.id = unit.UnitID;
+        row.dataset.name = unit.UnitName;
+        row.dataset.active = isAct ? 1 : 0;
+
+        /* الرقم التسلسلي واسم الوحدة */
+        row.querySelector('.row-index').textContent = i + 1;
+        row.querySelector('.row-name').textContent = unit.UnitName;
+
+        /* زر الحالة */
+        const statusBtn =
+            row.querySelector('.toggle-status-btn');
+
+        statusBtn.classList.add(
+            isAct ? 'btn-success' : 'btn-secondary'
+        );
+
+        statusBtn.textContent =
+            isAct ? 'نشط' : 'غير نشط';
+
+        statusBtn.title =
+            isAct ? 'تعطيل' : 'تفعيل';
+
+        fragment.appendChild(rowFragment);
+    });
+
+    tbody.innerHTML = '';
+    tbody.appendChild(fragment);
+
+    if (badge) {
+        badge.textContent = `${list.length} وحدة`;
+    }
 }
 
 /* =========================================================
    البحث
 ========================================================= */
 
-function filterTypes() {
-    const term = document.getElementById('searchTypeInput')?.value.trim().toLowerCase() || '';
+function filterUnits() {
 
-    const filtered = typesData.filter(t =>
-        (t.name || '').toLowerCase().includes(term) ||
-        (t.code || '').toLowerCase().includes(term)
-    );
+    const term =
+        document
+            .getElementById('searchUnitInput')
+            ?.value
+            .trim()
+            .toLowerCase() || '';
 
-    renderTypes(filtered);
+    const filtered =
+        unitsData.filter(u =>
+            (u.UnitName || '')
+                .toLowerCase()
+                .includes(term)
+        );
+
+    renderUnits(filtered);
 }
 
 /* =========================================================
    فتح المودال (إضافة)
 ========================================================= */
 
-function openTypeModal() {
-    editingTypeId = null;
+function openUnitModal() {
 
-    document.getElementById('typeModalLabel').innerHTML =
-        '<i class="bi bi-upc-scan"></i> إضافة نوع';
+    editingUnitId = null;
 
-    document.getElementById('typeForm').reset();
-    document.getElementById('typeID').value = '';
+    document.getElementById('unitModalLabel').innerHTML =
+        '<i class="bi bi-rulers"></i> إضافة وحدة';
 
-    const modalEl = document.getElementById('typeModal');
-    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false });
+    document.getElementById('unitForm').reset();
+    document.getElementById('unitID').value = '';
+
+    const modalEl =
+        document.getElementById('unitModal');
+
+    const modal =
+        bootstrap.Modal.getOrCreateInstance(
+            modalEl,
+            { focus: false }
+        );
+
     modal.show();
 }
 
@@ -149,21 +181,28 @@ function openTypeModal() {
    تعديل
 ========================================================= */
 
-function editType(btn) {
+function editUnit(btn) {
+
     const row = btn.closest('tr');
     if (!row) return;
 
-    editingTypeId = row.dataset.id;
+    editingUnitId = row.dataset.id;
 
-    document.getElementById('typeModalLabel').innerHTML =
-        '<i class="bi bi-pencil-square"></i> تعديل النوع';
+    document.getElementById('unitModalLabel').innerHTML =
+        '<i class="bi bi-pencil-square"></i> تعديل الوحدة';
 
-    document.getElementById('typeID').value = row.dataset.id;
-    document.getElementById('typeName').value = row.dataset.name;
-    document.getElementById('typeCode').value = row.dataset.code || '';
+    document.getElementById('unitID').value = row.dataset.id;
+    document.getElementById('unitName').value = row.dataset.name;
 
-    const modalEl = document.getElementById('typeModal');
-    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false });
+    const modalEl =
+        document.getElementById('unitModal');
+
+    const modal =
+        bootstrap.Modal.getOrCreateInstance(
+            modalEl,
+            { focus: false }
+        );
+
     modal.show();
 }
 
@@ -171,23 +210,65 @@ function editType(btn) {
    حفظ
 ========================================================= */
 
-async function saveType() {
-    const form = document.getElementById('typeForm');
+async function saveUnit() {
+
+    const form = document.getElementById('unitForm');
+
     if (!form.checkValidity()) {
         form.reportValidity();
         return;
     }
 
+    const unitName =
+        document.getElementById('unitName')
+            .value.trim();
+
+    const isEdit =
+        editingUnitId !== null;
+
+    /* =====================================================
+       التحقق من عدم وجود تعديل
+    ===================================================== */
+    if (isEdit) {
+
+        const row =
+            document.querySelector(
+                `#unitsTableBody tr.unit-row[data-id="${editingUnitId}"]`
+            );
+
+        if (row) {
+
+            const originalName =
+                row.dataset.name?.trim() || '';
+
+            if (unitName === originalName) {
+
+                showSystemToast(
+                    'لم يتم إجراء أي تعديل على بيانات الوحدة.',
+                    'danger'
+                );
+
+                return;
+            }
+        }
+    }
+
     const payload = {
-        name: document.getElementById('typeName').value.trim(),
-        code: document.getElementById('typeCode').value.trim() || null,
+        UnitName: unitName,
     };
 
-    const isEdit = editingTypeId !== null;
-    const url = isEdit ? typesApi.update(editingTypeId) : typesApi.store;
-    const method = isEdit ? 'PUT' : 'POST';
+    const url =
+        isEdit
+            ? unitsApi.update(editingUnitId)
+            : unitsApi.store;
+
+    const method =
+        isEdit
+            ? 'PUT'
+            : 'POST';
 
     try {
+
         const res = await fetch(url, {
             method,
             headers: {
@@ -201,23 +282,39 @@ async function saveType() {
         const json = await res.json();
 
         if (!json.success) {
-            showSystemToast(json.message || 'حدث خطأ', 'danger');
+            showSystemToast(
+                json.message || 'حدث خطأ',
+                'danger'
+            );
             return;
         }
 
-        if (document.activeElement && document.activeElement.blur) {
+        if (
+            document.activeElement &&
+            document.activeElement.blur
+        ) {
             document.activeElement.blur();
         }
 
-        const modalEl = document.getElementById('typeModal');
-        const modalInstance = bootstrap.Modal.getInstance(modalEl);
-        if (modalInstance) modalInstance.hide();
+        const modalEl =
+            document.getElementById('unitModal');
 
-        await loadTypes();
+        const modalInstance =
+            bootstrap.Modal.getInstance(modalEl);
 
-        showSystemToast(json.message || 'تم الحفظ بنجاح', 'success');
+        if (modalInstance) {
+            modalInstance.hide();
+        }
+
+        await loadUnits();
+
+        showSystemToast(
+            json.message || 'تم الحفظ بنجاح',
+            'success'
+        );
 
     } catch (e) {
+
         console.error(e);
         showSystemToast('حدث خطأ أثناء الحفظ', 'danger');
     }
@@ -227,72 +324,117 @@ async function saveType() {
    حذف
 ========================================================= */
 
-function deleteType(btn) {
+function deleteUnit(btn) {
+
     const row = btn.closest('tr');
     if (!row) return;
 
-    deletingTypeId = row.dataset.id;
-    document.getElementById('deleteTypeModal').classList.add('show');
+    deletingUnitId = row.dataset.id;
+
+    document
+        .getElementById('deleteConfirmModal')
+        .classList
+        .add('show');
 }
+
+/* =========================================================
+   أحداث الصفحة
+========================================================= */
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    document.getElementById('deleteTypeCancelBtn')?.addEventListener('click', () => {
-        deletingTypeId = null;
-        document.getElementById('deleteTypeModal').classList.remove('show');
-    });
+    /* ---------- إلغاء الحذف ---------- */
+    document
+        .getElementById('deleteCancelBtn')
+        ?.addEventListener('click', () => {
 
-    document.getElementById('deleteTypeConfirmBtn')?.addEventListener('click', async function () {
-        if (!deletingTypeId) return;
+            deletingUnitId = null;
 
-        this.disabled = true;
+            document
+                .getElementById('deleteConfirmModal')
+                .classList
+                .remove('show');
+        });
 
-        try {
-            const res = await fetch(typesApi.destroy(deletingTypeId), {
-                method: 'DELETE',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                },
-            });
+    /* ---------- تأكيد الحذف ---------- */
+    document
+        .getElementById('deleteConfirmBtn')
+        ?.addEventListener('click', async function () {
 
-            const json = await res.json();
+            if (!deletingUnitId) return;
 
-            if (!json.success) {
-                showSystemToast(json.message || 'حدث خطأ', 'danger');
-                return;
+            this.disabled = true;
+
+            try {
+
+                const res =
+                    await fetch(
+                        unitsApi.destroy(deletingUnitId),
+                        {
+                            method: 'DELETE',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                            },
+                        }
+                    );
+
+                const json = await res.json();
+
+                if (!json.success) {
+                    showSystemToast(
+                        json.message || 'حدث خطأ',
+                        'danger'
+                    );
+                    return;
+                }
+
+                document
+                    .getElementById('deleteConfirmModal')
+                    .classList
+                    .remove('show');
+
+                deletingUnitId = null;
+
+                await loadUnits();
+
+                showSystemToast(
+                    json.message || 'تم الحذف بنجاح',
+                    'success'
+                );
+
+            } catch (e) {
+
+                console.error(e);
+                showSystemToast(
+                    'حدث خطأ أثناء الحذف',
+                    'danger'
+                );
+
+            } finally {
+
+                this.disabled = false;
             }
+        });
 
-            document.getElementById('deleteTypeModal').classList.remove('show');
-            deletingTypeId = null;
-
-            await loadTypes();
-
-            showSystemToast(json.message || 'تم الحذف بنجاح', 'success');
-
-        } catch (e) {
-            console.error(e);
-            showSystemToast('حدث خطأ أثناء الحذف', 'danger');
-        } finally {
-            this.disabled = false;
-        }
-    });
-
-    loadTypes();
+    /* ---------- تحميل الوحدات ---------- */
+    loadUnits();
 });
 
 /* =========================================================
    تبديل الحالة
 ========================================================= */
 
-async function toggleTypeStatus(btn) {
+async function toggleUnitStatus(btn) {
+
     const row = btn.closest('tr');
     if (!row) return;
 
     const id = row.dataset.id;
 
     try {
-        const res = await fetch(typesApi.toggle(id), {
+
+        const res = await fetch(unitsApi.toggle(id), {
             method: 'PATCH',
             headers: {
                 'Accept': 'application/json',
@@ -303,16 +445,23 @@ async function toggleTypeStatus(btn) {
         const json = await res.json();
 
         if (!json.success) {
-            showSystemToast(json.message || 'حدث خطأ', 'danger');
+            showSystemToast(
+                json.message || 'حدث خطأ',
+                'danger'
+            );
             return;
         }
 
-        await loadTypes();
+        await loadUnits();
         showSystemToast(json.message, 'success');
 
     } catch (e) {
+
         console.error(e);
-        showSystemToast('حدث خطأ أثناء تبديل الحالة', 'danger');
+        showSystemToast(
+            'حدث خطأ أثناء تبديل الحالة',
+            'danger'
+        );
     }
 }
 
@@ -320,6 +469,6 @@ async function toggleTypeStatus(btn) {
    طباعة
 ========================================================= */
 
-function printTypes() {
+function printUnits() {
     window.print();
 }

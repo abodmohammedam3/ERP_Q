@@ -14,7 +14,7 @@
             <table class="table table-hover table-bordered mb-0 align-middle" id="typesTable">
                 <thead class="table-light">
                     <tr class="text-center">
-                        <th style="width: 60px;">الرقم </th>
+                        <th style="width: 60px;">الرقم</th>
                         <th>اسم النوع</th>
                         <th style="width: 130px;">الرمز</th>
                         <th style="width: 120px;">الحالة</th>
@@ -26,13 +26,17 @@
                         <tr class="type-row text-center"
                             data-id="{{ $type->id }}"
                             data-name="{{ $type->name }}"
-                            data-code="{{ $type->code }}"
+                            data-code="{{ $type->code ?? '' }}"
                             data-active="{{ $type->is_active ? 1 : 0 }}">
 
                             <td>{{ $loop->iteration }}</td>
                             <td class="row-name text-center">{{ $type->name }}</td>
                             <td class="row-code">
-                                <span class="badge bg-secondary">{{ $type->code ?? '—' }}</span>
+                                @if($type->code)
+                                    <span class="badge bg-secondary">{{ $type->code }}</span>
+                                @else
+                                    <span class="text-muted">—</span>
+                                @endif
                             </td>
                             <td class="row-status">
                                 <button type="button"
@@ -75,3 +79,89 @@
     </div>
 </div>
 
+{{-- ============================================================
+     قوالب JS: تُستخدم من ملف type.js لإعادة بناء الصفوف والترقيم
+     ============================================================ --}}
+
+{{-- قالب صف النوع --}}
+<template id="typeRowTemplate">
+    <tr class="type-row text-center">
+        <td class="row-index"></td>
+
+        <td class="row-name text-center"></td>
+
+        <td class="row-code"></td>
+
+        <td class="row-status">
+            <button type="button"
+                    class="btn btn-sm toggle-status-btn"
+                    onclick="toggleTypeStatus(this)">
+            </button>
+        </td>
+
+        <td class="no-print">
+            <div class="btn-action-group">
+                <button type="button"
+                        class="btn btn-sm btn-outline-primary"
+                        onclick="editType(this)"
+                        title="تعديل">
+                    <i class="bi bi-pencil d-md-none"></i>
+                    <span class="d-none d-md-inline">تعديل</span>
+                </button>
+
+                <button type="button"
+                        class="btn btn-sm btn-outline-danger"
+                        onclick="deleteType(this)"
+                        title="حذف">
+                    <i class="bi bi-trash d-md-none"></i>
+                    <span class="d-none d-md-inline">حذف</span>
+                </button>
+            </div>
+        </td>
+    </tr>
+</template>
+
+{{-- قالب شارة رمز النوع --}}
+<template id="typeCodeBadgeTemplate">
+    <span class="badge bg-secondary"></span>
+</template>
+
+{{-- قالب نص "—" (للرمز الفارغ) --}}
+<template id="typeCodeDashTemplate">
+    <span class="text-muted">—</span>
+</template>
+
+{{-- قالب صف "لا توجد بيانات" --}}
+<template id="emptyTypeRowTemplate">
+    <tr>
+        <td colspan="5" class="text-center text-muted py-5">
+            <i class="bi bi-tags fs-2 d-block mb-2"></i>
+            لا توجد أنواع مسجلة
+        </td>
+    </tr>
+</template>
+
+{{-- قالب زر ترقيم عادي --}}
+<template id="paginationItemTemplate">
+    <li class="page-item">
+        <button type="button" class="page-link"></button>
+    </li>
+</template>
+
+{{-- قالب زر الترقيم السابق --}}
+<template id="paginationPrevTemplate">
+    <li class="page-item">
+        <button type="button" class="page-link">
+            <i class="bi bi-chevron-right"></i>
+        </button>
+    </li>
+</template>
+
+{{-- قالب زر الترقيم التالي --}}
+<template id="paginationNextTemplate">
+    <li class="page-item">
+        <button type="button" class="page-link">
+            <i class="bi bi-chevron-left"></i>
+        </button>
+    </li>
+</template>

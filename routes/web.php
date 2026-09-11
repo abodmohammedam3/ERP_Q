@@ -9,7 +9,9 @@ use App\Http\Controllers\Inventory\ItemController;
 use App\Http\Controllers\Inventory\TypeController;
 use App\Http\Controllers\Inventory\UnitController;
 use App\Http\Controllers\Inventory\StockController;
-
+use App\Http\Controllers\Accounting\CoinController;
+use App\Http\Controllers\Accounting\BoxController;
+use App\Http\Controllers\Accounting\BankController;
 
 Route::get('/', function () {
     return view('dashboard.index');
@@ -134,17 +136,76 @@ Route::delete(
 // الصفحات الأخرى (الإعدادات)
 // =====================================================
 
-Route::get('/setting/accounting/boxes', function () {
-    return view('setting.accounting.boxes.index');
-})->name('boxes.index');
+// =====================================================
+// الصناديق
+// =====================================================
+Route::get(
+    '/setting/accounting/boxes',
+    [BoxController::class, 'index']
+)->name('boxes.index');
 
-Route::get('/setting/accounting/banks', function () {
-    return view('setting.accounting.banks.index');
-})->name('banks.index');
+Route::get(
+    '/setting/accounting/boxes/next-code',
+    [BoxController::class, 'getNextCode']
+)->name('boxes.nextCode');
 
-Route::get('/setting/accounting/currenc', function () {
-    return view('setting.accounting.currenc.index');
-})->name('currenc.index');
+Route::get(
+    '/setting/accounting/boxes/list',
+    [BoxController::class, 'list']
+)->name('boxes.list');
+
+Route::post(
+    '/setting/accounting/boxes',
+    [BoxController::class, 'store']
+)->name('boxes.store');
+
+Route::put(
+    '/setting/accounting/boxes/{box}',
+    [BoxController::class, 'update']
+)->name('boxes.update');
+
+Route::delete(
+    '/setting/accounting/boxes/{box}',
+    [BoxController::class, 'destroy']
+)->name('boxes.destroy');
+
+Route::patch(
+    '/setting/accounting/boxes/{box}/toggle-status',
+    [BoxController::class, 'toggleStatus']
+)->name('boxes.toggleStatus');
+
+
+// =====================================================
+// البنوك
+// =====================================================
+Route::get('/setting/accounting/banks',
+    [BankController::class, 'index']
+)->name('banks.index');
+
+Route::get('/setting/accounting/banks/list',
+    [BankController::class, 'list']
+)->name('banks.list');
+
+Route::get('/setting/accounting/banks/next-code',
+    [BankController::class, 'getNextCode']
+)->name('banks.nextCode');
+
+Route::post('/setting/accounting/banks',
+    [BankController::class, 'store']
+)->name('banks.store');
+
+Route::put('/setting/accounting/banks/{bank}',
+    [BankController::class, 'update']
+)->name('banks.update');
+
+Route::delete('/setting/accounting/banks/{bank}',
+    [BankController::class, 'destroy']
+)->name('banks.destroy');
+
+Route::patch('/setting/accounting/banks/{bank}/toggle-status',
+    [BankController::class, 'toggleStatus']
+)->name('banks.toggleStatus');
+
 
 Route::get('/setting/accounting/openingBalances', function () {
     return view('setting.accounting.openingBalances.index');
@@ -327,3 +388,36 @@ Route::get('/operation/accounting/receiptVouchers', function () {
 Route::get('/operation/movements', function () {
     return view('operation.movements.index');
 })->name('movements.index');
+
+// =====================================================
+// العملات
+// =====================================================
+Route::get(
+    '/setting/accounting/coins',
+    [CoinController::class, 'index']
+)->name('coins.index');
+
+Route::get(
+    '/setting/accounting/coins/list',
+    [CoinController::class, 'list']
+)->name('coins.list');
+
+Route::post(
+    '/setting/accounting/coins',
+    [CoinController::class, 'store']
+)->name('coins.store');
+
+Route::put(
+    '/setting/accounting/coins/{coin}',
+    [CoinController::class, 'update']
+)->name('coins.update');
+
+Route::delete(
+    '/setting/accounting/coins/{coin}',
+    [CoinController::class, 'destroy']
+)->name('coins.destroy');
+
+Route::patch(
+    '/setting/accounting/coins/{coin}/toggle-status',
+    [CoinController::class, 'toggleStatus']
+)->name('coins.toggleStatus');

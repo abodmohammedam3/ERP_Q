@@ -1,397 +1,318 @@
-let itemModalInstance;
-let currentItemId = null;
-let allItemsData = [];          // جميع الأصناف من الخادم
-let filteredItemsData = [];     // الأصناف بعد تطبيق البحث
-let currentPage = 1;
-const rowsPerPage = 5;
+/* =========================================================
+   شاشة الأصناف
+========================================================= */
 
-document.addEventListener('DOMContentLoaded', function () {
-    const modalElement = document.getElementById('itemModal');
-    if (modalElement) {
-        itemModalInstance = new bootstrap.Modal(modalElement);
-    }
+let itemsData = [];
+let editingItemId = null;
+let deletingItemId = null;
 
-    // قراءة البيانات من الـ Blade (المعروضة في الجدول)
-    const rows = document.querySelectorAll('#itemsTableBody tr.item-row');
-    if (rows.length > 0) {
-        rows.forEach(row => {
-            const item = {
-                itemID: parseInt(row.dataset.id, 10),
-                itemName2: row.querySelector('.row-name').innerText.trim(),
-                is_active: row.querySelector('.row-status .badge').classList.contains('bg-success') ? 1 : 0
-            };
-            allItemsData.push(item);
+const itemsApi = {
+    list: '/setting/inventory/items/list',
+    store: '/setting/inventory/items',
+    update: (id) => `/setting/inventory/items/${id}`,
+    destroy: (id) => `/setting/inventory/items/${id}`,
+    toggle: (id) => `/setting/inventory/items/${id}/toggle-status`,
+};
+
+const csrfToken = document
+    .querySelector('meta[name="csrf-token"]')
+    ?.getAttribute('content') || '';
+
+/* =========================================================
+   تحميل البيانات
+========================================================= */
+
+async function loadItems() {
+    try {
+        const res = await fetch(itemsApi.list, {
+            headers: { 'Accept': 'application/json' },
         });
-    } else {
-        // إذا لم تكن هناك بيانات، نطلبها من الخادم
-        reloadItemsTable();
-    }
+        const json = await res.json();
 
-    // تهيئة البيانات المصفاة وعرضها
-    filteredItemsData = [...allItemsData];
-    applyFiltersAndRender();
-});
-
-// ============================================================
-// دوال العرض
-// ============================================================
-
-function openItemModal() {
-    document.getElementById('itemForm').reset();
-    document.getElementById('itemID').value = '';
-    currentItemId = null;
-    document.getElementById('itemModalLabel').innerText = 'إضافة صنف جديد';
-    itemModalInstance.show();
-}
-
-function editItem(btn) {
-    const row = btn.closest('tr');
-    const id = parseInt(row.dataset.id, 10);
-    const name = row.querySelector('.row-name').innerText.trim();
-
-    document.getElementById('itemID').value = id;
-    document.getElementById('itemName').value = name;
-    currentItemId = id;
-    document.getElementById('itemModalLabel').innerText = 'تعديل بيانات الصنف';
-    itemModalInstance.show();
-}
-
-// ============================================================
-// حفظ / تحديث / حذف / تبديل الحالة (AJAX)
-// ============================================================
-
-function saveItem() {
-    const form = document.getElementById('itemForm');
-    if (!form.checkValidity()) {
-        form.reportValidity();
-        return;
-    }
-
-    const id = document.getElementById('itemID').value;
-    const name = document.getElementById('itemName').value.trim();
-
-    const url = id ? `/setting/inventory/items/${id}` : '/setting/inventory/items';
-    const formData = new FormData();
-    formData.append('itemName2', name);
-    if (id) {
-        formData.append('_method', 'PUT');
-    }
-
-    fetch(url, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json'
-        },
-        body: formData
-    })
-        .then(response => response.json().then(data => ({ status: response.status, data })))
-        .then(({ status, data }) => {
-            if (status !== 200 || !data.success) {
-                throw new Error(data.message || 'حدث خطأ غير معروف');
-            }
-            showSystemToast(data.message || 'تم حفظ الصنف بنجاح', 'success');
-            itemModalInstance.hide();
-            reloadItemsTable(); // إعادة تحميل البيانات من الخادم
-        })
-        .catch(error => {
-            console.error('خطأ:', error);
-            showSystemToast(error.message || 'حدث خطأ في الاتصال بالخادم', 'danger');
-        });
-}
-
-function deleteItem(btn) {
-    if (!confirm('هل أنت متأكد من حذف هذا الصنف نهائياً؟')) return;
-
-    const row = btn.closest('tr');
-    const id = parseInt(row.dataset.id, 10);
-
-    const formData = new FormData();
-    formData.append('_method', 'DELETE');
-
-    fetch(`/setting/inventory/items/${id}`, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json'
-        },
-        body: formData
-    })
-        .then(response => response.json().then(data => ({ status: response.status, data })))
-        .then(({ status, data }) => {
-            if (status !== 200 || !data.success) {
-                throw new Error(data.message || 'حدث خطأ غير معروف');
-            }
-            showSystemToast(data.message || 'تم حذف الصنف بنجاح', 'success');
-            reloadItemsTable();
-        })
-        .catch(error => {
-            console.error('خطأ:', error);
-            showSystemToast(error.message || 'حدث خطأ في الاتصال بالخادم', 'danger');
-        });
-}
-
-function toggleItemStatus(btn) {
-    const row = btn.closest('tr');
-    const id = parseInt(row.dataset.id, 10);
-
-    const formData = new FormData();
-    formData.append('_method', 'PATCH');
-
-    fetch(`/setting/inventory/items/${id}/toggle-status`, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json'
-        },
-        body: formData
-    })
-        .then(response => response.json().then(data => ({ status: response.status, data })))
-        .then(({ status, data }) => {
-            if (status !== 200 || !data.success) {
-                throw new Error(data.message || 'حدث خطأ غير معروف');
-            }
-            showSystemToast(data.message || 'تم تغيير حالة الصنف بنجاح', 'success');
-            reloadItemsTable();
-        })
-        .catch(error => {
-            console.error('خطأ:', error);
-            showSystemToast(error.message || 'حدث خطأ في الاتصال بالخادم', 'danger');
-        });
-}
-
-// ============================================================
-// تحميل البيانات من الخادم (للتحديث)
-// ============================================================
-
-function reloadItemsTable() {
-    const url = '/setting/inventory/items/list';
-
-    fetch(url, {
-        method: 'GET',
-        headers: {
-            'Accept': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
+        if (json.success) {
+            itemsData = json.data || [];
+            renderItems();
         }
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                allItemsData = data.data || [];
-                filteredItemsData = [...allItemsData];
-                applyFiltersAndRender();
-            } else {
-                showSystemToast('حدث خطأ أثناء تحميل الأصناف', 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('خطأ:', error);
-            showSystemToast('حدث خطأ في الاتصال بالخادم', 'danger');
-        });
-}
-
-// ============================================================
-// التصفية والعرض (كل شيء على العميل)
-// ============================================================
-
-function filterItems() {
-    const searchText = document.getElementById('searchItemInput').value.toLowerCase().trim();
-
-    if (!searchText) {
-        filteredItemsData = [...allItemsData];
-    } else {
-        filteredItemsData = allItemsData.filter(item =>
-            item.itemName2.toLowerCase().includes(searchText)
-        );
+    } catch (e) {
+        console.error('خطأ في تحميل الأصناف:', e);
     }
-
-    currentPage = 1; // إعادة ضبط الصفحة إلى الأولى عند البحث
-    applyFiltersAndRender();
 }
 
-function applyFiltersAndRender() {
-    renderItems(filteredItemsData);
-    updateItemsCount(filteredItemsData.length);
-    renderPagination(filteredItemsData.length);
-}
+/* =========================================================
+   عرض الجدول
+========================================================= */
 
-function renderItems(items) {
+function renderItems(data) {
+    const list = Array.isArray(data) ? data : itemsData;
     const tbody = document.getElementById('itemsTableBody');
+    const badge = document.getElementById('itemsCountBadge');
+
     if (!tbody) return;
 
-    const start = (currentPage - 1) * rowsPerPage;
-    const end = Math.min(start + rowsPerPage, items.length);
-    const pageItems = items.slice(start, end);
-
-    if (pageItems.length === 0) {
+    if (!list.length) {
         tbody.innerHTML = `
-            <tr id="emptyItemRow">
+            <tr>
                 <td colspan="4" class="text-center text-muted py-5">
                     <i class="bi bi-box-seam fs-2 d-block mb-2"></i>
                     لا توجد أصناف مسجلة
                 </td>
             </tr>
         `;
+        if (badge) badge.textContent = '0 صنف';
         return;
     }
 
-    let html = '';
-    pageItems.forEach((item, index) => {
-        const serial = start + index + 1;
-        const isActive = item.is_active == 1;
-        const statusBadge = isActive
-            ? '<span class="badge bg-success">نشط</span>'
-            : '<span class="badge bg-danger">غير نشط</span>';
+    tbody.innerHTML = list.map((item, i) => `
+        <tr class="item-row text-center"
+            data-id="${item.itemID}"
+            data-name="${escapeHtml(item.itemName2)}"
+            data-active="${item.is_active ? 1 : 0}">
 
-        html += `
-            <tr class="item-row text-center" data-id="${item.itemID}">
-                <td>${serial}</td>
-                <td class="row-name">${escapeHtml(item.itemName2)}</td>
-                <td class="row-status">${statusBadge}</td>
-                <td class="no-print">
-                    <div class="btn-action-group">
-                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="editItem(this)" title="تعديل">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                        <button type="button" class="btn btn-sm ${isActive ? 'btn-toggle-on' : 'btn-toggle-off'}" onclick="toggleItemStatus(this)" title="${isActive ? 'تعطيل' : 'تفعيل'}">
-                            <i class="bi ${isActive ? 'bi-toggle-on' : 'bi-toggle-off'}"></i>
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteItem(this)" title="حذف">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        `;
+            <td>${i + 1}</td>
+            <td class="row-name text-start">${escapeHtml(item.itemName2)}</td>
+            <td class="row-status">
+                <button type="button"
+                        class="btn btn-sm ${item.is_active ? 'btn-success' : 'btn-secondary'} toggle-status-btn"
+                        onclick="toggleItemStatus(this)">
+                    ${item.is_active ? 'نشط' : 'غير نشط'}
+                </button>
+            </td>
+            <td class="no-print">
+                <div class="btn-action-group">
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="editItem(this)">
+                        <i class="bi bi-pencil d-md-none"></i>
+                        <span class="d-none d-md-inline">تعديل</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteItem(this)">
+                        <i class="bi bi-trash d-md-none"></i>
+                        <span class="d-none d-md-inline">حذف</span>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+
+    if (badge) badge.textContent = `${list.length} صنف`;
+}
+
+/* =========================================================
+   أدوات
+========================================================= */
+
+function escapeHtml(v) {
+    return String(v ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+/* =========================================================
+   البحث
+========================================================= */
+
+function filterItems() {
+    const term = document.getElementById('searchItemInput')?.value.trim().toLowerCase() || '';
+
+    const filtered = itemsData.filter(it =>
+        (it.itemName2 || '').toLowerCase().includes(term)
+    );
+
+    renderItems(filtered);
+}
+
+/* =========================================================
+   فتح المودال (إضافة)
+========================================================= */
+
+function openItemModal() {
+    editingItemId = null;
+
+    document.getElementById('itemModalLabel').innerHTML =
+        '<i class="bi bi-box-seam"></i> إضافة صنف';
+
+    document.getElementById('itemForm').reset();
+    document.getElementById('itemID').value = '';
+
+    const modalEl = document.getElementById('itemModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false });
+    modal.show();
+}
+
+/* =========================================================
+   تعديل
+========================================================= */
+
+function editItem(btn) {
+    const row = btn.closest('tr');
+    if (!row) return;
+
+    editingItemId = row.dataset.id;
+
+    document.getElementById('itemModalLabel').innerHTML =
+        '<i class="bi bi-pencil-square"></i> تعديل الصنف';
+
+    document.getElementById('itemID').value = row.dataset.id;
+    document.getElementById('itemName').value = row.dataset.name;
+
+    const modalEl = document.getElementById('itemModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false });
+    modal.show();
+}
+
+/* =========================================================
+   حفظ
+========================================================= */
+
+async function saveItem() {
+    const form = document.getElementById('itemForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const payload = {
+        itemName2: document.getElementById('itemName').value.trim(),
+    };
+
+    const isEdit = editingItemId !== null;
+    const url = isEdit ? itemsApi.update(editingItemId) : itemsApi.store;
+    const method = isEdit ? 'PUT' : 'POST';
+
+    try {
+        const res = await fetch(url, {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const json = await res.json();
+
+        if (!json.success) {
+            showSystemToast(json.message || 'حدث خطأ', 'danger');
+            return;
+        }
+
+        if (document.activeElement && document.activeElement.blur) {
+            document.activeElement.blur();
+        }
+
+        const modalEl = document.getElementById('itemModal');
+        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) modalInstance.hide();
+
+        await loadItems();
+
+        showSystemToast(json.message || 'تم الحفظ بنجاح', 'success');
+
+    } catch (e) {
+        console.error(e);
+        showSystemToast('حدث خطأ أثناء الحفظ', 'danger');
+    }
+}
+
+/* =========================================================
+   حذف
+========================================================= */
+
+function deleteItem(btn) {
+    const row = btn.closest('tr');
+    if (!row) return;
+
+    deletingItemId = row.dataset.id;
+    document.getElementById('deleteItemModal').classList.add('show');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+
+    document.getElementById('deleteItemCancelBtn')?.addEventListener('click', () => {
+        deletingItemId = null;
+        document.getElementById('deleteItemModal').classList.remove('show');
     });
 
-    tbody.innerHTML = html;
-}
+    document.getElementById('deleteItemConfirmBtn')?.addEventListener('click', async function () {
+        if (!deletingItemId) return;
 
-function updateItemsCount(count) {
-    const badge = document.getElementById('itemsCountBadge');
-    if (badge) {
-        badge.innerText = count;
-    }
-}
+        this.disabled = true;
 
-function renderPagination(totalItems) {
-    const paginationList = document.getElementById('itemsPaginationList');
-    if (!paginationList) return;
+        try {
+            const res = await fetch(itemsApi.destroy(deletingItemId), {
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                },
+            });
 
-    const totalPages = Math.ceil(totalItems / rowsPerPage);
+            const json = await res.json();
 
-    if (totalPages <= 1) {
-        paginationList.innerHTML = '';
-        return;
-    }
+            if (!json.success) {
+                showSystemToast(json.message || 'حدث خطأ', 'danger');
+                return;
+            }
 
-    let html = '';
+            document.getElementById('deleteItemModal').classList.remove('show');
+            deletingItemId = null;
 
-    html += `
-        <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
-            <button type="button" class="page-link" data-page="${currentPage - 1}" ${currentPage === 1 ? 'disabled' : ''}>
-                <i class="bi bi-chevron-right"></i>
-            </button>
-        </li>
-    `;
+            await loadItems();
 
-    for (let page = 1; page <= totalPages; page++) {
-        html += `
-            <li class="page-item ${page === currentPage ? 'active' : ''}">
-                <button type="button" class="page-link" data-page="${page}">${page}</button>
-            </li>
-        `;
-    }
+            showSystemToast(json.message || 'تم الحذف بنجاح', 'success');
 
-    html += `
-        <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
-            <button type="button" class="page-link" data-page="${currentPage + 1}" ${currentPage === totalPages ? 'disabled' : ''}>
-                <i class="bi bi-chevron-left"></i>
-            </button>
-        </li>
-    `;
+        } catch (e) {
+            console.error(e);
+            showSystemToast('حدث خطأ أثناء الحذف', 'danger');
+        } finally {
+            this.disabled = false;
+        }
+    });
 
-    paginationList.innerHTML = html;
-}
-
-// أحداث التنقل بين الصفحات
-document.addEventListener('click', function (e) {
-    const target = e.target.closest('#itemsPaginationList .page-link');
-    if (!target) return;
-
-    const page = parseInt(target.dataset.page, 10);
-    if (!page || page < 1) return;
-
-    const totalPages = Math.ceil(filteredItemsData.length / rowsPerPage);
-    if (page > totalPages) return;
-
-    currentPage = page;
-    renderItems(filteredItemsData);
-    renderPagination(filteredItemsData.length);
+    loadItems();
 });
 
-// ============================================================
-// أدوات مساعدة
-// ============================================================
+/* =========================================================
+   تبديل الحالة
+========================================================= */
 
-function escapeHtml(text) {
-    if (text === null || text === undefined) return '';
-    const div = document.createElement('div');
-    div.textContent = String(text);
-    return div.innerHTML;
+async function toggleItemStatus(btn) {
+    const row = btn.closest('tr');
+    if (!row) return;
+
+    const id = row.dataset.id;
+
+    try {
+        const res = await fetch(itemsApi.toggle(id), {
+            method: 'PATCH',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+            },
+        });
+
+        const json = await res.json();
+
+        if (!json.success) {
+            showSystemToast(json.message || 'حدث خطأ', 'danger');
+            return;
+        }
+
+        await loadItems();
+        showSystemToast(json.message, 'success');
+
+    } catch (e) {
+        console.error(e);
+        showSystemToast('حدث خطأ أثناء تبديل الحالة', 'danger');
+    }
 }
+
+/* =========================================================
+   طباعة
+========================================================= */
 
 function printItems() {
-    const table = document.getElementById('itemsTable');
-    let printContents = `
-        <html dir="rtl" lang="ar">
-        <head>
-            <title>طباعة قائمة الأصناف</title>
-            <style>
-                body { font-family: Arial, sans-serif; padding: 20px; }
-                h2 { text-align: center; margin-bottom: 20px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; text-align: center; }
-                th, td { border: 1px solid #000; padding: 8px; }
-                th { background-color: #f8f9fa; }
-                .no-print { display: none !important; }
-                .btn { display: none; }
-            </style>
-        </head>
-        <body>
-            <h2>قائمة الأصناف</h2>
-            <table>
-                <thead>${table.querySelector('thead').innerHTML}</thead>
-                <tbody>
-    `;
-
-    const allRows = document.querySelectorAll('#itemsTableBody tr.item-row');
-    allRows.forEach(row => {
-        const cells = row.querySelectorAll('td');
-        let rowHtml = '<tr>';
-        for (let i = 0; i < Math.min(cells.length - 1, 3); i++) {
-            rowHtml += cells[i].outerHTML;
-        }
-        rowHtml += '</tr>';
-        printContents += rowHtml;
-    });
-
-    printContents += `</tbody></table></body></html>`;
-
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(printContents);
-    printWindow.document.close();
-    setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-    }, 250);
-}
-
-if (typeof showSystemToast !== 'function') {
-    window.showSystemToast = function (message, type) {
-        alert(message);
-    };
+    window.print();
 }

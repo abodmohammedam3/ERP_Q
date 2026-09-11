@@ -43,69 +43,89 @@ async function loadItems() {
 ========================================================= */
 
 function renderItems(data) {
-    const list = Array.isArray(data) ? data : itemsData;
-    const tbody = document.getElementById('itemsTableBody');
-    const badge = document.getElementById('itemsCountBadge');
+
+    const list = Array.isArray(data)
+        ? data
+        : itemsData;
+
+    const tbody =
+        document.getElementById('itemsTableBody');
+
+    const badge =
+        document.getElementById('itemsCountBadge');
 
     if (!tbody) return;
 
+    /* ---------- حالة: لا توجد بيانات ---------- */
     if (!list.length) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="4" class="text-center text-muted py-5">
-                    <i class="bi bi-box-seam fs-2 d-block mb-2"></i>
-                    لا توجد أصناف مسجلة
-                </td>
-            </tr>
-        `;
-        if (badge) badge.textContent = '0 صنف';
+
+        const emptyTpl =
+            document.getElementById('emptyItemRowTemplate');
+
+        tbody.innerHTML = '';
+
+        if (emptyTpl) {
+            tbody.appendChild(
+                emptyTpl.content.cloneNode(true)
+            );
+        }
+
+        if (badge) {
+            badge.textContent = '0 صنف';
+        }
+
         return;
     }
 
-    tbody.innerHTML = list.map((item, i) => `
-        <tr class="item-row text-center"
-            data-id="${item.itemID}"
-            data-name="${escapeHtml(item.itemName2)}"
-            data-active="${item.is_active ? 1 : 0}">
+    /* ---------- حالة: يوجد بيانات ---------- */
+    const rowTpl =
+        document.getElementById('itemRowTemplate');
 
-            <td>${i + 1}</td>
-            <td class="row-name text-center">${escapeHtml(item.itemName2)}</td>
-            <td class="row-status">
-                <button type="button"
-                        class="btn btn-sm ${item.is_active ? 'btn-success' : 'btn-secondary'} toggle-status-btn"
-                        onclick="toggleItemStatus(this)">
-                    ${item.is_active ? 'نشط' : 'غير نشط'}
-                </button>
-            </td>
-            <td class="no-print">
-                <div class="btn-action-group">
-                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="editItem(this)">
-                        <i class="bi bi-pencil d-md-none"></i>
-                        <span class="d-none d-md-inline">تعديل</span>
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteItem(this)">
-                        <i class="bi bi-trash d-md-none"></i>
-                        <span class="d-none d-md-inline">حذف</span>
-                    </button>
-                </div>
-            </td>
-        </tr>
-    `).join('');
+    const fragment =
+        document.createDocumentFragment();
 
-    if (badge) badge.textContent = `${list.length} صنف`;
-}
+    list.forEach((item, i) => {
 
-/* =========================================================
-   أدوات
-========================================================= */
+        const rowFragment =
+            rowTpl.content.cloneNode(true);
 
-function escapeHtml(v) {
-    return String(v ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+        const row =
+            rowFragment.querySelector('tr');
+
+        const isAct = !!item.is_active;
+
+        /* بيانات الصف (data-*) */
+        row.dataset.id = item.itemID;
+        row.dataset.name = item.itemName2;
+        row.dataset.active = isAct ? 1 : 0;
+
+        /* الرقم التسلسلي واسم الصنف */
+        row.querySelector('.row-index').textContent = i + 1;
+        row.querySelector('.row-name').textContent = item.itemName2;
+
+        /* زر الحالة */
+        const statusBtn =
+            row.querySelector('.toggle-status-btn');
+
+        statusBtn.classList.add(
+            isAct ? 'btn-success' : 'btn-secondary'
+        );
+
+        statusBtn.textContent =
+            isAct ? 'نشط' : 'غير نشط';
+
+        statusBtn.title =
+            isAct ? 'تعطيل' : 'تفعيل';
+
+        fragment.appendChild(rowFragment);
+    });
+
+    tbody.innerHTML = '';
+    tbody.appendChild(fragment);
+
+    if (badge) {
+        badge.textContent = `${list.length} صنف`;
+    }
 }
 
 /* =========================================================
@@ -113,11 +133,20 @@ function escapeHtml(v) {
 ========================================================= */
 
 function filterItems() {
-    const term = document.getElementById('searchItemInput')?.value.trim().toLowerCase() || '';
 
-    const filtered = itemsData.filter(it =>
-        (it.itemName2 || '').toLowerCase().includes(term)
-    );
+    const term =
+        document
+            .getElementById('searchItemInput')
+            ?.value
+            .trim()
+            .toLowerCase() || '';
+
+    const filtered =
+        itemsData.filter(it =>
+            (it.itemName2 || '')
+                .toLowerCase()
+                .includes(term)
+        );
 
     renderItems(filtered);
 }
@@ -127,6 +156,7 @@ function filterItems() {
 ========================================================= */
 
 function openItemModal() {
+
     editingItemId = null;
 
     document.getElementById('itemModalLabel').innerHTML =
@@ -135,8 +165,15 @@ function openItemModal() {
     document.getElementById('itemForm').reset();
     document.getElementById('itemID').value = '';
 
-    const modalEl = document.getElementById('itemModal');
-    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false });
+    const modalEl =
+        document.getElementById('itemModal');
+
+    const modal =
+        bootstrap.Modal.getOrCreateInstance(
+            modalEl,
+            { focus: false }
+        );
+
     modal.show();
 }
 
@@ -145,6 +182,7 @@ function openItemModal() {
 ========================================================= */
 
 function editItem(btn) {
+
     const row = btn.closest('tr');
     if (!row) return;
 
@@ -156,8 +194,15 @@ function editItem(btn) {
     document.getElementById('itemID').value = row.dataset.id;
     document.getElementById('itemName').value = row.dataset.name;
 
-    const modalEl = document.getElementById('itemModal');
-    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false });
+    const modalEl =
+        document.getElementById('itemModal');
+
+    const modal =
+        bootstrap.Modal.getOrCreateInstance(
+            modalEl,
+            { focus: false }
+        );
+
     modal.show();
 }
 
@@ -166,21 +211,66 @@ function editItem(btn) {
 ========================================================= */
 
 async function saveItem() {
+
     const form = document.getElementById('itemForm');
+
     if (!form.checkValidity()) {
         form.reportValidity();
         return;
     }
 
+    const itemName =
+        document.getElementById('itemName')
+            .value.trim();
+
+    const isEdit =
+        editingItemId !== null;
+
+    /*
+     * =====================================================
+     * التحقق من عدم وجود تعديل
+     * =====================================================
+     */
+    if (isEdit) {
+
+        const row =
+            document.querySelector(
+                `#itemsTableBody tr.item-row[data-id="${editingItemId}"]`
+            );
+
+        if (row) {
+
+            const originalName =
+                row.dataset.name?.trim() || '';
+
+            if (itemName === originalName) {
+
+                showSystemToast(
+                    'لم يتم إجراء أي تعديل على بيانات الصنف.',
+                    'danger'
+                );
+
+                return;
+            }
+        }
+    }
+
     const payload = {
-        itemName2: document.getElementById('itemName').value.trim(),
+        itemName2: itemName,
     };
 
-    const isEdit = editingItemId !== null;
-    const url = isEdit ? itemsApi.update(editingItemId) : itemsApi.store;
-    const method = isEdit ? 'PUT' : 'POST';
+    const url =
+        isEdit
+            ? itemsApi.update(editingItemId)
+            : itemsApi.store;
+
+    const method =
+        isEdit
+            ? 'PUT'
+            : 'POST';
 
     try {
+
         const res = await fetch(url, {
             method,
             headers: {
@@ -198,19 +288,32 @@ async function saveItem() {
             return;
         }
 
-        if (document.activeElement && document.activeElement.blur) {
+        if (
+            document.activeElement &&
+            document.activeElement.blur
+        ) {
             document.activeElement.blur();
         }
 
-        const modalEl = document.getElementById('itemModal');
-        const modalInstance = bootstrap.Modal.getInstance(modalEl);
-        if (modalInstance) modalInstance.hide();
+        const modalEl =
+            document.getElementById('itemModal');
+
+        const modalInstance =
+            bootstrap.Modal.getInstance(modalEl);
+
+        if (modalInstance) {
+            modalInstance.hide();
+        }
 
         await loadItems();
 
-        showSystemToast(json.message || 'تم الحفظ بنجاح', 'success');
+        showSystemToast(
+            json.message || 'تم الحفظ بنجاح',
+            'success'
+        );
 
     } catch (e) {
+
         console.error(e);
         showSystemToast('حدث خطأ أثناء الحفظ', 'danger');
     }
@@ -221,55 +324,91 @@ async function saveItem() {
 ========================================================= */
 
 function deleteItem(btn) {
+
     const row = btn.closest('tr');
     if (!row) return;
 
     deletingItemId = row.dataset.id;
-    document.getElementById('deleteItemModal').classList.add('show');
+
+    document
+        .getElementById('deleteItemModal')
+        .classList
+        .add('show');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    document.getElementById('deleteItemCancelBtn')?.addEventListener('click', () => {
-        deletingItemId = null;
-        document.getElementById('deleteItemModal').classList.remove('show');
-    });
+    document
+        .getElementById('deleteItemCancelBtn')
+        ?.addEventListener('click', () => {
 
-    document.getElementById('deleteItemConfirmBtn')?.addEventListener('click', async function () {
-        if (!deletingItemId) return;
-
-        this.disabled = true;
-
-        try {
-            const res = await fetch(itemsApi.destroy(deletingItemId), {
-                method: 'DELETE',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                },
-            });
-
-            const json = await res.json();
-
-            if (!json.success) {
-                showSystemToast(json.message || 'حدث خطأ', 'danger');
-                return;
-            }
-
-            document.getElementById('deleteItemModal').classList.remove('show');
             deletingItemId = null;
 
-            await loadItems();
+            document
+                .getElementById('deleteItemModal')
+                .classList
+                .remove('show');
+        });
 
-            showSystemToast(json.message || 'تم الحذف بنجاح', 'success');
+    document
+        .getElementById('deleteItemConfirmBtn')
+        ?.addEventListener('click', async function () {
 
-        } catch (e) {
-            console.error(e);
-            showSystemToast('حدث خطأ أثناء الحذف', 'danger');
-        } finally {
-            this.disabled = false;
-        }
-    });
+            if (!deletingItemId) return;
+
+            this.disabled = true;
+
+            try {
+
+                const res =
+                    await fetch(
+                        itemsApi.destroy(deletingItemId),
+                        {
+                            method: 'DELETE',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                            },
+                        }
+                    );
+
+                const json = await res.json();
+
+                if (!json.success) {
+                    showSystemToast(
+                        json.message || 'حدث خطأ',
+                        'danger'
+                    );
+                    return;
+                }
+
+                document
+                    .getElementById('deleteItemModal')
+                    .classList
+                    .remove('show');
+
+                deletingItemId = null;
+
+                await loadItems();
+
+                showSystemToast(
+                    json.message || 'تم الحذف بنجاح',
+                    'success'
+                );
+
+            } catch (e) {
+
+                console.error(e);
+                showSystemToast(
+                    'حدث خطأ أثناء الحذف',
+                    'danger'
+                );
+
+            } finally {
+
+                this.disabled = false;
+            }
+        });
 
     loadItems();
 });
@@ -279,12 +418,14 @@ document.addEventListener('DOMContentLoaded', () => {
 ========================================================= */
 
 async function toggleItemStatus(btn) {
+
     const row = btn.closest('tr');
     if (!row) return;
 
     const id = row.dataset.id;
 
     try {
+
         const res = await fetch(itemsApi.toggle(id), {
             method: 'PATCH',
             headers: {
@@ -296,7 +437,10 @@ async function toggleItemStatus(btn) {
         const json = await res.json();
 
         if (!json.success) {
-            showSystemToast(json.message || 'حدث خطأ', 'danger');
+            showSystemToast(
+                json.message || 'حدث خطأ',
+                'danger'
+            );
             return;
         }
 
@@ -304,8 +448,12 @@ async function toggleItemStatus(btn) {
         showSystemToast(json.message, 'success');
 
     } catch (e) {
+
         console.error(e);
-        showSystemToast('حدث خطأ أثناء تبديل الحالة', 'danger');
+        showSystemToast(
+            'حدث خطأ أثناء تبديل الحالة',
+            'danger'
+        );
     }
 }
 

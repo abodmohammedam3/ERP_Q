@@ -69,3 +69,53 @@
         </nav>
     </div>
 </div>
+
+{{-- ============================================================
+     قوالب JS: تُستخدم من ملف items.js لإعادة بناء الصفوف
+     ============================================================ --}}
+
+{{-- قالب صف الصنف --}}
+<template id="itemRowTemplate">
+    <tr class="item-row text-center">
+        <td class="row-index"></td>
+
+        <td class="row-name text-center"></td>
+
+        <td class="row-status">
+            <button type="button"
+                    class="btn btn-sm toggle-status-btn"
+                    onclick="toggleItemStatus(this)">
+            </button>
+        </td>
+
+        <td class="no-print">
+            <div class="btn-action-group">
+                <button type="button"
+                        class="btn btn-sm btn-outline-primary"
+                        onclick="editItem(this)"
+                        title="تعديل">
+                    <i class="bi bi-pencil d-md-none"></i>
+                    <span class="d-none d-md-inline">تعديل</span>
+                </button>
+
+                <button type="button"
+                        class="btn btn-sm btn-outline-danger"
+                        onclick="deleteItem(this)"
+                        title="حذف">
+                    <i class="bi bi-trash d-md-none"></i>
+                    <span class="d-none d-md-inline">حذف</span>
+                </button>
+            </div>
+        </td>
+    </tr>
+</template>
+
+{{-- قالب صف "لا توجد بيانات" --}}
+<template id="emptyItemRowTemplate">
+    <tr>
+        <td colspan="4" class="text-center text-muted py-5">
+            <i class="bi bi-box-seam fs-2 d-block mb-2"></i>
+            لا توجد أصناف مسجلة
+        </td>
+    </tr>
+</template>

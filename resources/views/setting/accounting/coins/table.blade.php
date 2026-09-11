@@ -87,4 +87,73 @@
     </div>
 </div>
 
+{{-- ============================================================
+     قوالب JS: تُستخدم من ملف coins.js لإعادة بناء الصفوف
+     ============================================================ --}}
 
+{{-- قالب صف العملة --}}
+<template id="coinRowTemplate">
+    <tr class="coin-row text-center">
+        <td class="row-index"></td>
+
+        <td class="row-name text-center"></td>
+
+        <td class="row-code"></td>
+
+        <td class="row-rate"></td>
+
+        <td class="row-system"></td>
+
+        <td class="row-status">
+            <button type="button"
+                    class="btn btn-sm toggle-status-btn"
+                    onclick="toggleCoinStatus(this)">
+            </button>
+        </td>
+
+        <td class="no-print">
+            <div class="btn-action-group">
+                <button type="button"
+                        class="btn btn-sm btn-outline-primary"
+                        onclick="editCoin(this)"
+                        title="تعديل">
+                    <i class="bi bi-pencil d-md-none"></i>
+                    <span class="d-none d-md-inline">تعديل</span>
+                </button>
+
+                <button type="button"
+                        class="btn btn-sm btn-outline-danger"
+                        onclick="deleteCoin(this)"
+                        title="حذف">
+                    <i class="bi bi-trash d-md-none"></i>
+                    <span class="d-none d-md-inline">حذف</span>
+                </button>
+            </div>
+        </td>
+    </tr>
+</template>
+
+{{-- قالب شارة رمز العملة --}}
+<template id="coinCodeBadgeTemplate">
+    <span class="badge bg-secondary"></span>
+</template>
+
+{{-- قالب شارة "العملة الأساسية = نعم" --}}
+<template id="coinSystemYesTemplate">
+    <span class="badge bg-success">نعم</span>
+</template>
+
+{{-- قالب شارة "العملة الأساسية = لا" --}}
+<template id="coinSystemNoTemplate">
+    <span class="badge bg-light text-dark border">لا</span>
+</template>
+
+{{-- قالب صف "لا توجد بيانات" --}}
+<template id="emptyCoinRowTemplate">
+    <tr>
+        <td colspan="7" class="text-center text-muted py-5">
+            <i class="bi bi-currency-exchange fs-2 d-block mb-2"></i>
+            لا توجد عملات مسجلة
+        </td>
+    </tr>
+</template>

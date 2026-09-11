@@ -81,3 +81,63 @@
     </div>
 </div>
 
+{{-- ============================================================
+     قوالب JS: تُستخدم من ملف boxes.js لإعادة بناء الصفوف
+     ============================================================ --}}
+
+{{-- قالب صف الصندوق --}}
+<template id="boxRowTemplate">
+    <tr class="box-row text-center">
+        <td class="row-index"></td>
+
+        <td class="row-name text-center"></td>
+
+        <td class="row-coin"></td>
+
+        <td class="row-rate"></td>
+
+        <td class="row-account"></td>
+
+        <td class="row-status">
+            <button type="button"
+                    class="btn btn-sm toggle-status-btn"
+                    onclick="toggleBoxStatus(this)">
+            </button>
+        </td>
+
+        <td class="no-print">
+            <div class="btn-action-group">
+                <button type="button"
+                        class="btn btn-sm btn-outline-primary"
+                        onclick="editBox(this)"
+                        title="تعديل">
+                    <i class="bi bi-pencil d-md-none"></i>
+                    <span class="d-none d-md-inline">تعديل</span>
+                </button>
+
+                <button type="button"
+                        class="btn btn-sm btn-outline-danger"
+                        onclick="deleteBox(this)"
+                        title="حذف">
+                    <i class="bi bi-trash d-md-none"></i>
+                    <span class="d-none d-md-inline">حذف</span>
+                </button>
+            </div>
+        </td>
+    </tr>
+</template>
+
+{{-- قالب شارة العملة --}}
+<template id="boxCoinBadgeTemplate">
+    <span class="badge bg-secondary"></span>
+</template>
+
+{{-- قالب صف "لا توجد بيانات" --}}
+<template id="emptyBoxRowTemplate">
+    <tr>
+        <td colspan="7" class="text-center text-muted py-5">
+            <i class="bi bi-safe2 fs-2 d-block mb-2"></i>
+            لا توجد صناديق مسجلة
+        </td>
+    </tr>
+</template>

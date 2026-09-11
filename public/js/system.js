@@ -173,3 +173,45 @@ function showSystemToast(
 
     toast.show();
 }
+/* =========================================================
+   السيدبار — فتح القائمة النشطة تلقائياً حسب الرابط
+   (بدون حفظ دائم — يفتح فقط عند زيارة الصفحة)
+========================================================= */
+
+(function () {
+    'use strict';
+
+    document.addEventListener('DOMContentLoaded', function () {
+
+        const currentUrl = window.location.href.split('?')[0].replace(/\/$/, '');
+        const allLinks = document.querySelectorAll('.offcanvas-body a[href]');
+
+        allLinks.forEach(function (link) {
+            const linkUrl = link.href.split('?')[0].replace(/\/$/, '');
+
+            // إذا تطابق الرابط الحالي مع رابط القائمة
+            if (linkUrl === currentUrl) {
+
+                // علّم الرابط كـ active
+                link.classList.add('active');
+
+                // افتح كل الـ collapse الأب
+                let parent = link.closest('.collapse');
+                while (parent) {
+                    parent.classList.add('show');
+
+                    const toggleBtn = document.querySelector(
+                        '[data-bs-target="#' + parent.id + '"]'
+                    );
+                    if (toggleBtn) {
+                        toggleBtn.setAttribute('aria-expanded', 'true');
+                        toggleBtn.classList.remove('collapsed');
+                    }
+
+                    parent = parent.parentElement?.closest('.collapse');
+                }
+            }
+        });
+
+    });
+})();

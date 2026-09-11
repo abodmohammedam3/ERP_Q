@@ -29,6 +29,7 @@
     @include('setting.inventory.items.search')
     @include('setting.inventory.items.table')
     @include('setting.inventory.items.addUpdate')
+    @include('setting.inventory.items.deletModel')
 
 </div>
 

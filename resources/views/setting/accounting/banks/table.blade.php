@@ -89,3 +89,75 @@
     </div>
 </div>
 
+{{-- ============================================================
+     قوالب JS: تُستخدم من ملف banks.js لإعادة بناء الصفوف
+     ============================================================ --}}
+
+{{-- قالب صف البنك --}}
+<template id="bankRowTemplate">
+    <tr class="bank-row text-center">
+        <td class="row-index"></td>
+
+        <td class="row-name text-center"></td>
+
+        <td class="row-coin"></td>
+
+        <td class="row-rate"></td>
+
+        <td class="row-account-number"></td>
+
+        <td class="row-account"></td>
+
+        <td class="row-status">
+            <button type="button"
+                    class="btn btn-sm toggle-status-btn"
+                    onclick="toggleBankStatus(this)">
+            </button>
+        </td>
+
+        <td class="no-print">
+            <div class="btn-action-group">
+                <button type="button"
+                        class="btn btn-sm btn-outline-primary"
+                        onclick="editBank(this)">
+                    <i class="bi bi-pencil d-md-none"></i>
+                    <span class="d-none d-md-inline">تعديل</span>
+                </button>
+
+                <button type="button"
+                        class="btn btn-sm btn-outline-danger"
+                        onclick="deleteBank(this)">
+                    <i class="bi bi-trash d-md-none"></i>
+                    <span class="d-none d-md-inline">حذف</span>
+                </button>
+            </div>
+        </td>
+    </tr>
+</template>
+
+{{-- قالب شارة رمز العملة (بنك مرتبط بعملة) --}}
+<template id="bankCoinBadgeTemplate">
+    <span class="badge bg-secondary"></span>
+</template>
+
+{{-- قالب شارة "بلا عملة" --}}
+<template id="bankNoCoinBadgeTemplate">
+    <span class="badge bg-warning text-dark">
+        <i class="bi bi-exclamation-triangle-fill"></i> بلا عملة
+    </span>
+</template>
+
+{{-- قالب نص "—" (بديل عام) --}}
+<template id="bankDashTemplate">
+    <span class="text-muted">—</span>
+</template>
+
+{{-- قالب صف "لا توجد بيانات" --}}
+<template id="emptyBankRowTemplate">
+    <tr>
+        <td colspan="8" class="text-center text-muted py-5">
+            <i class="bi bi-bank fs-2 d-block mb-2"></i>
+            لا توجد بنوك مسجلة
+        </td>
+    </tr>
+</template>

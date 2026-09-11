@@ -59,20 +59,19 @@ function renderBoxes(data) {
 
     if (!tbody) return;
 
+    /* ---------- حالة: لا توجد بيانات ---------- */
     if (!list.length) {
 
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="7"
-                    class="text-center text-muted py-5">
+        const emptyTpl =
+            document.getElementById('emptyBoxRowTemplate');
 
-                    <i class="bi bi-safe2 fs-2 d-block mb-2"></i>
+        tbody.innerHTML = '';
 
-                    لا توجد صناديق مسجلة
-
-                </td>
-            </tr>
-        `;
+        if (emptyTpl) {
+            tbody.appendChild(
+                emptyTpl.content.cloneNode(true)
+            );
+        }
 
         if (badge) {
             badge.textContent = '0 صندوق';
@@ -81,10 +80,26 @@ function renderBoxes(data) {
         return;
     }
 
-    tbody.innerHTML = list.map((box, i) => {
+    /* ---------- حالة: يوجد بيانات ---------- */
+    const rowTpl =
+        document.getElementById('boxRowTemplate');
+
+    const coinBadgeTpl =
+        document.getElementById('boxCoinBadgeTemplate');
+
+    const fragment =
+        document.createDocumentFragment();
+
+    list.forEach((box, i) => {
+
+        const rowFragment =
+            rowTpl.content.cloneNode(true);
+
+        const row =
+            rowFragment.querySelector('tr');
 
         const coinCode =
-            box.coin?.coinsCode;
+            box.coin?.coinsCode || '';
 
         const coinRate =
             box.coin?.coinsExchangeRate || 0;
@@ -92,107 +107,65 @@ function renderBoxes(data) {
         const accCode =
             box.account?.accCode || '—';
 
-        /*
-         * العملة أصبحت إجبارية،
-         * لذلك لا يوجد صندوق بدون عملة.
-         */
-        const coinCell = coinCode
-            ? `<span class="badge bg-secondary">
-                    ${escapeHtml(coinCode)}
-               </span>`
-            : `<span class="text-muted">—</span>`;
+        /* بيانات الصف (data-*) */
+        row.dataset.id = box.boxID;
+        row.dataset.name = box.boxName;
+        row.dataset.coin = box.coinsID || '';
+        row.dataset.accountCode = accCode;
+        row.dataset.active = box.is_active ? 1 : 0;
 
-        return `
-            <tr class="box-row text-center"
-                data-id="${box.boxID}"
-                data-name="${escapeHtml(box.boxName)}"
-                data-coin="${box.coinsID || ''}"
-                data-account-code="${accCode}"
-                data-active="${box.is_active ? 1 : 0}">
+        /* الرقم التسلسلي واسم الصندوق */
+        row.querySelector('.row-index').textContent = i + 1;
+        row.querySelector('.row-name').textContent = box.boxName;
 
-                <td>
-                    ${i + 1}
-                </td>
+        /* خلية العملة */
+        const coinCell =
+            row.querySelector('.row-coin');
 
-                <td class="row-name text-center">
-                    ${escapeHtml(box.boxName)}
-                </td>
+        if (coinCode && coinBadgeTpl) {
 
-                <td class="row-coin">
-                    ${coinCell}
-                </td>
+            const badgeFragment =
+                coinBadgeTpl.content.cloneNode(true);
 
-                <td class="row-rate">
-                    ${formatNumber(coinRate)}
-                </td>
+            badgeFragment.querySelector('span')
+                .textContent = coinCode;
 
-                <td class="row-account">
-                    ${accCode}
-                </td>
+            coinCell.appendChild(badgeFragment);
 
-                <td class="row-status">
+        } else {
 
-                    <button
-                        type="button"
-                        class="btn btn-sm ${
-                            box.is_active
-                                ? 'btn-success'
-                                : 'btn-secondary'
-                        } toggle-status-btn"
-                        onclick="toggleBoxStatus(this)">
+            const span = document.createElement('span');
+            span.className = 'text-muted';
+            span.textContent = '—';
+            coinCell.appendChild(span);
+        }
 
-                        ${
-                            box.is_active
-                                ? 'نشط'
-                                : 'غير نشط'
-                        }
+        /* سعر الصرف ورقم الحساب */
+        row.querySelector('.row-rate').textContent =
+            formatNumber(coinRate);
 
-                    </button>
+        row.querySelector('.row-account').textContent =
+            accCode;
 
-                </td>
+        /* زر الحالة */
+        const statusBtn =
+            row.querySelector('.toggle-status-btn');
 
-                <td class="no-print">
+        statusBtn.classList.add(
+            box.is_active ? 'btn-success' : 'btn-secondary'
+        );
 
-                    <div class="btn-action-group">
+        statusBtn.textContent =
+            box.is_active ? 'نشط' : 'غير نشط';
 
-                        <button
-                            type="button"
-                            class="btn btn-sm btn-outline-primary"
-                            onclick="editBox(this)">
+        fragment.appendChild(rowFragment);
+    });
 
-                            <i class="bi bi-pencil d-md-none"></i>
-
-                            <span class="d-none d-md-inline">
-                                تعديل
-                            </span>
-
-                        </button>
-
-                        <button
-                            type="button"
-                            class="btn btn-sm btn-outline-danger"
-                            onclick="deleteBox(this)">
-
-                            <i class="bi bi-trash d-md-none"></i>
-
-                            <span class="d-none d-md-inline">
-                                حذف
-                            </span>
-
-                        </button>
-
-                    </div>
-
-                </td>
-
-            </tr>
-        `;
-
-    }).join('');
+    tbody.innerHTML = '';
+    tbody.appendChild(fragment);
 
     if (badge) {
-        badge.textContent =
-            `${list.length} صندوق`;
+        badge.textContent = `${list.length} صندوق`;
     }
 }
 
@@ -206,16 +179,6 @@ function formatNumber(v) {
         .toLocaleString('en-US', {
             maximumFractionDigits: 6
         });
-}
-
-function escapeHtml(v) {
-
-    return String(v ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
 }
 
 /* =========================================================

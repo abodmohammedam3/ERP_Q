@@ -90,11 +90,10 @@
                             >
                                 {{ $customer->CusAddress ?? '--' }}
                             </td>
-
                             {{-- رقم الحساب التحليلي --}}
                             <td>
                                 <span class="badge bg-light text-dark border">
-                                    {{ 110000 + (int) $customer->CustomersID }}
+                                    {{ $customer->account?->accCode ?? '--' }}
                                 </span>
                             </td>
 

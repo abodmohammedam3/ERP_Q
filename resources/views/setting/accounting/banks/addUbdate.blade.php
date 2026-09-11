@@ -20,7 +20,7 @@
                             <label for="bankName" class="form-label">
                                 اسم البنك <span class="text-danger">*</span>
                             </label>
-                            <input type="text" class="form-control" id="bankName" required
+                            <input type="text" class="form-control" id="bankName" 
                                    placeholder="مثال: بنك التضامن">
                         </div>
 

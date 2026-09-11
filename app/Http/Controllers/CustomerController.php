@@ -3,51 +3,170 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\Accounting\CharAccount;
 use App\Models\Customer;
+use App\Models\Accounting\CharAccount;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class CustomerController extends Controller
 {
-    // =====================================================
-    // عرض قائمة العملاء
-    // =====================================================
-
-    public function index()
+    /**
+     * الحصول على الحساب الأب للعملاء.
+     *
+     * الحساب النظامي:
+     * 1103 - العملاء
+     */
+    private function getParentAccount()
     {
-        $customers =
-            Customer::with('account')
-                ->orderBy(
-                    'CustomersID',
-                    'DESC'
-                )
-                ->get();
+        return CharAccount::where('system_key', 'customers')
+            ->where('isPostable', 0)
+            ->first();
+    }
 
-        $accounts =
-            CharAccount::where(
-                'IsActive',
-                1
-            )->get();
+    /**
+     * توليد رقم الحساب التحليلي التالي.
+     *
+     * مثال:
+     * 110301
+     * 110302
+     * 110303
+     */
+    private function generateNextChildCode(CharAccount $parent)
+    {
+        $prefix = $parent->accCode;
 
-        return view(
-            'setting.customers.index',
-            compact(
-                'customers',
-                'accounts'
+        $children = CharAccount::where(
+                'accParent',
+                $parent->accountID
             )
+            ->where('isPostable', 1)
+            ->pluck('accCode');
+
+        $maxNumber = 0;
+
+        foreach ($children as $code) {
+
+            if (!str_starts_with((string) $code, $prefix)) {
+                continue;
+            }
+
+            $suffix = substr(
+                (string) $code,
+                strlen($prefix)
+            );
+
+            if ($suffix === '' || !ctype_digit($suffix)) {
+                continue;
+            }
+
+            $number = (int) $suffix;
+
+            if ($number > $maxNumber) {
+                $maxNumber = $number;
+            }
+        }
+
+        return $prefix . str_pad(
+            (string) ($maxNumber + 1),
+            2,
+            '0',
+            STR_PAD_LEFT
         );
     }
 
-    // =====================================================
-    // جلب عميل للتعديل
-    // =====================================================
+    /**
+     * صفحة العملاء.
+     */
+    public function index()
+    {
+        $customers = Customer::with('account')
+            ->orderBy('CustomersID', 'DESC')
+            ->get();
 
-    public function show(
-        int|string $id
-    ) {
-        $customer =
-            Customer::with('account')
-                ->find($id);
+        $parent = $this->getParentAccount();
+
+        return view(
+            'setting.customers.index',
+            [
+                'customers' => $customers,
+                'hasParent' => (bool) $parent,
+            ]
+        );
+    }
+
+    /**
+     * قائمة العملاء AJAX.
+     */
+    public function list(Request $request)
+    {
+        $query = Customer::with('account')
+            ->orderBy('CustomersID', 'DESC');
+
+        if ($request->filled('search_name')) {
+
+            $searchName = trim(
+                $request->search_name
+            );
+
+            $query->where(
+                'CustomersName2',
+                'like',
+                '%' . $searchName . '%'
+            );
+        }
+
+        if ($request->filled('search_phone')) {
+
+            $searchPhone = trim(
+                $request->search_phone
+            );
+
+            $query->where(
+                'CusPhone',
+                'like',
+                '%' . $searchPhone . '%'
+            );
+        }
+
+        if ($request->filled('search_code')) {
+
+            $searchCode = trim(
+                $request->search_code
+            );
+
+            $query->whereHas(
+                'account',
+                function ($accountQuery) use ($searchCode) {
+
+                    $accountQuery->where(
+                        'accCode',
+                        'like',
+                        '%' . $searchCode . '%'
+                    );
+                }
+            );
+        }
+
+        $customers = $query->get();
+
+        $html = view(
+            'setting.customers.table',
+            compact('customers')
+        )->render();
+
+        return response()->json([
+            'success' => true,
+            'html' => $html,
+        ]);
+    }
+
+    /**
+     * الحصول على بيانات عميل.
+     */
+    public function show(int|string $id)
+    {
+        $customer = Customer::with('account')
+            ->find($id);
 
         if (!$customer) {
 
@@ -56,13 +175,6 @@ class CustomerController extends Controller
                 'message' => 'العميل غير موجود',
             ], 404);
         }
-
-        $statusVal =
-            $customer->CusIsStopeed ?? 0;
-
-        $accountCode =
-            110000 +
-            (int) $customer->CustomersID;
 
         return response()->json([
             'success' => true,
@@ -81,13 +193,15 @@ class CustomerController extends Controller
                     $customer->CusAddress,
 
                 'CusIsStopeed' =>
-                    $statusVal,
+                    $customer->CusIsStopeed ?? 0,
 
                 'accountID' =>
                     $customer->accountID,
 
                 'accountCode' =>
-                    $accountCode,
+                    $customer->account
+                        ? $customer->account->accCode
+                        : null,
 
                 'account' =>
                     $customer->account,
@@ -95,361 +209,296 @@ class CustomerController extends Controller
         ]);
     }
 
-    // =====================================================
-    // إضافة عميل
-    // =====================================================
-
-    public function store(
-        Request $request
-    ) {
+    /**
+     * إضافة عميل جديد.
+     */
+    public function store(Request $request)
+    {
         $request->validate([
-            'CustomersName2' =>
-                'required|string|max:255',
-
-            'accountID' =>
-                'nullable|exists:characcount,accountID',
-
+            'CustomersName2' => [
+                'required',
+                'string',
+                'max:255',
+            ],
         ], [
-
             'CustomersName2.required' =>
                 'اسم العميل مطلوب',
 
-            'accountID.exists' =>
-                'الحساب المحاسبي المختار غير صالح',
+            'CustomersName2.string' =>
+                'اسم العميل غير صحيح',
+
+            'CustomersName2.max' =>
+                'اسم العميل يجب ألا يتجاوز 255 حرفاً',
         ]);
 
-        $status =
-            $request->input(
-                'CusIsStopeed',
-                0
+        try {
+
+            $result = DB::transaction(
+                function () use ($request) {
+
+                    /*
+                     * 1. الحصول على الحساب الأب
+                     *    عن طريق system_key
+                     */
+                    $parent =
+                        $this->getParentAccount();
+
+                    if (!$parent) {
+
+                        throw new \Exception(
+                            'لم يتم العثور على الحساب الأب للعملاء.'
+                        );
+                    }
+
+                    /*
+                     * 2. توليد رقم الحساب التحليلي
+                     */
+                    $nextCode =
+                        $this->generateNextChildCode(
+                            $parent
+                        );
+
+                    /*
+                     * 3. إنشاء الحساب التحليلي
+                     */
+                    $account =
+                        CharAccount::create([
+                            'accParent' =>
+                                $parent->accountID,
+
+                            'accTypeID' =>
+                                $parent->accTypeID,
+
+                            'accCode' =>
+                                $nextCode,
+
+                            'accName' =>
+                                $request->CustomersName2,
+
+                            'nature' =>
+                                $parent->nature,
+
+                            'accLevel' =>
+                                $parent->accLevel + 1,
+
+                            'IsActive' => 1,
+
+                            'isPostable' => 1,
+
+                            'is_system' => 0,
+
+                            'system_key' => null,
+                        ]);
+
+                    /*
+                     * 4. إنشاء العميل وربطه بالحساب
+                     */
+                    $customer =
+                        Customer::create([
+                            'CustomersName2' =>
+                                $request->CustomersName2,
+
+                            'accountID' =>
+                                $account->accountID,
+
+                            'CusPhone' =>
+                                $request->CusPhone,
+
+                            'CusAddress' =>
+                                $request->CusAddress,
+
+                            'CusIsStopeed' =>
+                                $request->input(
+                                    'CusIsStopeed',
+                                    0
+                                ),
+                        ]);
+
+                    return [
+                        'customer' =>
+                            $customer,
+
+                        'account' =>
+                            $account,
+                    ];
+                }
             );
 
-        $customer =
-            Customer::create([
+            return response()->json([
+                'success' => true,
 
-                'CustomersName2' =>
-                    $request->CustomersName2,
+                'message' =>
+                    'تم إضافة العميل وربطه بالحساب التحليلي بنجاح.',
 
-                'accountID' =>
-                    $request->accountID,
+                'customer' => [
+                    'CustomersID' =>
+                        $result['customer']->CustomersID,
 
-                'CusPhone' =>
-                    $request->CusPhone,
+                    'CustomersName2' =>
+                        $result['customer']->CustomersName2,
 
-                'CusAddress' =>
-                    $request->CusAddress,
+                    'CusPhone' =>
+                        $result['customer']->CusPhone,
 
-                'CusIsStopeed' =>
-                    $status,
-            ]);
+                    'CusAddress' =>
+                        $result['customer']->CusAddress,
 
-        $accountCode =
-            110000 +
-            (int) $customer->CustomersID;
+                    'CusIsStopeed' =>
+                        $result['customer']->CusIsStopeed,
 
-        return response()->json([
+                    'accountID' =>
+                        $result['account']->accountID,
 
-            'success' =>
-                true,
+                    'accountCode' =>
+                        $result['account']->accCode,
+                ],
+            ], 200);
 
-            'message' =>
-                'تم إضافة العميل بنجاح',
+        } catch (\Throwable $e) {
 
-            'customer' => [
-
-                'CustomersID' =>
-                    $customer->CustomersID,
-
-                'CustomersName2' =>
-                    $customer->CustomersName2,
-
-                'CusPhone' =>
-                    $customer->CusPhone,
-
-                'CusAddress' =>
-                    $customer->CusAddress,
-
-                'CusIsStopeed' =>
-                    $customer->CusIsStopeed,
-
-                'accountID' =>
-                    $customer->accountID,
-
-                'accountCode' =>
-                    $accountCode,
-            ],
-        ]);
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
 
-    // =====================================================
-    // تحديث العميل
-    // =====================================================
-
+    /**
+     * تعديل العميل.
+     */
     public function update(
         Request $request,
         int|string $id
     ) {
         $request->validate([
-            'CustomersName2' =>
-                'required|string|max:255',
-
-            'accountID' =>
-                'nullable|exists:characcount,accountID',
-
+            'CustomersName2' => [
+                'required',
+                'string',
+                'max:255',
+            ],
         ], [
-
             'CustomersName2.required' =>
                 'اسم العميل مطلوب',
 
-            'accountID.exists' =>
-                'الحساب المحاسبي المختار غير صالح',
+            'CustomersName2.string' =>
+                'اسم العميل غير صحيح',
+
+            'CustomersName2.max' =>
+                'اسم العميل يجب ألا يتجاوز 255 حرفاً',
         ]);
-
-        $customer =
-            Customer::find($id);
-
-        if (!$customer) {
-
-            return response()->json([
-                'success' => false,
-                'message' => 'العميل غير موجود',
-            ], 404);
-        }
-
-        $status =
-            $request->input(
-                'CusIsStopeed',
-                0
-            );
-
-        $customer->update([
-
-            'CustomersName2' =>
-                $request->CustomersName2,
-
-            'accountID' =>
-                $request->accountID,
-
-            'CusPhone' =>
-                $request->CusPhone,
-
-            'CusAddress' =>
-                $request->CusAddress,
-
-            'CusIsStopeed' =>
-                $status,
-        ]);
-
-        $accountCode =
-            110000 +
-            (int) $customer->CustomersID;
-
-        return response()->json([
-
-            'success' =>
-                true,
-
-            'message' =>
-                'تم تحديث بيانات العميل بنجاح',
-
-            'customer' => [
-
-                'CustomersID' =>
-                    $customer->CustomersID,
-
-                'CustomersName2' =>
-                    $customer->CustomersName2,
-
-                'CusPhone' =>
-                    $customer->CusPhone,
-
-                'CusAddress' =>
-                    $customer->CusAddress,
-
-                'CusIsStopeed' =>
-                    $customer->CusIsStopeed,
-
-                'accountID' =>
-                    $customer->accountID,
-
-                'accountCode' =>
-                    $accountCode,
-            ],
-        ]);
-    }
-
-    // =====================================================
-    // حذف العميل
-    // =====================================================
-
-    public function destroy(
-        int|string $id
-    ) {
-        $customer =
-            Customer::find($id);
-
-        if (!$customer) {
-
-            return response()->json([
-                'success' => false,
-                'message' => 'العميل غير موجود',
-            ], 404);
-        }
 
         try {
 
-            $customerID =
-                $customer->CustomersID;
+            $customer =
+                Customer::find($id);
 
-            $customer->delete();
+            if (!$customer) {
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'العميل غير موجود',
+                ], 404);
+            }
+
+            /*
+             * Observer سيتولى مزامنة
+             * اسم وحالة الحساب التحليلي.
+             */
+            $customer->CustomersName2 =
+                $request->CustomersName2;
+
+            $customer->CusPhone =
+                $request->CusPhone;
+
+            $customer->CusAddress =
+                $request->CusAddress;
+
+            $customer->CusIsStopeed =
+                $request->input(
+                    'CusIsStopeed',
+                    0
+                );
+
+            $customer->save();
 
             return response()->json([
-
-                'success' =>
-                    true,
-
+                'success' => true,
                 'message' =>
-                    'تم حذف العميل بنجاح',
-
-                'customerID' =>
-                    $customerID,
-            ]);
+                    'تم تحديث بيانات العميل بنجاح.',
+            ], 200);
 
         } catch (\Throwable $e) {
 
             return response()->json([
-
-                'success' =>
-                    false,
-
-                'message' =>
-                    'لا يمكن حذف العميل لوجود حركات أو فواتير مرتبطة به',
-
-            ], 422);
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
         }
     }
 
-    // =====================================================
-    // البحث في قائمة العملاء
-    // =====================================================
- 
-    public function list(
-        Request $request
-    ) {
-        $query =
-            Customer::orderBy(
-                'CustomersID',
-                'DESC'
-            );
+    /**
+     * حذف العميل.
+     */
+    public function destroy(int|string $id)
+    {
+        try {
 
-        // =================================================
-        // البحث باسم العميل
-        // =================================================
+            DB::transaction(function () use ($id) {
 
-        if (
-            $request->filled(
-                'search_name'
-            )
-        ) {
+                $customer =
+                    Customer::findOrFail($id);
 
-            $searchName =
-                trim(
-                    $request->search_name
-                );
+                $accountID =
+                    $customer->accountID;
 
-            $query->where(
-                'CustomersName2',
-                'like',
-                '%' . $searchName . '%'
-            );
+                /*
+                 * حذف العميل أولاً.
+                 */
+                $customer->delete();
+
+                /*
+                 * التعامل مع الحساب التحليلي المرتبط.
+                 */
+                if ($accountID) {
+
+                    $account =
+                        CharAccount::find(
+                            $accountID
+                        );
+
+                    if ($account) {
+
+                        $hasChildren =
+                            CharAccount::where(
+                                'accParent',
+                                $account->accountID
+                            )->exists();
+
+                        if (!$hasChildren) {
+
+                            $account->delete();
+
+                        } else {
+
+                            $account->IsActive = 0;
+                            $account->save();
+                        }
+                    }
+                }
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم حذف العميل بنجاح.',
+            ], 200);
+
+        } catch (\Throwable $e) {
+
+            return response()->json([
+                'success' => false,
+                'message' =>
+                    'لا يمكن حذف العميل لوجود حركات أو فواتير مرتبطة به',
+            ], 422);
         }
-
-        // =================================================
-        // البحث برقم الهاتف
-        // =================================================
-
-        if (
-            $request->filled(
-                'search_phone'
-            )
-        ) {
-
-            $searchPhone =
-                trim(
-                    $request->search_phone
-                );
-
-            $query->where(
-                'CusPhone',
-                'like',
-                '%' . $searchPhone . '%'
-            );
-        }
-
-        // =================================================
-        // البحث برقم الحساب التحليلي
-        // =================================================
-
-        if (
-            $request->filled(
-                'search_code'
-            )
-        ) {
-
-            $searchCode =
-                trim(
-                    $request->search_code
-                );
-
-            if (
-                is_numeric(
-                    $searchCode
-                )
-            ) {
-
-                $query->whereRaw(
-                    "CAST(110000 + CustomersID AS CHAR) LIKE ?",
-                    [
-                        '%' .
-                        $searchCode .
-                        '%'
-                    ]
-                );
-
-            } else {
-
-                $query->whereRaw(
-                    '1 = 0'
-                );
-            }
-        }
-
-        // =================================================
-        // جلب العملاء
-        // =================================================
-
-        $customers =
-            $query->get();
-
-        // =================================================
-        // إنشاء الجدول والصفوف بواسطة Blade
-        // =================================================
-
-        $html =
-            view(
-                'setting.customers.table',
-                compact(
-                    'customers'
-                )
-            )->render();
-
-        return response()->json([
-
-            'success' =>
-                true,
-
-            'html' =>
-                $html,
-        ]);
     }
 }

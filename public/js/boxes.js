@@ -28,12 +28,14 @@ async function loadBoxes() {
         const res = await fetch(boxesApi.list, {
             headers: { 'Accept': 'application/json' },
         });
+
         const json = await res.json();
 
         if (json.success) {
             boxesData = json.data || [];
             renderBoxes();
         }
+
     } catch (e) {
         console.error('خطأ في تحميل الصناديق:', e);
     }
@@ -44,34 +46,61 @@ async function loadBoxes() {
 ========================================================= */
 
 function renderBoxes(data) {
-    const list = Array.isArray(data) ? data : boxesData;
-    const tbody = document.getElementById('boxesTableBody');
-    const badge = document.getElementById('boxesCountBadge');
+
+    const list = Array.isArray(data)
+        ? data
+        : boxesData;
+
+    const tbody =
+        document.getElementById('boxesTableBody');
+
+    const badge =
+        document.getElementById('boxesCountBadge');
 
     if (!tbody) return;
 
     if (!list.length) {
+
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" class="text-center text-muted py-5">
+                <td colspan="7"
+                    class="text-center text-muted py-5">
+
                     <i class="bi bi-safe2 fs-2 d-block mb-2"></i>
+
                     لا توجد صناديق مسجلة
+
                 </td>
             </tr>
         `;
-        if (badge) badge.textContent = '0 صندوق';
+
+        if (badge) {
+            badge.textContent = '0 صندوق';
+        }
+
         return;
     }
 
     tbody.innerHTML = list.map((box, i) => {
-        const coinCode = box.coin?.coinsCode;
-        const coinRate = box.coin?.coinsExchangeRate || 0;
-        const accCode = box.account?.accCode || '—';
-        const noCoin = !box.coinsID;
 
+        const coinCode =
+            box.coin?.coinsCode;
+
+        const coinRate =
+            box.coin?.coinsExchangeRate || 0;
+
+        const accCode =
+            box.account?.accCode || '—';
+
+        /*
+         * العملة أصبحت إجبارية،
+         * لذلك لا يوجد صندوق بدون عملة.
+         */
         const coinCell = coinCode
-            ? `<span class="badge bg-secondary">${escapeHtml(coinCode)}</span>`
-            : `<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle-fill"></i> بلا عملة</span>`;
+            ? `<span class="badge bg-secondary">
+                    ${escapeHtml(coinCode)}
+               </span>`
+            : `<span class="text-muted">—</span>`;
 
         return `
             <tr class="box-row text-center"
@@ -79,38 +108,92 @@ function renderBoxes(data) {
                 data-name="${escapeHtml(box.boxName)}"
                 data-coin="${box.coinsID || ''}"
                 data-account-code="${accCode}"
-                data-active="${box.is_active ? 1 : 0}"
-                ${noCoin ? 'style="background-color: #fff3cd;"' : ''}>
+                data-active="${box.is_active ? 1 : 0}">
 
-                <td>${i + 1}</td>
-                <td class="row-name text-center">${escapeHtml(box.boxName)}</td>
-                <td class="row-coin">${coinCell}</td>
-                <td class="row-rate">${noCoin ? '—' : formatNumber(coinRate)}</td>
-                <td class="row-account">${accCode}</td>
+                <td>
+                    ${i + 1}
+                </td>
+
+                <td class="row-name text-center">
+                    ${escapeHtml(box.boxName)}
+                </td>
+
+                <td class="row-coin">
+                    ${coinCell}
+                </td>
+
+                <td class="row-rate">
+                    ${formatNumber(coinRate)}
+                </td>
+
+                <td class="row-account">
+                    ${accCode}
+                </td>
+
                 <td class="row-status">
-                    <button type="button"
-                            class="btn btn-sm ${box.is_active ? 'btn-success' : 'btn-secondary'} toggle-status-btn"
-                            onclick="toggleBoxStatus(this)">
-                        ${box.is_active ? 'نشط' : 'غير نشط'}
+
+                    <button
+                        type="button"
+                        class="btn btn-sm ${
+                            box.is_active
+                                ? 'btn-success'
+                                : 'btn-secondary'
+                        } toggle-status-btn"
+                        onclick="toggleBoxStatus(this)">
+
+                        ${
+                            box.is_active
+                                ? 'نشط'
+                                : 'غير نشط'
+                        }
+
                     </button>
+
                 </td>
+
                 <td class="no-print">
+
                     <div class="btn-action-group">
-                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="editBox(this)">
+
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-outline-primary"
+                            onclick="editBox(this)">
+
                             <i class="bi bi-pencil d-md-none"></i>
-                            <span class="d-none d-md-inline">تعديل</span>
+
+                            <span class="d-none d-md-inline">
+                                تعديل
+                            </span>
+
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteBox(this)">
+
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-outline-danger"
+                            onclick="deleteBox(this)">
+
                             <i class="bi bi-trash d-md-none"></i>
-                            <span class="d-none d-md-inline">حذف</span>
+
+                            <span class="d-none d-md-inline">
+                                حذف
+                            </span>
+
                         </button>
+
                     </div>
+
                 </td>
+
             </tr>
         `;
+
     }).join('');
 
-    if (badge) badge.textContent = `${list.length} صندوق`;
+    if (badge) {
+        badge.textContent =
+            `${list.length} صندوق`;
+    }
 }
 
 /* =========================================================
@@ -118,10 +201,15 @@ function renderBoxes(data) {
 ========================================================= */
 
 function formatNumber(v) {
-    return Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 6 });
+
+    return Number(v || 0)
+        .toLocaleString('en-US', {
+            maximumFractionDigits: 6
+        });
 }
 
 function escapeHtml(v) {
+
     return String(v ?? '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -135,14 +223,33 @@ function escapeHtml(v) {
 ========================================================= */
 
 function filterBoxes() {
-    const term = document.getElementById('searchBoxInput')?.value.trim().toLowerCase() || '';
-    const coinId = document.getElementById('statusBoxFilter')?.value || '';
 
-    const filtered = boxesData.filter(b => {
-        const matchesSearch = (b.boxName || '').toLowerCase().includes(term);
-        const matchesCoin = !coinId || String(b.coinsID) === String(coinId);
-        return matchesSearch && matchesCoin;
-    });
+    const term =
+        document
+            .getElementById('searchBoxInput')
+            ?.value
+            .trim()
+            .toLowerCase() || '';
+
+    const coinId =
+        document
+            .getElementById('statusBoxFilter')
+            ?.value || '';
+
+    const filtered =
+        boxesData.filter(b => {
+
+            const matchesSearch =
+                (b.boxName || '')
+                    .toLowerCase()
+                    .includes(term);
+
+            const matchesCoin =
+                !coinId ||
+                String(b.coinsID) === String(coinId);
+
+            return matchesSearch && matchesCoin;
+        });
 
     renderBoxes(filtered);
 }
@@ -152,14 +259,25 @@ function filterBoxes() {
 ========================================================= */
 
 function updateExchangeRate() {
-    const select = document.getElementById('coinsID');
-    const rateInput = document.getElementById('exchangeRate');
+
+    const select =
+        document.getElementById('coinsID');
+
+    const rateInput =
+        document.getElementById('exchangeRate');
+
     if (!select || !rateInput) return;
 
-    const option = select.options[select.selectedIndex];
-    const rate = option?.dataset?.rate || '';
+    const option =
+        select.options[select.selectedIndex];
 
-    rateInput.value = rate ? Number(rate).toFixed(6) : '';
+    const rate =
+        option?.dataset?.rate || '';
+
+    rateInput.value =
+        rate
+            ? Number(rate).toFixed(6)
+            : '';
 }
 
 /* =========================================================
@@ -167,37 +285,69 @@ function updateExchangeRate() {
 ========================================================= */
 
 async function openBoxModal() {
+
     editingBoxId = null;
 
     document.getElementById('boxModalLabel').innerHTML =
         '<i class="bi bi-safe2"></i> إضافة صندوق';
 
     document.getElementById('boxForm').reset();
+
     document.getElementById('boxID').value = '';
+
     document.getElementById('isActive').value = '1';
+
     document.getElementById('exchangeRate').value = '';
+
     document.getElementById('accountCode').value = '';
 
-    const warning = document.getElementById('coinWarning');
-    if (warning) warning.style.display = 'none';
-
-    // جلب رقم الحساب التالي من الخادم
+    /*
+     * جلب رقم الحساب التالي من الخادم
+     */
     try {
-        const res = await fetch(boxesApi.nextCode, {
-            headers: { 'Accept': 'application/json' },
-        });
-        const json = await res.json();
+
+        const res =
+            await fetch(boxesApi.nextCode, {
+                headers: {
+                    'Accept': 'application/json',
+                },
+            });
+
+        const json =
+            await res.json();
+
         if (json.success) {
-            document.getElementById('accountCode').value = json.code;
+
+            document.getElementById(
+                'accountCode'
+            ).value = json.code;
+
         } else {
-            showSystemToast(json.message || 'فشل جلب رقم الحساب', 'danger');
+
+            showSystemToast(
+                json.message ||
+                'فشل جلب رقم الحساب',
+                'danger'
+            );
         }
+
     } catch (e) {
-        console.error('فشل جلب رقم الحساب:', e);
+
+        console.error(
+            'فشل جلب رقم الحساب:',
+            e
+        );
     }
 
-    const modalEl = document.getElementById('boxModal');
-    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false });
+    const modalEl =
+        document.getElementById('boxModal');
+
+    const modal =
+        bootstrap.Modal.getOrCreateInstance(
+            modalEl,
+            { focus: false }
+        );
+
     modal.show();
 }
 
@@ -206,29 +356,56 @@ async function openBoxModal() {
 ========================================================= */
 
 function editBox(btn) {
-    const row = btn.closest('tr');
+
+    const row =
+        btn.closest('tr');
+
     if (!row) return;
 
-    editingBoxId = row.dataset.id;
+    editingBoxId =
+        row.dataset.id;
 
-    document.getElementById('boxModalLabel').innerHTML =
+    document.getElementById(
+        'boxModalLabel'
+    ).innerHTML =
         '<i class="bi bi-pencil-square"></i> تعديل الصندوق';
 
-    document.getElementById('boxID').value = row.dataset.id;
-    document.getElementById('boxName').value = row.dataset.name;
-    document.getElementById('coinsID').value = row.dataset.coin || '';
-    document.getElementById('isActive').value = row.dataset.active;
-    document.getElementById('accountCode').value = row.dataset.accountCode || '';
+    document.getElementById(
+        'boxID'
+    ).value =
+        row.dataset.id;
 
-    const warning = document.getElementById('coinWarning');
-    if (warning) {
-        warning.style.display = row.dataset.coin ? 'none' : 'block';
-    }
+    document.getElementById(
+        'boxName'
+    ).value =
+        row.dataset.name;
+
+    document.getElementById(
+        'coinsID'
+    ).value =
+        row.dataset.coin || '';
+
+    document.getElementById(
+        'isActive'
+    ).value =
+        row.dataset.active;
+
+    document.getElementById(
+        'accountCode'
+    ).value =
+        row.dataset.accountCode || '';
 
     updateExchangeRate();
 
-    const modalEl = document.getElementById('boxModal');
-    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false });
+    const modalEl =
+        document.getElementById('boxModal');
+
+    const modal =
+        bootstrap.Modal.getOrCreateInstance(
+            modalEl,
+            { focus: false }
+        );
+
     modal.show();
 }
 
@@ -237,57 +414,197 @@ function editBox(btn) {
 ========================================================= */
 
 async function saveBox() {
-    const form = document.getElementById('boxForm');
+
+    const form =
+        document.getElementById('boxForm');
+
+    /*
+     * التحقق من صحة النموذج
+     *
+     * العملة مطلوبة من خلال required
+     * في select الخاص بالعملة.
+     */
     if (!form.checkValidity()) {
+
         form.reportValidity();
+
         return;
     }
 
-    const coinValue = document.getElementById('coinsID').value;
+    const boxName =
+        document
+            .getElementById('boxName')
+            .value
+            .trim();
 
+    const coinValue =
+        document
+            .getElementById('coinsID')
+            .value;
+
+    const isActive =
+        document
+            .getElementById('isActive')
+            .value === '1';
+
+    /*
+     * =====================================================
+     * التحقق من التعديل
+     * =====================================================
+     *
+     * إذا كان تعديل صندوق موجود:
+     * نقارن البيانات الحالية بالبيانات الأصلية الموجودة
+     * في صف الصندوق.
+     *
+     * إذا لم يحدث أي تغيير:
+     * لا نرسل الطلب إلى الخادم.
+     */
+    if (editingBoxId !== null) {
+
+        const row =
+            document.querySelector(
+                `#boxesTableBody tr.box-row[data-id="${editingBoxId}"]`
+            );
+
+        if (row) {
+
+            const originalName =
+                row.dataset.name?.trim() || '';
+
+            const originalCoin =
+                row.dataset.coin || '';
+
+            const originalActive =
+                row.dataset.active === '1';
+
+            const nameChanged =
+                boxName !== originalName;
+
+            const coinChanged =
+                String(coinValue || '') !==
+                String(originalCoin || '');
+
+            const statusChanged =
+                isActive !== originalActive;
+
+            /*
+             * لا يوجد أي تغيير
+             */
+            if (
+                !nameChanged &&
+                !coinChanged &&
+                !statusChanged
+            ) {
+
+                showSystemToast(
+                    'لم يتم إجراء أي تعديل على بيانات الصندوق.',
+                    'danger'
+                );
+
+                return;
+            }
+        }
+    }
+
+    /*
+     * العملة إجبارية،
+     * لذلك نرسل قيمتها مباشرة.
+     */
     const payload = {
-        boxName: document.getElementById('boxName').value.trim(),
-        coinsID: coinValue ? Number(coinValue) : null,
-        is_active: document.getElementById('isActive').value === '1',
+
+        boxName: boxName,
+
+        coinsID: Number(coinValue),
+
+        is_active: isActive,
     };
 
-    const isEdit = editingBoxId !== null;
-    const url = isEdit ? boxesApi.update(editingBoxId) : boxesApi.store;
-    const method = isEdit ? 'PUT' : 'POST';
+    const isEdit =
+        editingBoxId !== null;
+
+    const url =
+        isEdit
+            ? boxesApi.update(editingBoxId)
+            : boxesApi.store;
+
+    const method =
+        isEdit
+            ? 'PUT'
+            : 'POST';
 
     try {
-        const res = await fetch(url, {
-            method,
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
-            },
-            body: JSON.stringify(payload),
-        });
 
-        const json = await res.json();
+        const res =
+            await fetch(url, {
+
+                method,
+
+                headers: {
+
+                    'Content-Type':
+                        'application/json',
+
+                    'Accept':
+                        'application/json',
+
+                    'X-CSRF-TOKEN':
+                        csrfToken,
+                },
+
+                body:
+                    JSON.stringify(payload),
+            });
+
+        const json =
+            await res.json();
 
         if (!json.success) {
-            showSystemToast(json.message || 'حدث خطأ', 'danger');
+
+            showSystemToast(
+                json.message ||
+                'حدث خطأ',
+                'danger'
+            );
+
             return;
         }
 
-        if (document.activeElement && document.activeElement.blur) {
+        if (
+            document.activeElement &&
+            document.activeElement.blur
+        ) {
+
             document.activeElement.blur();
         }
 
-        const modalEl = document.getElementById('boxModal');
-        const modalInstance = bootstrap.Modal.getInstance(modalEl);
-        if (modalInstance) modalInstance.hide();
+        const modalEl =
+            document.getElementById('boxModal');
+
+        const modalInstance =
+            bootstrap.Modal.getInstance(
+                modalEl
+            );
+
+        if (modalInstance) {
+            modalInstance.hide();
+        }
 
         await loadBoxes();
 
-        showSystemToast(json.message || 'تم الحفظ بنجاح', 'success');
+        showSystemToast(
+            json.message ||
+            'تم الحفظ بنجاح',
+            'success'
+        );
 
     } catch (e) {
+
         console.error(e);
-        showSystemToast('حدث خطأ أثناء الحفظ', 'danger');
+
+        showSystemToast(
+            'حدث خطأ أثناء الحفظ',
+            'danger'
+        );
     }
 }
 
@@ -296,91 +613,190 @@ async function saveBox() {
 ========================================================= */
 
 function deleteBox(btn) {
-    const row = btn.closest('tr');
+
+    const row =
+        btn.closest('tr');
+
     if (!row) return;
 
-    deletingBoxId = row.dataset.id;
-    document.getElementById('deleteBoxModal').classList.add('show');
+    deletingBoxId =
+        row.dataset.id;
+
+    document
+        .getElementById('deleteBoxModal')
+        .classList
+        .add('show');
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener(
+    'DOMContentLoaded',
+    () => {
 
-    document.getElementById('deleteBoxCancelBtn')?.addEventListener('click', () => {
-        deletingBoxId = null;
-        document.getElementById('deleteBoxModal').classList.remove('show');
-    });
+        document
+            .getElementById(
+                'deleteBoxCancelBtn'
+            )
+            ?.addEventListener(
+                'click',
+                () => {
 
-    document.getElementById('deleteBoxConfirmBtn')?.addEventListener('click', async function () {
-        if (!deletingBoxId) return;
+                    deletingBoxId = null;
 
-        this.disabled = true;
+                    document
+                        .getElementById(
+                            'deleteBoxModal'
+                        )
+                        .classList
+                        .remove('show');
+                }
+            );
 
-        try {
-            const res = await fetch(boxesApi.destroy(deletingBoxId), {
-                method: 'DELETE',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                },
-            });
+        document
+            .getElementById(
+                'deleteBoxConfirmBtn'
+            )
+            ?.addEventListener(
+                'click',
+                async function () {
 
-            const json = await res.json();
+                    if (!deletingBoxId) return;
 
-            if (!json.success) {
-                showSystemToast(json.message || 'حدث خطأ', 'danger');
-                return;
-            }
+                    this.disabled = true;
 
-            document.getElementById('deleteBoxModal').classList.remove('show');
-            deletingBoxId = null;
+                    try {
 
-            await loadBoxes();
+                        const res =
+                            await fetch(
+                                boxesApi.destroy(
+                                    deletingBoxId
+                                ),
+                                {
+                                    method: 'DELETE',
 
-            showSystemToast(json.message || 'تم الحذف بنجاح', 'success');
+                                    headers: {
 
-        } catch (e) {
-            console.error(e);
-            showSystemToast('حدث خطأ أثناء الحذف', 'danger');
-        } finally {
-            this.disabled = false;
-        }
-    });
+                                        'Accept':
+                                            'application/json',
 
-    loadBoxes();
-});
+                                        'X-CSRF-TOKEN':
+                                            csrfToken,
+                                    },
+                                }
+                            );
+
+                        const json =
+                            await res.json();
+
+                        if (!json.success) {
+
+                            showSystemToast(
+                                json.message ||
+                                'حدث خطأ',
+                                'danger'
+                            );
+
+                            return;
+                        }
+
+                        document
+                            .getElementById(
+                                'deleteBoxModal'
+                            )
+                            .classList
+                            .remove('show');
+
+                        deletingBoxId = null;
+
+                        await loadBoxes();
+
+                        showSystemToast(
+                            json.message ||
+                            'تم الحذف بنجاح',
+                            'success'
+                        );
+
+                    } catch (e) {
+
+                        console.error(e);
+
+                        showSystemToast(
+                            'حدث خطأ أثناء الحذف',
+                            'danger'
+                        );
+
+                    } finally {
+
+                        this.disabled = false;
+                    }
+                }
+            );
+
+        loadBoxes();
+    }
+);
 
 /* =========================================================
    تبديل الحالة
 ========================================================= */
 
 async function toggleBoxStatus(btn) {
-    const row = btn.closest('tr');
+
+    const row =
+        btn.closest('tr');
+
     if (!row) return;
 
-    const id = row.dataset.id;
+    const id =
+        row.dataset.id;
 
     try {
-        const res = await fetch(boxesApi.toggle(id), {
-            method: 'PATCH',
-            headers: {
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
-            },
-        });
 
-        const json = await res.json();
+        const res =
+            await fetch(
+                boxesApi.toggle(id),
+                {
+                    method: 'PATCH',
+
+                    headers: {
+
+                        'Accept':
+                            'application/json',
+
+                        'X-CSRF-TOKEN':
+                            csrfToken,
+                    },
+                }
+            );
+
+        const json =
+            await res.json();
 
         if (!json.success) {
-            showSystemToast(json.message || 'حدث خطأ', 'danger');
+
+            showSystemToast(
+                json.message ||
+                'حدث خطأ',
+                'danger'
+            );
+
             return;
         }
 
         await loadBoxes();
-        showSystemToast(json.message, 'success');
+
+        showSystemToast(
+            json.message,
+            'success'
+        );
 
     } catch (e) {
+
         console.error(e);
-        showSystemToast('حدث خطأ أثناء تبديل الحالة', 'danger');
+
+        showSystemToast(
+            'حدث خطأ أثناء تبديل الحالة',
+            'danger'
+        );
     }
 }
 
@@ -389,5 +805,6 @@ async function toggleBoxStatus(btn) {
 ========================================================= */
 
 function printBoxes() {
+
     window.print();
 }

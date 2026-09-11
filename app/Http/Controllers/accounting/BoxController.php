@@ -18,13 +18,17 @@ class BoxController extends Controller
     // =====================================================
     private function getParentAccount()
     {
-        $parent = CharAccount::where('accName', 'الصناديق')->first();
-        if ($parent) return $parent;
+        $parent = CharAccount::where('system_key', 'cash')
+            ->where('isPostable', 0)
+            ->first();
 
-        $parent = CharAccount::where('accName', 'LIKE', '%صناديق%')->first();
-        if ($parent) return $parent;
+        if ($parent) {
+            return $parent;
+        }
 
-        throw new \Exception('لم يتم العثور على حساب "الصناديق" في دليل الحسابات. يرجى إنشاؤه أولاً.');
+        throw new \Exception(
+            'لم يتم العثور على الحساب الأب للصناديق في دليل الحسابات. يرجى إنشاؤه أولاً.'
+        );
     }
 
     // =====================================================
@@ -43,21 +47,53 @@ class BoxController extends Controller
         $parentCode = (string) $parent->accCode;
 
         foreach ($children as $child) {
+
             $childCode = (string) $child->accCode;
-            if (!str_starts_with($childCode, $parentCode)) continue;
-            $suffix = substr($childCode, strlen($parentCode));
-            if (strlen($suffix) !== $segmentLength || !ctype_digit($suffix)) continue;
+
+            if (!str_starts_with($childCode, $parentCode)) {
+                continue;
+            }
+
+            $suffix = substr(
+                $childCode,
+                strlen($parentCode)
+            );
+
+            if (
+                strlen($suffix) !== $segmentLength ||
+                !ctype_digit($suffix)
+            ) {
+                continue;
+            }
+
             $seq = (int) $suffix;
-            if ($seq > $maxSequence) $maxSequence = $seq;
+
+            if ($seq > $maxSequence) {
+                $maxSequence = $seq;
+            }
         }
 
         $nextSequence = $maxSequence + 1;
-        $maxAllowed = ($segmentLength === 1) ? 9 : 99;
+
+        $maxAllowed =
+            ($segmentLength === 1)
+                ? 9
+                : 99;
+
         if ($nextSequence > $maxAllowed) {
-            throw new \Exception('تم الوصول إلى الحد الأقصى للحسابات الفرعية في هذا المستوى');
+
+            throw new \Exception(
+                'تم الوصول إلى الحد الأقصى للحسابات الفرعية في هذا المستوى'
+            );
         }
 
-        $segment = str_pad((string) $nextSequence, $segmentLength, '0', STR_PAD_LEFT);
+        $segment = str_pad(
+            (string) $nextSequence,
+            $segmentLength,
+            '0',
+            STR_PAD_LEFT
+        );
+
         return $parentCode . $segment;
     }
 
@@ -67,13 +103,20 @@ class BoxController extends Controller
     public function index()
     {
         try {
+
             $this->getParentAccount();
+
             $hasParent = true;
+
         } catch (\Exception $e) {
+
             $hasParent = false;
         }
 
-        $boxes = Box::with(['account', 'coin'])
+        $boxes = Box::with([
+                'account',
+                'coin'
+            ])
             ->orderBy('boxID', 'asc')
             ->get();
 
@@ -81,7 +124,14 @@ class BoxController extends Controller
             ->orderBy('coinsID', 'asc')
             ->get();
 
-        return view('setting.accounting.boxes.index', compact('boxes', 'coins', 'hasParent'));
+        return view(
+            'setting.accounting.boxes.index',
+            compact(
+                'boxes',
+                'coins',
+                'hasParent'
+            )
+        );
     }
 
     // =====================================================
@@ -89,7 +139,10 @@ class BoxController extends Controller
     // =====================================================
     public function list()
     {
-        $boxes = Box::with(['account', 'coin'])
+        $boxes = Box::with([
+                'account',
+                'coin'
+            ])
             ->orderBy('boxID', 'asc')
             ->get();
 
@@ -105,10 +158,22 @@ class BoxController extends Controller
     public function getNextCode()
     {
         try {
-            $parent = $this->getParentAccount();
-            $nextCode = $this->generateNextChildCode($parent);
-            return response()->json(['success' => true, 'code' => $nextCode]);
+
+            $parent =
+                $this->getParentAccount();
+
+            $nextCode =
+                $this->generateNextChildCode(
+                    $parent
+                );
+
+            return response()->json([
+                'success' => true,
+                'code'    => $nextCode,
+            ]);
+
         } catch (\Exception $e) {
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -122,25 +187,49 @@ class BoxController extends Controller
     public function store(Request $request)
     {
         try {
+
             $this->getParentAccount();
+
         } catch (\Exception $e) {
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
             ], 422);
         }
 
-        $validator = Validator::make($request->all(), [
-            'boxName'   => 'required|string|max:255|unique:boxes,boxName',
-            'coinsID'   => 'nullable|exists:coins,coinsID',
-            'is_active' => 'nullable|boolean',
-        ], [
-            'boxName.required' => 'اسم الصندوق مطلوب',
-            'boxName.unique'   => 'اسم الصندوق موجود بالفعل',
-            'coinsID.exists'   => 'العملة المختارة غير صحيحة',
-        ]);
+        // =====================================================
+        // التحقق من البيانات
+        // =====================================================
+        $validator = Validator::make(
+            $request->all(),
+            [
+                'boxName'   =>
+                    'required|string|max:255|unique:boxes,boxName',
+
+                'coinsID'   =>
+                    'required|exists:coins,coinsID',
+
+                'is_active' =>
+                    'nullable|boolean',
+            ],
+            [
+                'boxName.required' =>
+                    'اسم الصندوق مطلوب',
+
+                'boxName.unique' =>
+                    'اسم الصندوق موجود بالفعل',
+
+                'coinsID.required' =>
+                    'يجب اختيار العملة للصندوق',
+
+                'coinsID.exists' =>
+                    'العملة المختارة غير صحيحة',
+            ]
+        );
 
         if ($validator->fails()) {
+
             return response()->json([
                 'success' => false,
                 'message' => $validator->errors()->first(),
@@ -148,36 +237,99 @@ class BoxController extends Controller
             ], 422);
         }
 
+        // =====================================================
+        // تنفيذ الإضافة
+        // =====================================================
         try {
-            DB::transaction(function () use ($request) {
-                $parent   = $this->getParentAccount();
-                $nextCode = $this->generateNextChildCode($parent);
 
-                // 1) إنشاء الحساب (سيتولى Observer إنشاء الصندوق)
+            DB::transaction(function () use ($request) {
+
+                // =================================================
+                // الحصول على الحساب الأب للصناديق
+                // =================================================
+                $parent =
+                    $this->getParentAccount();
+
+                // =================================================
+                // توليد رقم الحساب التحليلي التالي
+                // =================================================
+                $nextCode =
+                    $this->generateNextChildCode(
+                        $parent
+                    );
+
+                // =================================================
+                // إنشاء الحساب التحليلي للصندوق
+                // =================================================
                 $account = CharAccount::create([
-                    'accTypeID'  => $parent->accTypeID,
-                    'accCode'    => $nextCode,
-                    'accParent'  => $parent->accountID,
-                    'accName'    => $request->boxName,
-                    'nature'     => $parent->nature,
-                    'accLevel'   => $parent->accLevel + 1,
-                    'IsActive'   => $request->boolean('is_active', true) ? 1 : 0,
-                    'isPostable' => 1,
+                    'accTypeID' =>
+                        $parent->accTypeID,
+
+                    'accCode' =>
+                        $nextCode,
+
+                    'accParent' =>
+                        $parent->accountID,
+
+                    'accName' =>
+                        $request->boxName,
+
+                    'nature' =>
+                        $parent->nature,
+
+                    'accLevel' =>
+                        $parent->accLevel + 1,
+
+                    'IsActive' =>
+                        $request->boolean(
+                            'is_active',
+                            true
+                        ) ? 1 : 0,
+
+                    'isPostable' =>
+                        1,
+
+                    'is_system' =>
+                        0,
+
+                    'system_key' =>
+                        null,
                 ]);
 
-                // 2) تحديث العملة للصندوق المُنشأ تلقائياً
-                $box = Box::where('accountID', $account->accountID)->first();
-                if ($box) {
-                    $box->update(['coinsID' => $request->coinsID ?: null]);
-                }
+                // =================================================
+                // إنشاء الصندوق وربطه بالحساب التحليلي
+                // =================================================
+                Box::create([
+                    'accountID' =>
+                        $account->accountID,
+
+                    'coinsID' =>
+                        $request->coinsID,
+
+                    'boxName' =>
+                        $request->boxName,
+
+                    'is_active' =>
+                        $request->boolean(
+                            'is_active',
+                            true
+                        ),
+                ]);
             });
 
+            // =====================================================
+            // نجاح العملية
+            // =====================================================
             return response()->json([
                 'success' => true,
                 'message' => 'تم إضافة الصندوق بنجاح',
             ]);
 
         } catch (\Exception $e) {
+
+            // =====================================================
+            // خطأ أثناء العملية
+            // =====================================================
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -186,86 +338,160 @@ class BoxController extends Controller
     }
 
     // =====================================================
-    // تحديث صندوق
+    // تعديل صندوق
     // =====================================================
-    public function update(Request $request, $id)
+    public function update(Request $request, Box $box)
     {
-        try {
-            $box = Box::findOrFail($id);
-
-            $validator = Validator::make($request->all(), [
+        // =====================================================
+        // التحقق من البيانات
+        // =====================================================
+        $validator = Validator::make(
+            $request->all(),
+            [
                 'boxName' => [
-                    'required', 'string', 'max:255',
-                    Rule::unique('boxes', 'boxName')->ignore($box->boxID, 'boxID'),
+                    'required',
+                    'string',
+                    'max:255',
+
+                    Rule::unique(
+                        'boxes',
+                        'boxName'
+                    )->ignore(
+                        $box->boxID,
+                        'boxID'
+                    ),
                 ],
-                'coinsID'   => 'nullable|exists:coins,coinsID',
-                'is_active' => 'nullable|boolean',
-            ], [
-                'boxName.required' => 'اسم الصندوق مطلوب',
-                'boxName.unique'   => 'اسم الصندوق موجود بالفعل',
-                'coinsID.exists'   => 'العملة المختارة غير صحيحة',
-            ]);
 
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $validator->errors()->first(),
-                    'errors'  => $validator->errors(),
-                ], 422);
-            }
+                'coinsID' =>
+                    'required|exists:coins,coinsID',
 
-            DB::transaction(function () use ($request, $box) {
-                $box->update([
-                    'boxName'   => $request->boxName,
-                    'coinsID'   => $request->coinsID ?: null,
-                    'is_active' => $request->boolean('is_active', true) ? 1 : 0,
-                ]);
+                'is_active' =>
+                    'nullable|boolean',
+            ],
+            [
+                'boxName.required' =>
+                    'اسم الصندوق مطلوب',
 
-                // مزامنة الحساب
-                $account = CharAccount::find($box->accountID);
-                if ($account) {
-                    $account->accName  = $request->boxName;
-                    $account->IsActive = $request->boolean('is_active', true) ? 1 : 0;
-                    $account->save();
-                }
-            });
+                'boxName.unique' =>
+                    'اسم الصندوق موجود بالفعل',
 
-            return response()->json([
-                'success' => true,
-                'message' => 'تم تحديث الصندوق بنجاح',
-            ]);
+                'coinsID.required' =>
+                    'يجب اختيار العملة للصندوق',
 
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return response()->json(['success' => false, 'message' => 'الصندوق غير موجود'], 404);
-        } catch (\Exception $e) {
+                'coinsID.exists' =>
+                    'العملة المختارة غير صحيحة',
+            ]
+        );
+
+        if ($validator->fails()) {
+
             return response()->json([
                 'success' => false,
-                'message' => 'حدث خطأ أثناء التحديث: ' . $e->getMessage(),
+                'message' => $validator->errors()->first(),
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        // =====================================================
+        // تنفيذ التعديل
+        // =====================================================
+        try {
+
+            DB::transaction(function () use (
+                $request,
+                $box
+            ) {
+
+                // =================================================
+                // تحديث بيانات الصندوق فقط
+                // =================================================
+                //
+                // مزامنة اسم الحساب وحالته تتم تلقائيًا
+                // بواسطة BoxObserver.
+                //
+                $box->update([
+                    'boxName' =>
+                        $request->boxName,
+
+                    'coinsID' =>
+                        $request->coinsID,
+
+                    'is_active' =>
+                        $request->boolean(
+                            'is_active',
+                            true
+                        ) ? 1 : 0,
+                ]);
+            });
+
+            // =====================================================
+            // نجاح العملية
+            // =====================================================
+            return response()->json([
+                'success' => true,
+                'message' => 'تم تعديل الصندوق بنجاح',
+            ]);
+
+        } catch (\Exception $e) {
+
+            // =====================================================
+            // خطأ أثناء العملية
+            // =====================================================
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
             ], 422);
         }
     }
 
     // =====================================================
-    // حذف صندوق (نفس منطق StockController)
+    // حذف صندوق
     // =====================================================
     public function destroy($id)
     {
         try {
-            $box = Box::findOrFail($id);
-            $accountId = $box->accountID;
 
-            DB::transaction(function () use ($box, $accountId) {
+            $box =
+                Box::findOrFail($id);
+
+            $accountId =
+                $box->accountID;
+
+            DB::transaction(function () use (
+                $box,
+                $accountId
+            ) {
+
+                // =================================================
                 // حذف الصندوق
+                // =================================================
                 $box->delete();
 
+                // =================================================
                 // حذف الحساب إن لم يكن له أبناء
-                $account = CharAccount::find($accountId);
+                // =================================================
+                $account =
+                    CharAccount::find(
+                        $accountId
+                    );
+
                 if ($account) {
-                    $hasChildren = CharAccount::where('accParent', $accountId)->exists();
+
+                    $hasChildren =
+                        CharAccount::where(
+                            'accParent',
+                            $accountId
+                        )->exists();
+
                     if (!$hasChildren) {
+
                         $account->delete();
+
                     } else {
-                        $account->update(['IsActive' => 0]);
+
+                        $account->update([
+                            'IsActive' => 0
+                        ]);
                     }
                 }
             });
@@ -275,23 +501,42 @@ class BoxController extends Controller
                 'message' => 'تم حذف الصندوق بنجاح',
             ]);
 
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return response()->json(['success' => false, 'message' => 'الصندوق غير موجود'], 404);
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (
+            \Illuminate\Database\Eloquent\ModelNotFoundException $e
+        ) {
+
+            return response()->json([
+                'success' => false,
+                'message' => 'الصندوق غير موجود',
+            ], 404);
+
+        } catch (
+            \Illuminate\Database\QueryException $e
+        ) {
+
             if ($e->getCode() == 23000) {
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'لا يمكن حذف الصندوق لأن الحساب المرتبط به مستخدم في مكان آخر.',
+                    'message' =>
+                        'لا يمكن حذف الصندوق لأن الحساب المرتبط به مستخدم في مكان آخر.',
                 ], 422);
             }
+
             return response()->json([
                 'success' => false,
-                'message' => 'حدث خطأ أثناء الحذف: ' . $e->getMessage(),
+                'message' =>
+                    'حدث خطأ أثناء الحذف: ' .
+                    $e->getMessage(),
             ], 422);
+
         } catch (\Exception $e) {
+
             return response()->json([
                 'success' => false,
-                'message' => 'حدث خطأ أثناء الحذف: ' . $e->getMessage(),
+                'message' =>
+                    'حدث خطأ أثناء الحذف: ' .
+                    $e->getMessage(),
             ], 422);
         }
     }
@@ -302,28 +547,49 @@ class BoxController extends Controller
     public function toggleStatus($id)
     {
         try {
-            $box = Box::findOrFail($id);
-            $newStatus = !$box->is_active;
 
-            DB::transaction(function () use ($box, $newStatus) {
-                $box->update(['is_active' => $newStatus]);
+            $box =
+                Box::findOrFail($id);
 
-                $account = CharAccount::find($box->accountID);
-                if ($account) {
-                    $account->update(['IsActive' => $newStatus ? 1 : 0]);
-                }
+            $newStatus =
+                !$box->is_active;
+
+            DB::transaction(function () use (
+                $box,
+                $newStatus
+            ) {
+
+                // =================================================
+                // تحديث حالة الصندوق فقط
+                // =================================================
+                //
+                // BoxObserver سيتولى مزامنة حالة
+                // الحساب المرتبط تلقائيًا.
+                //
+                $box->update([
+                    'is_active' => $newStatus,
+                ]);
             });
 
             return response()->json([
                 'success' => true,
-                'message' => $newStatus ? 'تم التفعيل بنجاح' : 'تم التعطيل بنجاح',
-                'data'    => $box->fresh('account'),
+
+                'message' =>
+                    $newStatus
+                        ? 'تم التفعيل بنجاح'
+                        : 'تم التعطيل بنجاح',
+
+                'data' =>
+                    $box->fresh('account'),
             ]);
 
         } catch (\Exception $e) {
+
             return response()->json([
                 'success' => false,
-                'message' => 'حدث خطأ: ' . $e->getMessage(),
+                'message' =>
+                    'حدث خطأ: ' .
+                    $e->getMessage(),
             ], 422);
         }
     }

@@ -4,29 +4,101 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Supplier;
+use App\Models\Accounting\CharAccount;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class SupplierController extends Controller
 {
-        // =====================================================
-        // عرض قائمة الموردين
-        // =====================================================
+    // =====================================================
+    // الحساب الأب للموردين
+    // =====================================================
 
-        public function index()
-        {
-            $suppliers =
-                Supplier::orderBy(
-                    'suplierID',
-                    'DESC'
-                )->get();
+    private function getParentAccount()
+    {
+        return CharAccount::where('system_key', 'suppliers')
+            ->where('isPostable', 0)
+            ->first();
+    }
 
-            return view(
-                'setting.suppliers.index',
-                compact(
-                    'suppliers'
+    // =====================================================
+    // توليد رقم الحساب التحليلي التالي
+    // =====================================================
+
+    private function generateNextChildCode(CharAccount $parent)
+    {
+        $prefix = $parent->accCode;
+
+        $children = CharAccount::where(
+                'accParent',
+                $parent->accountID
+            )
+            ->where('isPostable', 1)
+            ->pluck('accCode');
+
+        $maxNumber = 0;
+
+        foreach ($children as $code) {
+
+            if (
+                !str_starts_with(
+                    (string) $code,
+                    $prefix
                 )
+            ) {
+                continue;
+            }
+
+            $suffix = substr(
+                (string) $code,
+                strlen($prefix)
             );
+
+            if (
+                $suffix === '' ||
+                !ctype_digit($suffix)
+            ) {
+                continue;
+            }
+
+            $number = (int) $suffix;
+
+            if ($number > $maxNumber) {
+                $maxNumber = $number;
+            }
         }
+
+        return $prefix . str_pad(
+            (string) ($maxNumber + 1),
+            2,
+            '0',
+            STR_PAD_LEFT
+        );
+    }
+
+    // =====================================================
+    // عرض قائمة الموردين
+    // =====================================================
+
+    public function index()
+    {
+        $suppliers = Supplier::with('account')
+            ->orderBy(
+                'suplierID',
+                'DESC'
+            )
+            ->get();
+
+        $parent = $this->getParentAccount();
+
+        return view(
+            'setting.suppliers.index',
+            [
+                'suppliers' => $suppliers,
+                'hasParent' => (bool) $parent,
+            ]
+        );
+    }
 
     // =====================================================
     // جلب مورد للتعديل
@@ -35,8 +107,8 @@ class SupplierController extends Controller
     public function show(
         int|string $id
     ) {
-        $supplier =
-            Supplier::find($id);
+        $supplier = Supplier::with('account')
+            ->find($id);
 
         if (!$supplier) {
 
@@ -45,13 +117,6 @@ class SupplierController extends Controller
                 'message' => 'المورد غير موجود',
             ], 404);
         }
-
-        $statusVal =
-            $supplier->supStoped ?? 0;
-
-        $accountCode =
-            2101000 +
-            (int) $supplier->suplierID;
 
         return response()->json([
             'success' => true,
@@ -70,13 +135,15 @@ class SupplierController extends Controller
                     $supplier->supArea,
 
                 'supStoped' =>
-                    $statusVal,
+                    $supplier->supStoped ?? 0,
 
                 'accountID' =>
                     $supplier->accountID,
 
                 'accountCode' =>
-                    $accountCode,
+                    $supplier->account
+                        ? $supplier->account->accCode
+                        : null,
             ],
         ]);
     }
@@ -89,8 +156,11 @@ class SupplierController extends Controller
         Request $request
     ) {
         $request->validate([
-            'supName' =>
-                'required|string|max:255',
+            'supName' => [
+                'required',
+                'string',
+                'max:255',
+            ],
 
         ], [
 
@@ -100,66 +170,165 @@ class SupplierController extends Controller
             'supName.string' =>
                 'اسم المورد يجب أن يكون نصًا',
 
+            'supName.max' =>
+                'اسم المورد يجب ألا يتجاوز 255 حرفاً',
         ]);
 
-        $status =
-            $request->input(
-                'supStoped',
-                0
+        try {
+
+            $result = DB::transaction(
+                function () use ($request) {
+
+                    // =========================================
+                    // العثور على الحساب الأب باستخدام system_key
+                    // =========================================
+
+                    $parent =
+                        $this->getParentAccount();
+
+                    if (!$parent) {
+
+                        throw new \Exception(
+                            'لم يتم العثور على الحساب الأب للموردين.'
+                        );
+                    }
+
+                    // =========================================
+                    // توليد الرقم التحليلي
+                    // =========================================
+
+                    $nextCode =
+                        $this->generateNextChildCode(
+                            $parent
+                        );
+
+                    // =========================================
+                    // إنشاء الحساب التحليلي
+                    // =========================================
+
+                    $account =
+                        CharAccount::create([
+
+                            'accParent' =>
+                                $parent->accountID,
+
+                            'accTypeID' =>
+                                $parent->accTypeID,
+
+                            'accCode' =>
+                                $nextCode,
+
+                            'accName' =>
+                                $request->supName,
+
+                            'nature' =>
+                                $parent->nature,
+
+                            'accLevel' =>
+                                $parent->accLevel + 1,
+
+                            'IsActive' =>
+                                1,
+
+                            'isPostable' =>
+                                1,
+
+                            'is_system' =>
+                                0,
+
+                            'system_key' =>
+                                null,
+                        ]);
+
+                    // =========================================
+                    // إنشاء المورد وربطه بالحساب
+                    // =========================================
+
+                    $supplier =
+                        Supplier::create([
+
+                            'supName' =>
+                                $request->supName,
+
+                            'accountID' =>
+                                $account->accountID,
+
+                            'supPhone' =>
+                                $request->supPhone,
+
+                            'supArea' =>
+                                $request->supArea,
+
+                            'supStoped' =>
+                                $request->input(
+                                    'supStoped',
+                                    0
+                                ),
+                        ]);
+
+                    return [
+                        'supplier' =>
+                            $supplier,
+
+                        'account' =>
+                            $account,
+                    ];
+                }
             );
 
-        $supplier =
-            Supplier::create([
+            return response()->json([
 
-                'supName' =>
-                    $request->supName,
+                'success' =>
+                    true,
 
-                'supPhone' =>
-                    $request->supPhone,
+                'message' =>
+                    'تم إضافة المورد وربطه بالحساب التحليلي بنجاح.',
 
-                'supArea' =>
-                    $request->supArea,
+                'supplier' => [
 
-                'supStoped' =>
-                    $status,
-            ]);
+                    'suplierID' =>
+                        $result['supplier']
+                            ->suplierID,
 
-        $accountCode =
-            2101000 +
-            (int) $supplier->suplierID;
+                    'supName' =>
+                        $result['supplier']
+                            ->supName,
 
-        return response()->json([
+                    'supPhone' =>
+                        $result['supplier']
+                            ->supPhone,
 
-            'success' =>
-                true,
+                    'supArea' =>
+                        $result['supplier']
+                            ->supArea,
 
-            'message' =>
-                'تم إضافة المورد بنجاح',
+                    'supStoped' =>
+                        $result['supplier']
+                            ->supStoped,
 
-            'supplier' => [
+                    'accountID' =>
+                        $result['account']
+                            ->accountID,
 
-                'suplierID' =>
-                    $supplier->suplierID,
+                    'accountCode' =>
+                        $result['account']
+                            ->accCode,
+                ],
 
-                'supName' =>
-                    $supplier->supName,
+            ], 200);
 
-                'supPhone' =>
-                    $supplier->supPhone,
+        } catch (\Throwable $e) {
 
-                'supArea' =>
-                    $supplier->supArea,
+            return response()->json([
 
-                'supStoped' =>
-                    $supplier->supStoped,
+                'success' =>
+                    false,
 
-                'accountID' =>
-                    $supplier->accountID,
+                'message' =>
+                    $e->getMessage(),
 
-                'accountCode' =>
-                    $accountCode,
-            ],
-        ]);
+            ], 500);
+        }
     }
 
     // =====================================================
@@ -171,8 +340,11 @@ class SupplierController extends Controller
         int|string $id
     ) {
         $request->validate([
-            'supName' =>
-                'required|string|max:255',
+            'supName' => [
+                'required',
+                'string',
+                'max:255',
+            ],
 
         ], [
 
@@ -182,76 +354,88 @@ class SupplierController extends Controller
             'supName.string' =>
                 'اسم المورد يجب أن يكون نصًا',
 
+            'supName.max' =>
+                'اسم المورد يجب ألا يتجاوز 255 حرفاً',
         ]);
 
-        $supplier =
-            Supplier::find($id);
+        try {
 
-        if (!$supplier) {
+            $supplier =
+                Supplier::find($id);
+
+            if (!$supplier) {
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'المورد غير موجود',
+                ], 404);
+            }
+
+            $supplier->supName =
+                $request->supName;
+
+            $supplier->supPhone =
+                $request->supPhone;
+
+            $supplier->supArea =
+                $request->supArea;
+
+            $supplier->supStoped =
+                $request->input(
+                    'supStoped',
+                    0
+                );
+
+            $supplier->save();
 
             return response()->json([
-                'success' => false,
-                'message' => 'المورد غير موجود',
-            ], 404);
+
+                'success' =>
+                    true,
+
+                'message' =>
+                    'تم تحديث بيانات المورد بنجاح.',
+
+                'supplier' => [
+
+                    'suplierID' =>
+                        $supplier->suplierID,
+
+                    'supName' =>
+                        $supplier->supName,
+
+                    'supPhone' =>
+                        $supplier->supPhone,
+
+                    'supArea' =>
+                        $supplier->supArea,
+
+                    'supStoped' =>
+                        $supplier->supStoped,
+
+                    'accountID' =>
+                        $supplier->accountID,
+
+                    'accountCode' =>
+                        $supplier->account
+                            ? $supplier->account->accCode
+                            : null,
+                ],
+
+            ], 200);
+
+        } catch (\Throwable $e) {
+
+            return response()->json([
+
+                'success' =>
+                    false,
+
+                'message' =>
+                    $e->getMessage(),
+
+            ], 500);
         }
-
-        $status =
-            $request->input(
-                'supStoped',
-                0
-            );
-
-        $supplier->update([
-
-            'supName' =>
-                $request->supName,
-
-            'supPhone' =>
-                $request->supPhone,
-
-            'supArea' =>
-                $request->supArea,
-
-            'supStoped' =>
-                $status,
-        ]);
-
-        $accountCode =
-            2101000 +
-            (int) $supplier->suplierID;
-
-        return response()->json([
-
-            'success' =>
-                true,
-
-            'message' =>
-                'تم تحديث بيانات المورد بنجاح',
-
-            'supplier' => [
-
-                'suplierID' =>
-                    $supplier->suplierID,
-
-                'supName' =>
-                    $supplier->supName,
-
-                'supPhone' =>
-                    $supplier->supPhone,
-
-                'supArea' =>
-                    $supplier->supArea,
-
-                'supStoped' =>
-                    $supplier->supStoped,
-
-                'accountID' =>
-                    $supplier->accountID,
-
-                'accountCode' =>
-                    $accountCode,
-            ],
-        ]);
     }
 
     // =====================================================
@@ -261,23 +445,57 @@ class SupplierController extends Controller
     public function destroy(
         int|string $id
     ) {
-        $supplier =
-            Supplier::find($id);
-
-        if (!$supplier) {
-
-            return response()->json([
-                'success' => false,
-                'message' => 'المورد غير موجود',
-            ], 404);
-        }
-
         try {
 
-            $supplierID =
-                $supplier->suplierID;
+            DB::transaction(
+                function () use ($id) {
 
-            $supplier->delete();
+                    $supplier =
+                        Supplier::findOrFail($id);
+
+                    $accountID =
+                        $supplier->accountID;
+
+                    // =========================================
+                    // حذف المورد
+                    // =========================================
+
+                    $supplier->delete();
+
+                    // =========================================
+                    // معالجة الحساب التحليلي المرتبط
+                    // =========================================
+
+                    if ($accountID) {
+
+                        $account =
+                            CharAccount::find(
+                                $accountID
+                            );
+
+                        if ($account) {
+
+                            $hasChildren =
+                                CharAccount::where(
+                                    'accParent',
+                                    $account->accountID
+                                )->exists();
+
+                            if (!$hasChildren) {
+
+                                $account->delete();
+
+                            } else {
+
+                                $account->IsActive =
+                                    0;
+
+                                $account->save();
+                            }
+                        }
+                    }
+                }
+            );
 
             return response()->json([
 
@@ -285,11 +503,9 @@ class SupplierController extends Controller
                     true,
 
                 'message' =>
-                    'تم حذف المورد بنجاح',
+                    'تم حذف المورد بنجاح.',
 
-                'supplierID' =>
-                    $supplierID,
-            ]);
+            ], 200);
 
         } catch (\Throwable $e) {
 
@@ -313,10 +529,11 @@ class SupplierController extends Controller
         Request $request
     ) {
         $query =
-            Supplier::orderBy(
-                'suplierID',
-                'DESC'
-            );
+            Supplier::with('account')
+                ->orderBy(
+                    'suplierID',
+                    'DESC'
+                );
 
         // =================================================
         // البحث باسم المورد
@@ -377,27 +594,18 @@ class SupplierController extends Controller
                     $request->search_code
                 );
 
-            if (
-                is_numeric(
-                    $searchCode
-                )
-            ) {
+            $query->whereHas(
+                'account',
+                function ($accountQuery)
+                    use ($searchCode) {
 
-                $query->whereRaw(
-                    "CAST(2101000 + suplierID AS CHAR) LIKE ?",
-                    [
-                        '%' .
-                        $searchCode .
-                        '%'
-                    ]
-                );
-
-            } else {
-
-                $query->whereRaw(
-                    '1 = 0'
-                );
-            }
+                    $accountQuery->where(
+                        'accCode',
+                        'like',
+                        '%' . $searchCode . '%'
+                    );
+                }
+            );
         }
 
         // =================================================
@@ -408,7 +616,7 @@ class SupplierController extends Controller
             $query->get();
 
         // =================================================
-        // إنشاء الجدول والصفوف بواسطة Blade
+        // إنشاء الجدول بواسطة Blade
         // =================================================
 
         $html =

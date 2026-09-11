@@ -111,7 +111,7 @@
 
                             <span class="badge bg-light text-dark border">
 
-                                {{ 2101000 + (int) $supplier->suplierID }}
+                                {{ $supplier->account?->accCode ?? '--' }}
 
                             </span>
 

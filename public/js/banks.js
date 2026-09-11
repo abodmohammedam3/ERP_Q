@@ -26,14 +26,18 @@ const csrfToken = document
 async function loadBanks() {
     try {
         const res = await fetch(banksApi.list, {
-            headers: { 'Accept': 'application/json' },
+            headers: {
+                'Accept': 'application/json',
+            },
         });
+
         const json = await res.json();
 
         if (json.success) {
             banksData = json.data || [];
             renderBanks();
         }
+
     } catch (e) {
         console.error('خطأ في تحميل البنوك:', e);
     }
@@ -44,35 +48,73 @@ async function loadBanks() {
 ========================================================= */
 
 function renderBanks(data) {
-    const list = Array.isArray(data) ? data : banksData;
-    const tbody = document.getElementById('banksTableBody');
-    const badge = document.getElementById('banksCountBadge');
+
+    const list =
+        Array.isArray(data)
+            ? data
+            : banksData;
+
+    const tbody =
+        document.getElementById('banksTableBody');
+
+    const badge =
+        document.getElementById('banksCountBadge');
 
     if (!tbody) return;
 
     if (!list.length) {
+
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" class="text-center text-muted py-5">
+                <td colspan="8"
+                    class="text-center text-muted py-5">
+
                     <i class="bi bi-bank fs-2 d-block mb-2"></i>
+
                     لا توجد بنوك مسجلة
+
                 </td>
             </tr>
         `;
-        if (badge) badge.textContent = '0 بنك';
+
+        if (badge) {
+            badge.textContent = '0 بنك';
+        }
+
         return;
     }
 
     tbody.innerHTML = list.map((bank, i) => {
-        const coinCode = bank.coin?.coinsCode;
-        const coinRate = bank.coin?.coinsExchangeRate || 0;
-        const accCode = bank.account?.accCode || '—';
-        const accountNumber = bank.accountNumber || '—';
-        const noCoin = !bank.coinsID;
+
+        const coinCode =
+            bank.coin?.coinsCode;
+
+        const coinRate =
+            bank.coin?.coinsExchangeRate || 0;
+
+        const accCode =
+            bank.account?.accCode || '—';
+
+        const accountNumber =
+            bank.accountNumber || '—';
+
+        const noCoin =
+            !bank.coinsID;
 
         const coinCell = coinCode
-            ? `<span class="badge bg-secondary">${escapeHtml(coinCode)}</span>`
-            : `<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle-fill"></i> بلا عملة</span>`;
+
+            ? `
+                <span class="badge bg-secondary">
+                    ${escapeHtml(coinCode)}
+                </span>
+            `
+
+            : `
+                <span class="badge bg-warning text-dark">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    بلا عملة
+                </span>
+            `;
 
         return `
             <tr class="bank-row text-center"
@@ -82,38 +124,96 @@ function renderBanks(data) {
                 data-account-number="${escapeHtml(accountNumber)}"
                 data-account-code="${accCode}"
                 data-active="${bank.is_active ? 1 : 0}"
-                ${noCoin ? 'style="background-color: #fff3cd;"' : ''}>
+                ${noCoin
+                    ? 'style="background-color: #fff3cd;"'
+                    : ''}>
 
                 <td>${i + 1}</td>
-                <td class="row-name text-center">${escapeHtml(bank.bankName)}</td>
-                <td class="row-coin">${coinCell}</td>
-                <td class="row-rate">${noCoin ? '—' : formatNumber(coinRate)}</td>
-                <td class="row-account-number">${escapeHtml(accountNumber)}</td>
-                <td class="row-account">${accCode}</td>
+
+                <td class="row-name text-center">
+                    ${escapeHtml(bank.bankName)}
+                </td>
+
+                <td class="row-coin">
+                    ${coinCell}
+                </td>
+
+                <td class="row-rate">
+                    ${noCoin
+                        ? '—'
+                        : formatNumber(coinRate)}
+                </td>
+
+                <td class="row-account-number">
+                    ${escapeHtml(accountNumber)}
+                </td>
+
+                <td class="row-account">
+                    ${accCode}
+                </td>
+
                 <td class="row-status">
+
                     <button type="button"
-                            class="btn btn-sm ${bank.is_active ? 'btn-success' : 'btn-secondary'} toggle-status-btn"
+                            class="btn btn-sm ${
+                                bank.is_active
+                                    ? 'btn-success'
+                                    : 'btn-secondary'
+                            } toggle-status-btn"
                             onclick="toggleBankStatus(this)">
-                        ${bank.is_active ? 'نشط' : 'غير نشط'}
+
+                        ${
+                            bank.is_active
+                                ? 'نشط'
+                                : 'غير نشط'
+                        }
+
                     </button>
+
                 </td>
+
                 <td class="no-print">
+
                     <div class="btn-action-group">
-                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="editBank(this)">
+
+                        <button type="button"
+                                class="btn btn-sm btn-outline-primary"
+                                onclick="editBank(this)">
+
                             <i class="bi bi-pencil d-md-none"></i>
-                            <span class="d-none d-md-inline">تعديل</span>
+
+                            <span class="d-none d-md-inline">
+                                تعديل
+                            </span>
+
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteBank(this)">
+
+
+                        <button type="button"
+                                class="btn btn-sm btn-outline-danger"
+                                onclick="deleteBank(this)">
+
                             <i class="bi bi-trash d-md-none"></i>
-                            <span class="d-none d-md-inline">حذف</span>
+
+                            <span class="d-none d-md-inline">
+                                حذف
+                            </span>
+
                         </button>
+
                     </div>
+
                 </td>
+
             </tr>
         `;
+
     }).join('');
 
-    if (badge) badge.textContent = `${list.length} بنك`;
+    if (badge) {
+        badge.textContent =
+            `${list.length} بنك`;
+    }
 }
 
 /* =========================================================
@@ -121,10 +221,16 @@ function renderBanks(data) {
 ========================================================= */
 
 function formatNumber(v) {
-    return Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 6 });
+
+    return Number(v || 0)
+        .toLocaleString('en-US', {
+            maximumFractionDigits: 6,
+        });
 }
 
+
 function escapeHtml(v) {
+
     return String(v ?? '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -138,14 +244,35 @@ function escapeHtml(v) {
 ========================================================= */
 
 function filterBanks() {
-    const term = document.getElementById('searchBankInput')?.value.trim().toLowerCase() || '';
-    const coinId = document.getElementById('statusBankFilter')?.value || '';
 
-    const filtered = banksData.filter(b => {
-        const matchesSearch = (b.bankName || '').toLowerCase().includes(term);
-        const matchesCoin = !coinId || String(b.coinsID) === String(coinId);
-        return matchesSearch && matchesCoin;
-    });
+    const term =
+        document
+            .getElementById('searchBankInput')
+            ?.value
+            .trim()
+            .toLowerCase() || '';
+
+    const coinId =
+        document
+            .getElementById('statusBankFilter')
+            ?.value || '';
+
+    const filtered =
+        banksData.filter(b => {
+
+            const matchesSearch =
+                (b.bankName || '')
+                    .toLowerCase()
+                    .includes(term);
+
+            const matchesCoin =
+                !coinId ||
+                String(b.coinsID) ===
+                String(coinId);
+
+            return matchesSearch &&
+                   matchesCoin;
+        });
 
     renderBanks(filtered);
 }
@@ -155,14 +282,25 @@ function filterBanks() {
 ========================================================= */
 
 function updateExchangeRate() {
-    const select = document.getElementById('coinsID');
-    const rateInput = document.getElementById('exchangeRate');
+
+    const select =
+        document.getElementById('coinsID');
+
+    const rateInput =
+        document.getElementById('exchangeRate');
+
     if (!select || !rateInput) return;
 
-    const option = select.options[select.selectedIndex];
-    const rate = option?.dataset?.rate || '';
+    const option =
+        select.options[select.selectedIndex];
 
-    rateInput.value = rate ? Number(rate).toFixed(6) : '';
+    const rate =
+        option?.dataset?.rate || '';
+
+    rateInput.value =
+        rate
+            ? Number(rate).toFixed(6)
+            : '';
 }
 
 /* =========================================================
@@ -170,37 +308,81 @@ function updateExchangeRate() {
 ========================================================= */
 
 async function openBankModal() {
+
     editingBankId = null;
 
     document.getElementById('bankModalLabel').innerHTML =
         '<i class="bi bi-bank"></i> إضافة بنك';
 
     document.getElementById('bankForm').reset();
+
     document.getElementById('bankID').value = '';
+
     document.getElementById('isActive').value = '1';
+
     document.getElementById('exchangeRate').value = '';
+
     document.getElementById('accountCode').value = '';
+
     document.getElementById('accountNumber').value = '';
 
-    const warning = document.getElementById('coinWarning');
-    if (warning) warning.style.display = 'none';
+    const warning =
+        document.getElementById('coinWarning');
 
-    try {
-        const res = await fetch(banksApi.nextCode, {
-            headers: { 'Accept': 'application/json' },
-        });
-        const json = await res.json();
-        if (json.success) {
-            document.getElementById('accountCode').value = json.code;
-        } else {
-            showSystemToast(json.message || 'فشل جلب رقم الحساب', 'danger');
-        }
-    } catch (e) {
-        console.error('فشل جلب رقم الحساب:', e);
+    if (warning) {
+        warning.style.display = 'none';
     }
 
-    const modalEl = document.getElementById('bankModal');
-    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false });
+    try {
+
+        const res =
+            await fetch(
+                banksApi.nextCode,
+                {
+                    headers: {
+                        'Accept':
+                            'application/json',
+                    },
+                }
+            );
+
+        const json =
+            await res.json();
+
+        if (json.success) {
+
+            document.getElementById(
+                'accountCode'
+            ).value = json.code;
+
+        } else {
+
+            showSystemToast(
+                json.message ||
+                'فشل جلب رقم الحساب',
+                'danger'
+            );
+        }
+
+    } catch (e) {
+
+        console.error(
+            'فشل جلب رقم الحساب:',
+            e
+        );
+    }
+
+    const modalEl =
+        document.getElementById('bankModal');
+
+    const modal =
+        bootstrap.Modal.getOrCreateInstance(
+            modalEl,
+            {
+                focus: false,
+            }
+        );
+
     modal.show();
 }
 
@@ -209,30 +391,78 @@ async function openBankModal() {
 ========================================================= */
 
 function editBank(btn) {
-    const row = btn.closest('tr');
+
+    const row =
+        btn.closest('tr');
+
     if (!row) return;
 
-    editingBankId = row.dataset.id;
+    editingBankId =
+        row.dataset.id;
 
-    document.getElementById('bankModalLabel').innerHTML =
+    document.getElementById(
+        'bankModalLabel'
+    ).innerHTML =
         '<i class="bi bi-pencil-square"></i> تعديل البنك';
 
-    document.getElementById('bankID').value = row.dataset.id;
-    document.getElementById('bankName').value = row.dataset.name;
-    document.getElementById('coinsID').value = row.dataset.coin || '';
-    document.getElementById('accountNumber').value = row.dataset.accountNumber || '';
-    document.getElementById('accountCode').value = row.dataset.accountCode || '';
-    document.getElementById('isActive').value = row.dataset.active;
+    document.getElementById(
+        'bankID'
+    ).value =
+        row.dataset.id;
 
-    const warning = document.getElementById('coinWarning');
+    document.getElementById(
+        'bankName'
+    ).value =
+        row.dataset.name;
+
+    document.getElementById(
+        'coinsID'
+    ).value =
+        row.dataset.coin || '';
+
+    document.getElementById(
+        'accountNumber'
+    ).value =
+        row.dataset.accountNumber || '';
+
+    document.getElementById(
+        'accountCode'
+    ).value =
+        row.dataset.accountCode || '';
+
+    document.getElementById(
+        'isActive'
+    ).value =
+        row.dataset.active;
+
+    const warning =
+        document.getElementById(
+            'coinWarning'
+        );
+
     if (warning) {
-        warning.style.display = row.dataset.coin ? 'none' : 'block';
+
+        warning.style.display =
+            row.dataset.coin
+                ? 'none'
+                : 'block';
     }
 
     updateExchangeRate();
 
-    const modalEl = document.getElementById('bankModal');
-    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false });
+    const modalEl =
+        document.getElementById(
+            'bankModal'
+        );
+
+    const modal =
+        bootstrap.Modal.getOrCreateInstance(
+            modalEl,
+            {
+                focus: false,
+            }
+        );
+
     modal.show();
 }
 
@@ -241,159 +471,453 @@ function editBank(btn) {
 ========================================================= */
 
 async function saveBank() {
-    const form = document.getElementById('bankForm');
+
+    const form =
+        document.getElementById(
+            'bankForm'
+        );
+
     if (!form.checkValidity()) {
+
         form.reportValidity();
+
         return;
     }
 
-    const coinValue = document.getElementById('coinsID').value;
-    const accNum = document.getElementById('accountNumber').value.trim();
+    const bankName =
+        document.getElementById(
+            'bankName'
+        ).value.trim();
+
+    const coinValue =
+        document.getElementById(
+            'coinsID'
+        ).value;
+
+    const accNum =
+        document.getElementById(
+            'accountNumber'
+        ).value.trim();
+
+    const isActive =
+        document.getElementById(
+            'isActive'
+        ).value === '1';
+
+    const isEdit =
+        editingBankId !== null;
+
+
+    /* =====================================================
+       التحقق من عدم وجود تعديل
+    ===================================================== */
+
+    if (isEdit) {
+
+        const row =
+            document.querySelector(
+                `#banksTableBody tr.bank-row[data-id="${editingBankId}"]`
+            );
+
+        if (row) {
+
+            const originalName =
+                row.dataset.name || '';
+
+            const originalCoin =
+                row.dataset.coin || '';
+
+            const originalAccountNumber =
+                row.dataset.accountNumber || '';
+
+            const originalActive =
+                row.dataset.active === '1';
+
+            const currentCoin =
+                coinValue || '';
+
+            const currentAccountNumber =
+                accNum || '';
+
+            const noChanges =
+                bankName === originalName &&
+                currentCoin === originalCoin &&
+                currentAccountNumber === originalAccountNumber &&
+                isActive === originalActive;
+
+            if (noChanges) {
+
+                showSystemToast(
+                    'لم يتم إجراء أي تعديل على بيانات البنك.',
+                    'danger'
+                );
+
+                return;
+            }
+        }
+    }
+
 
     const payload = {
-        bankName: document.getElementById('bankName').value.trim(),
-        coinsID: coinValue ? Number(coinValue) : null,
-        accountNumber: accNum || null,
-        is_active: document.getElementById('isActive').value === '1',
+
+        bankName: bankName,
+
+        coinsID:
+            coinValue
+                ? Number(coinValue)
+                : null,
+
+        accountNumber:
+            accNum || null,
+
+        is_active:
+            isActive,
     };
 
-    const isEdit = editingBankId !== null;
-    const url = isEdit ? banksApi.update(editingBankId) : banksApi.store;
-    const method = isEdit ? 'PUT' : 'POST';
+
+    const url =
+        isEdit
+            ? banksApi.update(
+                editingBankId
+            )
+            : banksApi.store;
+
+    const method =
+        isEdit
+            ? 'PUT'
+            : 'POST';
+
 
     try {
-        const res = await fetch(url, {
-            method,
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
-            },
-            body: JSON.stringify(payload),
-        });
 
-        const json = await res.json();
+        const res =
+            await fetch(
+                url,
+                {
+                    method,
+
+                    headers: {
+                        'Content-Type':
+                            'application/json',
+
+                        'Accept':
+                            'application/json',
+
+                        'X-CSRF-TOKEN':
+                            csrfToken,
+                    },
+
+                    body:
+                        JSON.stringify(
+                            payload
+                        ),
+                }
+            );
+
+        const json =
+            await res.json();
+
 
         if (!json.success) {
-            showSystemToast(json.message || 'حدث خطأ', 'danger');
+
+            showSystemToast(
+                json.message ||
+                'حدث خطأ',
+                'danger'
+            );
+
             return;
         }
 
-        if (document.activeElement && document.activeElement.blur) {
+
+        if (
+            document.activeElement &&
+            document.activeElement.blur
+        ) {
+
             document.activeElement.blur();
         }
 
-        const modalEl = document.getElementById('bankModal');
-        const modalInstance = bootstrap.Modal.getInstance(modalEl);
-        if (modalInstance) modalInstance.hide();
+
+        const modalEl =
+            document.getElementById(
+                'bankModal'
+            );
+
+        const modalInstance =
+            bootstrap.Modal.getInstance(
+                modalEl
+            );
+
+        if (modalInstance) {
+            modalInstance.hide();
+        }
+
 
         await loadBanks();
 
-        showSystemToast(json.message || 'تم الحفظ بنجاح', 'success');
+
+        showSystemToast(
+            json.message ||
+            'تم الحفظ بنجاح',
+            'success'
+        );
 
     } catch (e) {
+
         console.error(e);
-        showSystemToast('حدث خطأ أثناء الحفظ', 'danger');
+
+        showSystemToast(
+            'حدث خطأ أثناء الحفظ',
+            'danger'
+        );
     }
 }
 
 /* =========================================================
-   حذف
+   حذف البنك
 ========================================================= */
 
 function deleteBank(btn) {
-    const row = btn.closest('tr');
+
+    const row =
+        btn.closest('tr');
+
     if (!row) return;
 
-    deletingBankId = row.dataset.id;
-    document.getElementById('deleteBankModal').classList.add('show');
+    deletingBankId =
+        row.dataset.id;
+
+
+    const modal =
+        document.getElementById(
+            'deleteConfirmModal'
+        );
+
+    if (modal) {
+
+        modal.classList.add('show');
+    }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
 
-    document.getElementById('deleteBankCancelBtn')?.addEventListener('click', () => {
-        deletingBankId = null;
-        document.getElementById('deleteBankModal').classList.remove('show');
-    });
+/* =========================================================
+   أحداث الصفحة
+========================================================= */
 
-    document.getElementById('deleteBankConfirmBtn')?.addEventListener('click', async function () {
-        if (!deletingBankId) return;
+document.addEventListener(
+    'DOMContentLoaded',
+    () => {
 
-        this.disabled = true;
+        const deleteModal =
+            document.getElementById(
+                'deleteConfirmModal'
+            );
 
-        try {
-            const res = await fetch(banksApi.destroy(deletingBankId), {
-                method: 'DELETE',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                },
-            });
+        const deleteCancelBtn =
+            document.getElementById(
+                'deleteCancelBtn'
+            );
 
-            const json = await res.json();
+        const deleteConfirmBtn =
+            document.getElementById(
+                'deleteConfirmBtn'
+            );
 
-            if (!json.success) {
-                showSystemToast(json.message || 'حدث خطأ', 'danger');
-                return;
+
+        /* =================================================
+           إلغاء الحذف
+        ================================================= */
+
+        deleteCancelBtn?.addEventListener(
+            'click',
+            () => {
+
+                deletingBankId =
+                    null;
+
+                deleteModal?.classList.remove(
+                    'show'
+                );
             }
+        );
 
-            document.getElementById('deleteBankModal').classList.remove('show');
-            deletingBankId = null;
 
-            await loadBanks();
+        /* =================================================
+           تأكيد الحذف
+        ================================================= */
 
-            showSystemToast(json.message || 'تم الحذف بنجاح', 'success');
+        deleteConfirmBtn?.addEventListener(
+            'click',
+            async function () {
 
-        } catch (e) {
-            console.error(e);
-            showSystemToast('حدث خطأ أثناء الحذف', 'danger');
-        } finally {
-            this.disabled = false;
-        }
-    });
+                if (!deletingBankId) {
+                    return;
+                }
 
-    loadBanks();
-});
+                this.disabled = true;
+
+
+                try {
+
+                    const res =
+                        await fetch(
+                            banksApi.destroy(
+                                deletingBankId
+                            ),
+                            {
+                                method: 'DELETE',
+
+                                headers: {
+                                    'Accept':
+                                        'application/json',
+
+                                    'X-CSRF-TOKEN':
+                                        csrfToken,
+                                },
+                            }
+                        );
+
+
+                    const json =
+                        await res.json();
+
+
+                    if (!json.success) {
+
+                        showSystemToast(
+                            json.message ||
+                            'حدث خطأ أثناء الحذف',
+                            'danger'
+                        );
+
+                        return;
+                    }
+
+
+                    /* إغلاق النافذة */
+
+                    deleteModal?.classList.remove(
+                        'show'
+                    );
+
+                    deletingBankId =
+                        null;
+
+
+                    /* تحديث الجدول */
+
+                    await loadBanks();
+
+
+                    showSystemToast(
+                        json.message ||
+                        'تم حذف البنك بنجاح',
+                        'success'
+                    );
+
+
+                } catch (e) {
+
+                    console.error(e);
+
+                    showSystemToast(
+                        'حدث خطأ أثناء الحذف',
+                        'danger'
+                    );
+
+
+                } finally {
+
+                    this.disabled = false;
+                }
+            }
+        );
+
+
+        /* تحميل البنوك */
+
+        loadBanks();
+    }
+);
+
 
 /* =========================================================
    تبديل الحالة
 ========================================================= */
 
 async function toggleBankStatus(btn) {
-    const row = btn.closest('tr');
+
+    const row =
+        btn.closest('tr');
+
     if (!row) return;
 
-    const id = row.dataset.id;
+    const id =
+        row.dataset.id;
+
 
     try {
-        const res = await fetch(banksApi.toggle(id), {
-            method: 'PATCH',
-            headers: {
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
-            },
-        });
 
-        const json = await res.json();
+        const res =
+            await fetch(
+                banksApi.toggle(id),
+                {
+                    method: 'PATCH',
+
+                    headers: {
+                        'Accept':
+                            'application/json',
+
+                        'X-CSRF-TOKEN':
+                            csrfToken,
+                    },
+                }
+            );
+
+
+        const json =
+            await res.json();
+
 
         if (!json.success) {
-            showSystemToast(json.message || 'حدث خطأ', 'danger');
+
+            showSystemToast(
+                json.message ||
+                'حدث خطأ',
+                'danger'
+            );
+
             return;
         }
 
+
         await loadBanks();
-        showSystemToast(json.message, 'success');
+
+
+        showSystemToast(
+            json.message,
+            'success'
+        );
+
 
     } catch (e) {
+
         console.error(e);
-        showSystemToast('حدث خطأ أثناء تبديل الحالة', 'danger');
+
+        showSystemToast(
+            'حدث خطأ أثناء تبديل الحالة',
+            'danger'
+        );
     }
 }
+
 
 /* =========================================================
    طباعة
 ========================================================= */
 
 function printBanks() {
+
     window.print();
 }

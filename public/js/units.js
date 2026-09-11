@@ -1,458 +1,325 @@
-let unitModalInstance;
-let currentUnitId = null;
-let allUnitsData = [];
-let filteredUnitsData = [];
-let currentPage = 1;
-const rowsPerPage = 5;
+/* =========================================================
+   شاشة الأنواع
+========================================================= */
 
-document.addEventListener('DOMContentLoaded', function () {
-    const modalElement = document.getElementById('unitModal');
-    if (modalElement) {
-        unitModalInstance = new bootstrap.Modal(modalElement);
-    }
+let typesData = [];
+let editingTypeId = null;
+let deletingTypeId = null;
 
-    // قراءة البيانات من الـ Blade
-    const rows = document.querySelectorAll('#unitsTableBody tr.unit-row');
-    if (rows.length > 0) {
-        rows.forEach(row => {
-            const unit = {
-                UnitID: parseInt(row.dataset.id, 10),
-                UnitName: row.querySelector('.row-name').innerText.trim(),
-                is_active: row.querySelector('.row-status .toggle-status-btn')?.classList.contains('btn-success') ? 1 : 0
-            };
-            allUnitsData.push(unit);
+const typesApi = {
+    list: '/setting/inventory/types/list',
+    store: '/setting/inventory/types',
+    update: (id) => `/setting/inventory/types/${id}`,
+    destroy: (id) => `/setting/inventory/types/${id}`,
+    toggle: (id) => `/setting/inventory/types/${id}/toggle-status`,
+};
+
+const csrfToken = document
+    .querySelector('meta[name="csrf-token"]')
+    ?.getAttribute('content') || '';
+
+/* =========================================================
+   تحميل البيانات
+========================================================= */
+
+async function loadTypes() {
+    try {
+        const res = await fetch(typesApi.list, {
+            headers: { 'Accept': 'application/json' },
         });
-    } else {
-        reloadUnitsTable();
+        const json = await res.json();
+
+        if (json.success) {
+            typesData = json.data || [];
+            renderTypes();
+        }
+    } catch (e) {
+        console.error('خطأ في تحميل الأنواع:', e);
     }
-
-    filteredUnitsData = [...allUnitsData];
-    applyFiltersAndRender();
-
-    // =========================================================
-    // أحداث نافذة تأكيد الحذف
-    // =========================================================
-    const cancelBtn = document.getElementById('deleteCancelBtn');
-    if (cancelBtn) {
-        cancelBtn.addEventListener('click', closeDeleteModal);
-    }
-
-    const confirmBtn = document.getElementById('deleteConfirmBtn');
-    if (confirmBtn) {
-        confirmBtn.addEventListener('click', confirmDeleteUnit);
-    }
-
-    const overlay = document.getElementById('deleteConfirmModal');
-    if (overlay) {
-        overlay.addEventListener('click', function (e) {
-            if (e.target === this) {
-                closeDeleteModal();
-            }
-        });
-    }
-});
-
-// =========================================================
-// فتح مودال الإضافة
-// =========================================================
-function openUnitModal() {
-    document.getElementById('unitForm').reset();
-    document.getElementById('unitID').value = '';
-    currentUnitId = null;
-    document.getElementById('unitModalLabel').innerText = 'إضافة وحدة جديدة';
-    unitModalInstance.show();
 }
 
-// =========================================================
-// تعديل وحدة
-// =========================================================
-function editUnit(btn) {
+/* =========================================================
+   عرض الجدول
+========================================================= */
+
+function renderTypes(data) {
+    const list = Array.isArray(data) ? data : typesData;
+    const tbody = document.getElementById('typesTableBody');
+    const badge = document.getElementById('typesCountBadge');
+
+    if (!tbody) return;
+
+    if (!list.length) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="5" class="text-center text-muted py-5">
+                    <i class="bi bi-upc-scan fs-2 d-block mb-2"></i>
+                    لا توجد أنواع مسجلة
+                </td>
+            </tr>
+        `;
+        if (badge) badge.textContent = '0 نوع';
+        return;
+    }
+
+    tbody.innerHTML = list.map((type, i) => `
+        <tr class="type-row text-center"
+            data-id="${type.id}"
+            data-name="${escapeHtml(type.name)}"
+            data-code="${escapeHtml(type.code || '')}"
+            data-active="${type.is_active ? 1 : 0}">
+
+            <td>${i + 1}</td>
+            <td class="row-name text-start">${escapeHtml(type.name)}</td>
+            <td class="row-code">
+                <span class="badge bg-secondary">${escapeHtml(type.code || '—')}</span>
+            </td>
+            <td class="row-status">
+                <button type="button"
+                        class="btn btn-sm ${type.is_active ? 'btn-success' : 'btn-secondary'} toggle-status-btn"
+                        onclick="toggleTypeStatus(this)">
+                    ${type.is_active ? 'نشط' : 'غير نشط'}
+                </button>
+            </td>
+            <td class="no-print">
+                <div class="btn-action-group">
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="editType(this)">
+                        <i class="bi bi-pencil d-md-none"></i>
+                        <span class="d-none d-md-inline">تعديل</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteType(this)">
+                        <i class="bi bi-trash d-md-none"></i>
+                        <span class="d-none d-md-inline">حذف</span>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+
+    if (badge) badge.textContent = `${list.length} نوع`;
+}
+
+/* =========================================================
+   أدوات
+========================================================= */
+
+function escapeHtml(v) {
+    return String(v ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+/* =========================================================
+   البحث
+========================================================= */
+
+function filterTypes() {
+    const term = document.getElementById('searchTypeInput')?.value.trim().toLowerCase() || '';
+
+    const filtered = typesData.filter(t =>
+        (t.name || '').toLowerCase().includes(term) ||
+        (t.code || '').toLowerCase().includes(term)
+    );
+
+    renderTypes(filtered);
+}
+
+/* =========================================================
+   فتح المودال (إضافة)
+========================================================= */
+
+function openTypeModal() {
+    editingTypeId = null;
+
+    document.getElementById('typeModalLabel').innerHTML =
+        '<i class="bi bi-upc-scan"></i> إضافة نوع';
+
+    document.getElementById('typeForm').reset();
+    document.getElementById('typeID').value = '';
+
+    const modalEl = document.getElementById('typeModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false });
+    modal.show();
+}
+
+/* =========================================================
+   تعديل
+========================================================= */
+
+function editType(btn) {
     const row = btn.closest('tr');
-    const id = parseInt(row.dataset.id, 10);
-    const name = row.querySelector('.row-name').innerText.trim();
+    if (!row) return;
 
-    document.getElementById('unitID').value = id;
-    document.getElementById('unitName').value = name;
-    currentUnitId = id;
-    document.getElementById('unitModalLabel').innerText = 'تعديل بيانات الوحدة';
-    unitModalInstance.show();
+    editingTypeId = row.dataset.id;
+
+    document.getElementById('typeModalLabel').innerHTML =
+        '<i class="bi bi-pencil-square"></i> تعديل النوع';
+
+    document.getElementById('typeID').value = row.dataset.id;
+    document.getElementById('typeName').value = row.dataset.name;
+    document.getElementById('typeCode').value = row.dataset.code || '';
+
+    const modalEl = document.getElementById('typeModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false });
+    modal.show();
 }
 
-// =========================================================
-// حفظ الوحدة (إضافة / تعديل)
-// =========================================================
-function saveUnit() {
-    const form = document.getElementById('unitForm');
+/* =========================================================
+   حفظ
+========================================================= */
+
+async function saveType() {
+    const form = document.getElementById('typeForm');
     if (!form.checkValidity()) {
         form.reportValidity();
         return;
     }
 
-    const id = document.getElementById('unitID').value;
-    const name = document.getElementById('unitName').value.trim();
+    const payload = {
+        name: document.getElementById('typeName').value.trim(),
+        code: document.getElementById('typeCode').value.trim() || null,
+    };
 
-    const url = id ? `/setting/inventory/units/${id}` : '/setting/inventory/units';
-    const formData = new FormData();
-    formData.append('UnitName', name);
-    if (id) {
-        formData.append('_method', 'PUT');
-    }
+    const isEdit = editingTypeId !== null;
+    const url = isEdit ? typesApi.update(editingTypeId) : typesApi.store;
+    const method = isEdit ? 'PUT' : 'POST';
 
-    fetch(url, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json'
-        },
-        body: formData
-    })
-        .then(response => response.json().then(data => ({ status: response.status, data })))
-        .then(({ status, data }) => {
-            if (status !== 200 || !data.success) {
-                throw new Error(data.message || 'حدث خطأ غير معروف');
-            }
-            showSystemToast(data.message || 'تم حفظ الوحدة بنجاح', 'success');
-            unitModalInstance.hide();
-            reloadUnitsTable();
-        })
-        .catch(error => {
-            console.error('خطأ:', error);
-            showSystemToast(error.message || 'حدث خطأ في الاتصال بالخادم', 'danger');
+    try {
+        const res = await fetch(url, {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+            },
+            body: JSON.stringify(payload),
         });
-}
 
-// =========================================================
-// حذف وحدة (فتح نافذة التأكيد)
-// =========================================================
-let deletingUnitId = null;
+        const json = await res.json();
 
-function deleteUnit(btn) {
-    const row = btn.closest('tr');
-    deletingUnitId = parseInt(row.dataset.id, 10);
-    const modal = document.getElementById('deleteConfirmModal');
-    if (modal) {
-        modal.classList.add('show');
-    }
-}
-
-function confirmDeleteUnit() {
-    if (!deletingUnitId) return;
-
-    const id = deletingUnitId;
-    const formData = new FormData();
-    formData.append('_method', 'DELETE');
-
-    fetch(`/setting/inventory/units/${id}`, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json'
-        },
-        body: formData
-    })
-        .then(response => response.json().then(data => ({ status: response.status, data })))
-        .then(({ status, data }) => {
-            if (status !== 200 || !data.success) {
-                throw new Error(data.message || 'حدث خطأ غير معروف');
-            }
-            showSystemToast(data.message || 'تم حذف الوحدة بنجاح', 'success');
-            closeDeleteModal();
-            reloadUnitsTable();
-        })
-        .catch(error => {
-            console.error('خطأ:', error);
-            showSystemToast(error.message || 'حدث خطأ في الاتصال بالخادم', 'danger');
-            closeDeleteModal();
-        });
-}
-
-function closeDeleteModal() {
-    const modal = document.getElementById('deleteConfirmModal');
-    if (modal) {
-        modal.classList.remove('show');
-    }
-    deletingUnitId = null;
-}
-
-// =========================================================
-// تبديل حالة الوحدة
-// =========================================================
-function toggleUnitStatus(btn) {
-    const row = btn.closest('tr');
-    const id = parseInt(row.dataset.id, 10);
-
-    const formData = new FormData();
-    formData.append('_method', 'PATCH');
-
-    fetch(`/setting/inventory/units/${id}/toggle-status`, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json'
-        },
-        body: formData
-    })
-        .then(response => response.json().then(data => ({ status: response.status, data })))
-        .then(({ status, data }) => {
-            if (status !== 200 || !data.success) {
-                throw new Error(data.message || 'حدث خطأ غير معروف');
-            }
-            showSystemToast(data.message || 'تم تغيير حالة الوحدة بنجاح', 'success');
-            reloadUnitsTable();
-        })
-        .catch(error => {
-            console.error('خطأ:', error);
-            showSystemToast(error.message || 'حدث خطأ في الاتصال بالخادم', 'danger');
-        });
-}
-
-// =========================================================
-// تحميل البيانات من الخادم
-// =========================================================
-function reloadUnitsTable() {
-    fetch('/setting/inventory/units/list', {
-        method: 'GET',
-        headers: {
-            'Accept': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
+        if (!json.success) {
+            showSystemToast(json.message || 'حدث خطأ', 'danger');
+            return;
         }
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                allUnitsData = data.data || [];
-                filteredUnitsData = [...allUnitsData];
-                applyFiltersAndRender();
-            } else {
-                showSystemToast('حدث خطأ أثناء تحميل الوحدات', 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('خطأ:', error);
-            showSystemToast('حدث خطأ في الاتصال بالخادم', 'danger');
-        });
-}
 
-// =========================================================
-// البحث (على العميل)
-// =========================================================
-function filterUnits() {
-    const searchText = document.getElementById('searchUnitInput').value.toLowerCase().trim();
-    if (!searchText) {
-        filteredUnitsData = [...allUnitsData];
-    } else {
-        filteredUnitsData = allUnitsData.filter(unit =>
-            unit.UnitName.toLowerCase().includes(searchText)
-        );
+        if (document.activeElement && document.activeElement.blur) {
+            document.activeElement.blur();
+        }
+
+        const modalEl = document.getElementById('typeModal');
+        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) modalInstance.hide();
+
+        await loadTypes();
+
+        showSystemToast(json.message || 'تم الحفظ بنجاح', 'success');
+
+    } catch (e) {
+        console.error(e);
+        showSystemToast('حدث خطأ أثناء الحفظ', 'danger');
     }
-    currentPage = 1;
-    applyFiltersAndRender();
 }
 
-function applyFiltersAndRender() {
-    renderUnits(filteredUnitsData);
-    updateUnitsCount(filteredUnitsData.length);
-    renderPagination(filteredUnitsData.length);
+/* =========================================================
+   حذف
+========================================================= */
+
+function deleteType(btn) {
+    const row = btn.closest('tr');
+    if (!row) return;
+
+    deletingTypeId = row.dataset.id;
+    document.getElementById('deleteTypeModal').classList.add('show');
 }
 
-// =========================================================
-// عرض الوحدات (الجزء المعدل)
-// =========================================================
-function renderUnits(units) {
-    const tbody = document.getElementById('unitsTableBody');
-    if (!tbody) return;
+document.addEventListener('DOMContentLoaded', () => {
 
-    const start = (currentPage - 1) * rowsPerPage;
-    const end = Math.min(start + rowsPerPage, units.length);
-    const pageUnits = units.slice(start, end);
-
-    if (pageUnits.length === 0) {
-        tbody.innerHTML = `
-            <tr id="emptyUnitRow">
-                <td colspan="4" class="text-center text-muted py-5">
-                    <i class="bi bi-rulers fs-2 d-block mb-2"></i>
-                    لا توجد وحدات مسجلة
-                </td>
-            </tr>
-        `;
-        return;
-    }
-
-    let html = '';
-    pageUnits.forEach((unit, index) => {
-        const serial = start + index + 1;
-        const isActive = unit.is_active == 1;
-
-        // زر الحالة (نصي)
-        const statusBtnClass = isActive ? 'btn-success' : 'btn-secondary';
-        const statusText = isActive ? 'نشط' : 'غير نشط';
-        const statusTitle = isActive ? 'تعطيل' : 'تفعيل';
-
-        html += `
-            <tr class="unit-row text-center" data-id="${unit.UnitID}">
-                <td>${serial}</td>
-                <td class="row-name">${escapeHtml(unit.UnitName)}</td>
-                <td class="row-status">
-                    <button type="button" 
-                            class="btn btn-sm ${statusBtnClass} toggle-status-btn"
-                            onclick="toggleUnitStatus(this)"
-                            title="${statusTitle}">
-                        ${statusText}
-                    </button>
-                </td>
-                <td class="no-print">
-                    <div class="btn-action-group">
-                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="editUnit(this)" title="تعديل">
-                            <i class="bi bi-pencil d-md-none"></i>
-                            <span class="d-none d-md-inline">تعديل</span>
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteUnit(this)" title="حذف">
-                            <i class="bi bi-trash d-md-none"></i>
-                            <span class="d-none d-md-inline">حذف</span>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        `;
+    document.getElementById('deleteTypeCancelBtn')?.addEventListener('click', () => {
+        deletingTypeId = null;
+        document.getElementById('deleteTypeModal').classList.remove('show');
     });
 
-    tbody.innerHTML = html;
-}
+    document.getElementById('deleteTypeConfirmBtn')?.addEventListener('click', async function () {
+        if (!deletingTypeId) return;
 
-// =========================================================
-// تحديث العداد
-// =========================================================
-function updateUnitsCount(count) {
-    const badge = document.getElementById('unitsCountBadge');
-    if (badge) {
-        badge.innerText = count;
-    }
-}
+        this.disabled = true;
 
-// =========================================================
-// Pagination
-// =========================================================
-function renderPagination(totalItems) {
-    const paginationList = document.getElementById('unitsPaginationList');
-    if (!paginationList) return;
+        try {
+            const res = await fetch(typesApi.destroy(deletingTypeId), {
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                },
+            });
 
-    const totalPages = Math.ceil(totalItems / rowsPerPage);
-    if (totalPages <= 1) {
-        paginationList.innerHTML = '';
-        return;
-    }
+            const json = await res.json();
 
-    let html = '';
+            if (!json.success) {
+                showSystemToast(json.message || 'حدث خطأ', 'danger');
+                return;
+            }
 
-    html += `
-        <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
-            <button type="button" class="page-link" data-page="${currentPage - 1}" ${currentPage === 1 ? 'disabled' : ''}>
-                <i class="bi bi-chevron-right"></i>
-            </button>
-        </li>
-    `;
+            document.getElementById('deleteTypeModal').classList.remove('show');
+            deletingTypeId = null;
 
-    for (let page = 1; page <= totalPages; page++) {
-        html += `
-            <li class="page-item ${page === currentPage ? 'active' : ''}">
-                <button type="button" class="page-link" data-page="${page}">${page}</button>
-            </li>
-        `;
-    }
+            await loadTypes();
 
-    html += `
-        <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
-            <button type="button" class="page-link" data-page="${currentPage + 1}" ${currentPage === totalPages ? 'disabled' : ''}>
-                <i class="bi bi-chevron-left"></i>
-            </button>
-        </li>
-    `;
+            showSystemToast(json.message || 'تم الحذف بنجاح', 'success');
 
-    paginationList.innerHTML = html;
-}
+        } catch (e) {
+            console.error(e);
+            showSystemToast('حدث خطأ أثناء الحذف', 'danger');
+        } finally {
+            this.disabled = false;
+        }
+    });
 
-// أحداث التنقل بين الصفحات
-document.addEventListener('click', function (e) {
-    const target = e.target.closest('#unitsPaginationList .page-link');
-    if (!target) return;
-
-    const page = parseInt(target.dataset.page, 10);
-    if (!page || page < 1) return;
-
-    const totalPages = Math.ceil(filteredUnitsData.length / rowsPerPage);
-    if (page > totalPages) return;
-
-    currentPage = page;
-    renderUnits(filteredUnitsData);
-    renderPagination(filteredUnitsData.length);
+    loadTypes();
 });
 
-// =========================================================
-// أدوات مساعدة
-// =========================================================
-function escapeHtml(text) {
-    if (text === null || text === undefined) return '';
-    const div = document.createElement('div');
-    div.textContent = String(text);
-    return div.innerHTML;
-}
+/* =========================================================
+   تبديل الحالة
+========================================================= */
 
-// =========================================================
-// طباعة
-// =========================================================
-function printUnits() {
-    const table = document.getElementById('unitsTable');
-    let printContents = `
-        <html dir="rtl" lang="ar">
-        <head>
-            <title>طباعة قائمة الوحدات</title>
-            <style>
-                body { font-family: Arial, sans-serif; padding: 20px; }
-                h2 { text-align: center; margin-bottom: 20px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; text-align: center; }
-                th, td { border: 1px solid #000; padding: 8px; }
-                th { background-color: #f8f9fa; }
-                .no-print { display: none !important; }
-                .btn { display: none; }
-            </style>
-        </head>
-        <body>
-            <h2>قائمة وحدات القياس</h2>
-            <table>
-                <thead>${table.querySelector('thead').innerHTML}</thead>
-                <tbody>
-    `;
+async function toggleTypeStatus(btn) {
+    const row = btn.closest('tr');
+    if (!row) return;
 
-    const allRows = document.querySelectorAll('#unitsTableBody tr.unit-row');
-    allRows.forEach(row => {
-        const cells = row.querySelectorAll('td');
-        let rowHtml = '<tr>';
-        for (let i = 0; i < Math.min(cells.length - 1, 3); i++) {
-            rowHtml += cells[i].outerHTML;
+    const id = row.dataset.id;
+
+    try {
+        const res = await fetch(typesApi.toggle(id), {
+            method: 'PATCH',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+            },
+        });
+
+        const json = await res.json();
+
+        if (!json.success) {
+            showSystemToast(json.message || 'حدث خطأ', 'danger');
+            return;
         }
-        rowHtml += '</tr>';
-        printContents += rowHtml;
-    });
 
-    printContents += `</tbody></table></body></html>`;
+        await loadTypes();
+        showSystemToast(json.message, 'success');
 
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(printContents);
-    printWindow.document.close();
-    setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-    }, 250);
+    } catch (e) {
+        console.error(e);
+        showSystemToast('حدث خطأ أثناء تبديل الحالة', 'danger');
+    }
 }
 
-// =========================================================
-// دالة احتياطية لـ showSystemToast
-// =========================================================
-if (typeof showSystemToast !== 'function') {
-    window.showSystemToast = function (message, type) {
-        alert(message);
-    };
+/* =========================================================
+   طباعة
+========================================================= */
+
+function printTypes() {
+    window.print();
 }

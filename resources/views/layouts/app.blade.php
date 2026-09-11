@@ -14,8 +14,6 @@
     <title>
         @yield('title', 'نظام ERP')
     </title>
-
-
     {{-- Bootstrap CSS --}}
     <link
         rel="stylesheet"
@@ -23,6 +21,8 @@
     <link
         rel="stylesheet"
         href="{{ asset('css/accounting/chart.css') }}"  >
+
+    <link rel="stylesheet" href="{{ asset('css/accounting/shared-tables.css') }}"  >
 
     {{-- Bootstrap Icons --}}
     <link

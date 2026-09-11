@@ -1,431 +1,393 @@
-document.addEventListener('DOMContentLoaded', function () {
+/* =========================================================
+   شاشة الصناديق
+========================================================= */
 
-    // =========================================================
-    // المتغيرات الرئيسية
-    // =========================================================
+let boxesData = [];
+let editingBoxId = null;
+let deletingBoxId = null;
 
-    let boxes = [
-        {
-            id: 1,
-            name: 'الصندوق الرئيسي',
-            coinId: 1,
-            coinCode: 'YER',
-            exchangeRate: 1,
-            analyticalAccount: '13110001'   // تم تغيير المفتاح
-        },
-        {
-            id: 2,
-            name: 'صندوق المبيعات',
-            coinId: 1,
-            coinCode: 'YER',
-            exchangeRate: 1,
-            analyticalAccount: '13110002'
-        }
-    ];
+const boxesApi = {
+    list: '/setting/accounting/boxes/list',
+    store: '/setting/accounting/boxes',
+    update: (id) => `/setting/accounting/boxes/${id}`,
+    destroy: (id) => `/setting/accounting/boxes/${id}`,
+    toggle: (id) => `/setting/accounting/boxes/${id}/toggle-status`,
+    nextCode: '/setting/accounting/boxes/next-code',
+};
 
-    let editingId = null;
-    let lastAnalyticalAccount = 13110000; // بداية الترقيم
+const csrfToken = document
+    .querySelector('meta[name="csrf-token"]')
+    ?.getAttribute('content') || '';
 
-    // حساب آخر رقم مستخدم من البيانات الحالية
-    function updateLastAnalytical() {
-        let max = 13110000;
-        boxes.forEach(b => {
-            const num = parseInt(b.analyticalAccount, 10);
-            if (!isNaN(num) && num > max) max = num;
+/* =========================================================
+   تحميل البيانات
+========================================================= */
+
+async function loadBoxes() {
+    try {
+        const res = await fetch(boxesApi.list, {
+            headers: { 'Accept': 'application/json' },
         });
-        lastAnalyticalAccount = max;
-    }
-    updateLastAnalytical();
+        const json = await res.json();
 
-    // =========================================================
-    // عناصر الصفحة
-    // =========================================================
-
-    const searchInput = document.getElementById('boxSearchInput');
-    const coinFilter = document.getElementById('boxCoinFilter');
-    const searchButton = document.getElementById('searchBoxBtn');
-    const addButton = document.getElementById('addBoxBtn');
-    const tableBody = document.getElementById('boxesTableBody');
-
-    // =========================================================
-    // إنشاء Modal الإضافة والتعديل
-    // =========================================================
-
-    createBoxModal();
-
-    // =========================================================
-    // عرض الصناديق
-    // =========================================================
-
-    function renderBoxes(data = boxes) {
-
-        if (!tableBody) return;
-
-        tableBody.innerHTML = '';
-
-        if (data.length === 0) {
-            tableBody.innerHTML = `
-                <tr id="emptyBoxRow">
-                    <td colspan="6" class="text-center text-muted py-5">
-                        <i class="bi bi-safe2 fs-2 d-block mb-2"></i>
-                        لا توجد صناديق مسجلة
-                    </td>
-                </tr>
-            `;
-            return;
+        if (json.success) {
+            boxesData = json.data || [];
+            renderBoxes();
         }
+    } catch (e) {
+        console.error('خطأ في تحميل الصناديق:', e);
+    }
+}
 
-        data.forEach(function (box, index) {
-            const row = document.createElement('tr');
-            row.className = 'text-center box-row';
-            row.dataset.id = box.id;
+/* =========================================================
+   عرض الجدول
+========================================================= */
 
-            row.innerHTML = `
-                <td class="row-number">${index + 1}</td>
-                <td class="row-name">${escapeHtml(box.name)}</td>
-                <td class="row-coin">${escapeHtml(box.coinCode || 'غير محددة')}</td>
-                <td class="row-rate">${box.exchangeRate || 1}</td>
-                <td class="row-analytical">${escapeHtml(box.analyticalAccount || 'غير محدد')}</td>
-                <td class="text-center">
-                    <button type="button" class="btn btn-sm btn-outline-primary edit-box" data-id="${box.id}">
-                        <i class="bi bi-pencil"></i> تعديل
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-danger delete-box" data-id="${box.id}">
-                        <i class="bi bi-trash"></i> حذف
+function renderBoxes(data) {
+    const list = Array.isArray(data) ? data : boxesData;
+    const tbody = document.getElementById('boxesTableBody');
+    const badge = document.getElementById('boxesCountBadge');
+
+    if (!tbody) return;
+
+    if (!list.length) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center text-muted py-5">
+                    <i class="bi bi-safe2 fs-2 d-block mb-2"></i>
+                    لا توجد صناديق مسجلة
+                </td>
+            </tr>
+        `;
+        if (badge) badge.textContent = '0 صندوق';
+        return;
+    }
+
+    tbody.innerHTML = list.map((box, i) => {
+        const coinCode = box.coin?.coinsCode;
+        const coinRate = box.coin?.coinsExchangeRate || 0;
+        const accCode = box.account?.accCode || '—';
+        const noCoin = !box.coinsID;
+
+        const coinCell = coinCode
+            ? `<span class="badge bg-secondary">${escapeHtml(coinCode)}</span>`
+            : `<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle-fill"></i> بلا عملة</span>`;
+
+        return `
+            <tr class="box-row text-center"
+                data-id="${box.boxID}"
+                data-name="${escapeHtml(box.boxName)}"
+                data-coin="${box.coinsID || ''}"
+                data-account-code="${accCode}"
+                data-active="${box.is_active ? 1 : 0}"
+                ${noCoin ? 'style="background-color: #fff3cd;"' : ''}>
+
+                <td>${i + 1}</td>
+                <td class="row-name text-center">${escapeHtml(box.boxName)}</td>
+                <td class="row-coin">${coinCell}</td>
+                <td class="row-rate">${noCoin ? '—' : formatNumber(coinRate)}</td>
+                <td class="row-account">${accCode}</td>
+                <td class="row-status">
+                    <button type="button"
+                            class="btn btn-sm ${box.is_active ? 'btn-success' : 'btn-secondary'} toggle-status-btn"
+                            onclick="toggleBoxStatus(this)">
+                        ${box.is_active ? 'نشط' : 'غير نشط'}
                     </button>
                 </td>
-            `;
-
-            tableBody.appendChild(row);
-        });
-    }
-
-    // =========================================================
-    // إنشاء نافذة إضافة / تعديل الصندوق
-    // =========================================================
-
-    function createBoxModal() {
-
-        const modalHTML = `
-            <div class="modal fade" id="boxModal" tabindex="-1" aria-labelledby="boxModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-lg modal-dialog-centered">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title" id="boxModalLabel">
-                                <i class="bi bi-safe2"></i> إضافة صندوق
-                            </h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
-                        </div>
-                        <div class="modal-body">
-                            <form id="boxForm">
-                                <div class="row g-3">
-                                    <div class="col-md-6">
-                                        <label class="form-label">اسم الصندوق <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control" name="boxName" placeholder="أدخل اسم الصندوق" required>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">العملة <span class="text-danger">*</span></label>
-                                        <select class="form-select" name="coinId" required>
-                                            <option value="">اختر العملة</option>
-                                            ${getCoinsOptions()}
-                                        </select>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">سعر الصرف <span class="text-danger">*</span></label>
-                                        <input type="number" class="form-control" name="exchangeRate" min="0" step="0.000001" placeholder="أدخل سعر الصرف" required>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">رقم الحساب التحليلي</label>
-                                        <input type="text" class="form-control" name="analyticalAccount" readonly>
-                                        <small class="form-text text-muted">يتم توليده تلقائياً عند الإضافة.</small>
-                                    </div>
-                                </div>
-                            </form>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                                <i class="bi bi-x-lg"></i> إلغاء
-                            </button>
-                            <button type="button" class="btn btn-success" id="saveBoxButton">
-                                <i class="bi bi-check-lg"></i> حفظ
-                            </button>
-                        </div>
+                <td class="no-print">
+                    <div class="btn-action-group">
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="editBox(this)">
+                            <i class="bi bi-pencil d-md-none"></i>
+                            <span class="d-none d-md-inline">تعديل</span>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteBox(this)">
+                            <i class="bi bi-trash d-md-none"></i>
+                            <span class="d-none d-md-inline">حذف</span>
+                        </button>
                     </div>
-                </div>
-            </div>
+                </td>
+            </tr>
         `;
+    }).join('');
 
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-        attachModalEvents();
-    }
+    if (badge) badge.textContent = `${list.length} صندوق`;
+}
 
-    // =========================================================
-    // خيارات العملات (يمكن جلبها من Laravel لاحقاً)
-    // =========================================================
+/* =========================================================
+   أدوات مساعدة
+========================================================= */
 
-    function getCoinsOptions() {
-        // محاكاة البيانات – سيتم استبدالها بقائمة العملات من قاعدة البيانات
-        return `
-            <option value="1">YER - الريال اليمني</option>
-            <option value="2">SAR - الريال السعودي</option>
-            <option value="3">USD - الدولار الأمريكي</option>
-        `;
-    }
+function formatNumber(v) {
+    return Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 6 });
+}
 
-    // =========================================================
-    // أحداث Modal
-    // =========================================================
+function escapeHtml(v) {
+    return String(v ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
 
-    function attachModalEvents() {
-        const saveButton = document.getElementById('saveBoxButton');
-        if (saveButton) {
-            saveButton.addEventListener('click', saveBox);
-        }
-    }
+/* =========================================================
+   البحث والتصفية
+========================================================= */
 
-    // =========================================================
-    // فتح نافذة الإضافة
-    // =========================================================
+function filterBoxes() {
+    const term = document.getElementById('searchBoxInput')?.value.trim().toLowerCase() || '';
+    const coinId = document.getElementById('statusBoxFilter')?.value || '';
 
-    if (addButton) {
-        addButton.addEventListener('click', function () {
-            editingId = null;
-            resetBoxForm();
-            // توليد رقم تحليلي جديد
-            const newAnalytical = lastAnalyticalAccount + 1;
-            const form = document.getElementById('boxForm');
-            if (form) {
-                form.elements['analyticalAccount'].value = newAnalytical;
-            }
-            setModalTitle('إضافة صندوق');
-            openBoxModal();
-        });
-    }
-
-    // =========================================================
-    // فتح نافذة التعديل
-    // =========================================================
-
-    document.addEventListener('click', function (event) {
-        const button = event.target.closest('.edit-box');
-        if (!button) return;
-
-        const id = Number(button.dataset.id);
-        const box = boxes.find(item => item.id === id);
-        if (!box) return;
-
-        editingId = id;
-        fillBoxForm(box);
-        setModalTitle('تعديل الصندوق');
-        openBoxModal();
+    const filtered = boxesData.filter(b => {
+        const matchesSearch = (b.boxName || '').toLowerCase().includes(term);
+        const matchesCoin = !coinId || String(b.coinsID) === String(coinId);
+        return matchesSearch && matchesCoin;
     });
 
-    // =========================================================
-    // حفظ الصندوق
-    // =========================================================
+    renderBoxes(filtered);
+}
 
-    function saveBox() {
-        const form = document.getElementById('boxForm');
-        if (!form) return;
+/* =========================================================
+   تحديث سعر الصرف عند اختيار العملة
+========================================================= */
 
-        if (!form.checkValidity()) {
-            form.reportValidity();
-            return;
-        }
+function updateExchangeRate() {
+    const select = document.getElementById('coinsID');
+    const rateInput = document.getElementById('exchangeRate');
+    if (!select || !rateInput) return;
 
-        const name = form.elements['boxName'].value.trim();
-        const coinId = Number(form.elements['coinId'].value);
-        const exchangeRate = Number(form.elements['exchangeRate'].value);
-        const analyticalAccount = form.elements['analyticalAccount'].value.trim();
+    const option = select.options[select.selectedIndex];
+    const rate = option?.dataset?.rate || '';
 
-        if (!name) {
-            alert('يرجى إدخال اسم الصندوق.');
-            return;
-        }
-        if (!coinId) {
-            alert('يرجى اختيار العملة.');
-            return;
-        }
-        if (!exchangeRate || exchangeRate <= 0) {
-            alert('يرجى إدخال سعر صرف صحيح.');
-            return;
-        }
+    rateInput.value = rate ? Number(rate).toFixed(6) : '';
+}
 
-        const coinCode = getCoinCode(coinId);
+/* =========================================================
+   فتح المودال (إضافة)
+========================================================= */
 
-        if (editingId !== null) {
-            // تعديل
-            const index = boxes.findIndex(item => item.id === editingId);
-            if (index !== -1) {
-                boxes[index] = {
-                    ...boxes[index],
-                    name: name,
-                    coinId: coinId,
-                    coinCode: coinCode,
-                    exchangeRate: exchangeRate,
-                    analyticalAccount: analyticalAccount
-                };
-            }
+async function openBoxModal() {
+    editingBoxId = null;
+
+    document.getElementById('boxModalLabel').innerHTML =
+        '<i class="bi bi-safe2"></i> إضافة صندوق';
+
+    document.getElementById('boxForm').reset();
+    document.getElementById('boxID').value = '';
+    document.getElementById('isActive').value = '1';
+    document.getElementById('exchangeRate').value = '';
+    document.getElementById('accountCode').value = '';
+
+    const warning = document.getElementById('coinWarning');
+    if (warning) warning.style.display = 'none';
+
+    // جلب رقم الحساب التالي من الخادم
+    try {
+        const res = await fetch(boxesApi.nextCode, {
+            headers: { 'Accept': 'application/json' },
+        });
+        const json = await res.json();
+        if (json.success) {
+            document.getElementById('accountCode').value = json.code;
         } else {
-            // إضافة
-            const newId = getNextId();
-            boxes.push({
-                id: newId,
-                name: name,
-                coinId: coinId,
-                coinCode: coinCode,
-                exchangeRate: exchangeRate,
-                analyticalAccount: analyticalAccount
-            });
-            // تحديث آخر رقم تحليلي
-            const num = parseInt(analyticalAccount, 10);
-            if (!isNaN(num) && num > lastAnalyticalAccount) {
-                lastAnalyticalAccount = num;
-            }
+            showSystemToast(json.message || 'فشل جلب رقم الحساب', 'danger');
         }
-
-        renderBoxes();
-        closeBoxModal();
-        resetBoxForm();
-        editingId = null;
-        alert('تم حفظ الصندوق بنجاح.');
+    } catch (e) {
+        console.error('فشل جلب رقم الحساب:', e);
     }
 
-    // =========================================================
-    // حذف الصندوق
-    // =========================================================
+    const modalEl = document.getElementById('boxModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false });
+    modal.show();
+}
 
-    document.addEventListener('click', function (event) {
-        const button = event.target.closest('.delete-box');
-        if (!button) return;
+/* =========================================================
+   تعديل
+========================================================= */
 
-        const id = Number(button.dataset.id);
-        const box = boxes.find(item => item.id === id);
-        if (!box) return;
+function editBox(btn) {
+    const row = btn.closest('tr');
+    if (!row) return;
 
-        if (!confirm(`هل أنت متأكد من حذف الصندوق "${box.name}"؟`)) return;
+    editingBoxId = row.dataset.id;
 
-        boxes = boxes.filter(item => item.id !== id);
-        renderBoxes();
-        alert('تم حذف الصندوق بنجاح.');
-    });
+    document.getElementById('boxModalLabel').innerHTML =
+        '<i class="bi bi-pencil-square"></i> تعديل الصندوق';
 
-    // =========================================================
-    // البحث (تلقائي عند الكتابة)
-    // =========================================================
+    document.getElementById('boxID').value = row.dataset.id;
+    document.getElementById('boxName').value = row.dataset.name;
+    document.getElementById('coinsID').value = row.dataset.coin || '';
+    document.getElementById('isActive').value = row.dataset.active;
+    document.getElementById('accountCode').value = row.dataset.accountCode || '';
 
-    function filterBoxes() {
-        const search = searchInput ? searchInput.value.trim().toLowerCase() : '';
-        const selectedCoin = coinFilter ? coinFilter.value : '';
+    const warning = document.getElementById('coinWarning');
+    if (warning) {
+        warning.style.display = row.dataset.coin ? 'none' : 'block';
+    }
 
-        const filtered = boxes.filter(function (box) {
-            const matchesSearch = box.name.toLowerCase().includes(search);
-            const matchesCoin = !selectedCoin || String(box.coinId) === selectedCoin;
-            return matchesSearch && matchesCoin;
+    updateExchangeRate();
+
+    const modalEl = document.getElementById('boxModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false });
+    modal.show();
+}
+
+/* =========================================================
+   حفظ (إضافة/تعديل)
+========================================================= */
+
+async function saveBox() {
+    const form = document.getElementById('boxForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const coinValue = document.getElementById('coinsID').value;
+
+    const payload = {
+        boxName: document.getElementById('boxName').value.trim(),
+        coinsID: coinValue ? Number(coinValue) : null,
+        is_active: document.getElementById('isActive').value === '1',
+    };
+
+    const isEdit = editingBoxId !== null;
+    const url = isEdit ? boxesApi.update(editingBoxId) : boxesApi.store;
+    const method = isEdit ? 'PUT' : 'POST';
+
+    try {
+        const res = await fetch(url, {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+            },
+            body: JSON.stringify(payload),
         });
 
-        renderBoxes(filtered);
-    }
+        const json = await res.json();
 
-    // مستمعات البحث
-    if (searchInput) {
-        searchInput.addEventListener('input', filterBoxes);
-    }
-    if (coinFilter) {
-        coinFilter.addEventListener('change', filterBoxes);
-    }
-    if (searchButton) {
-        searchButton.addEventListener('click', filterBoxes);
-    }
-
-    // =========================================================
-    // تعبئة نموذج التعديل
-    // =========================================================
-
-    function fillBoxForm(box) {
-        const form = document.getElementById('boxForm');
-        if (!form) return;
-
-        form.elements['boxName'].value = box.name;
-        form.elements['coinId'].value = box.coinId;
-        form.elements['exchangeRate'].value = box.exchangeRate;
-        form.elements['analyticalAccount'].value = box.analyticalAccount || '';
-    }
-
-    // =========================================================
-    // إعادة ضبط النموذج
-    // =========================================================
-
-    function resetBoxForm() {
-        const form = document.getElementById('boxForm');
-        if (!form) return;
-        form.reset();
-        // تعيين قيمة جديدة للحقل التحليلي (سيتم تعيينه عند فتح الإضافة)
-    }
-
-    // =========================================================
-    // عنوان Modal
-    // =========================================================
-
-    function setModalTitle(title) {
-        const titleElement = document.getElementById('boxModalLabel');
-        if (titleElement) {
-            titleElement.innerHTML = `<i class="bi bi-safe2"></i> ${title}`;
+        if (!json.success) {
+            showSystemToast(json.message || 'حدث خطأ', 'danger');
+            return;
         }
+
+        if (document.activeElement && document.activeElement.blur) {
+            document.activeElement.blur();
+        }
+
+        const modalEl = document.getElementById('boxModal');
+        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) modalInstance.hide();
+
+        await loadBoxes();
+
+        showSystemToast(json.message || 'تم الحفظ بنجاح', 'success');
+
+    } catch (e) {
+        console.error(e);
+        showSystemToast('حدث خطأ أثناء الحفظ', 'danger');
     }
+}
 
-    // =========================================================
-    // فتح/إغلاق Modal
-    // =========================================================
+/* =========================================================
+   حذف
+========================================================= */
 
-    function openBoxModal() {
-        const modalElement = document.getElementById('boxModal');
-        if (!modalElement) return;
-        const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
-        modal.show();
-    }
+function deleteBox(btn) {
+    const row = btn.closest('tr');
+    if (!row) return;
 
-    function closeBoxModal() {
-        const modalElement = document.getElementById('boxModal');
-        if (!modalElement) return;
-        const modal = bootstrap.Modal.getInstance(modalElement);
-        if (modal) modal.hide();
-    }
+    deletingBoxId = row.dataset.id;
+    document.getElementById('deleteBoxModal').classList.add('show');
+}
 
-    // =========================================================
-    // الحصول على كود العملة
-    // =========================================================
+document.addEventListener('DOMContentLoaded', () => {
 
-    function getCoinCode(coinId) {
-        const coins = { 1: 'YER', 2: 'SAR', 3: 'USD' };
-        return coins[coinId] || '';
-    }
+    document.getElementById('deleteBoxCancelBtn')?.addEventListener('click', () => {
+        deletingBoxId = null;
+        document.getElementById('deleteBoxModal').classList.remove('show');
+    });
 
-    // =========================================================
-    // إنشاء ID جديد
-    // =========================================================
+    document.getElementById('deleteBoxConfirmBtn')?.addEventListener('click', async function () {
+        if (!deletingBoxId) return;
 
-    function getNextId() {
-        if (boxes.length === 0) return 1;
-        return Math.max(...boxes.map(b => b.id)) + 1;
-    }
+        this.disabled = true;
 
-    // =========================================================
-    // حماية النصوص
-    // =========================================================
+        try {
+            const res = await fetch(boxesApi.destroy(deletingBoxId), {
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                },
+            });
 
-    function escapeHtml(value) {
-        return String(value)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
+            const json = await res.json();
 
-    // =========================================================
-    // تشغيل الشاشة
-    // =========================================================
+            if (!json.success) {
+                showSystemToast(json.message || 'حدث خطأ', 'danger');
+                return;
+            }
 
-    renderBoxes();
+            document.getElementById('deleteBoxModal').classList.remove('show');
+            deletingBoxId = null;
+
+            await loadBoxes();
+
+            showSystemToast(json.message || 'تم الحذف بنجاح', 'success');
+
+        } catch (e) {
+            console.error(e);
+            showSystemToast('حدث خطأ أثناء الحذف', 'danger');
+        } finally {
+            this.disabled = false;
+        }
+    });
+
+    loadBoxes();
 });
+
+/* =========================================================
+   تبديل الحالة
+========================================================= */
+
+async function toggleBoxStatus(btn) {
+    const row = btn.closest('tr');
+    if (!row) return;
+
+    const id = row.dataset.id;
+
+    try {
+        const res = await fetch(boxesApi.toggle(id), {
+            method: 'PATCH',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+            },
+        });
+
+        const json = await res.json();
+
+        if (!json.success) {
+            showSystemToast(json.message || 'حدث خطأ', 'danger');
+            return;
+        }
+
+        await loadBoxes();
+        showSystemToast(json.message, 'success');
+
+    } catch (e) {
+        console.error(e);
+        showSystemToast('حدث خطأ أثناء تبديل الحالة', 'danger');
+    }
+}
+
+/* =========================================================
+   طباعة
+========================================================= */
+
+function printBoxes() {
+    window.print();
+}

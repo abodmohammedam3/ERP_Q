@@ -1,11 +1,11 @@
-{{-- نافذة اختيار المورد --}}
-<div class="modal fade" id="supplierModal" tabindex="-1" aria-hidden="true">
+{{-- نافذة اختيار حساب الدفع (صندوق/بنك/شبكة) --}}
+<div class="modal fade" id="accountModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
 
             <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-person"></i> اختيار المورد
+                <h5 class="modal-title" id="accountModalTitle">
+                    <i class="bi bi-wallet2"></i> اختيار الحساب
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -14,14 +14,14 @@
 
                 <div class="row g-2 mb-3">
                     <div class="col-md-10">
-                        <input type="text" class="form-control" id="supplierSearchInput"
-                               placeholder="اسم المورد أو الرقم المحاسبي"
-                               oninput="supplierInput(event)"
-                               onkeydown="if(event.key==='Enter') searchSuppliers()">
+                        <input type="text" class="form-control" id="accountSearchInput"
+                               placeholder="اسم الحساب أو الرقم"
+                               oninput="accountInput(event)"
+                               onkeydown="if(event.key==='Enter') searchAccounts()">
                     </div>
                     <div class="col-md-2">
                         <button type="button" class="btn btn-primary w-100"
-                                onclick="searchSuppliers()">بحث</button>
+                                onclick="searchAccounts()">بحث</button>
                     </div>
                 </div>
 
@@ -29,13 +29,12 @@
                     <table class="table table-bordered table-hover">
                         <thead class="table-light">
                             <tr class="text-center">
-                                <th>الرقم</th>
-                                <th>اسم المورد</th>
                                 <th>الرقم المحاسبي</th>
+                                <th>الاسم</th>
                                 <th>اختيار</th>
                             </tr>
                         </thead>
-                        <tbody id="supplierResults"></tbody>
+                        <tbody id="accountResults"></tbody>
                     </table>
                 </div>
 
@@ -44,11 +43,10 @@
     </div>
 </div>
 
-<template id="supplierRowTemplate">
+<template id="accountRowTemplate">
     <tr>
         <td class="c-id"></td>
         <td class="c-name"></td>
-        <td class="c-code"></td>
         <td><button type="button" class="btn btn-sm btn-success select-btn">اختيار</button></td>
     </tr>
 </template>

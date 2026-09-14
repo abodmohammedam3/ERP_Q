@@ -12,6 +12,7 @@ use App\Http\Controllers\Inventory\StockController;
 use App\Http\Controllers\Accounting\CoinController;
 use App\Http\Controllers\Accounting\BoxController;
 use App\Http\Controllers\Accounting\BankController;
+use App\Http\Controllers\Operation\Purchases\PurchaseInvoiceController;
 
 Route::get('/', function () {
     return view('dashboard.index');
@@ -152,6 +153,11 @@ Route::get(
     '/setting/suppliers/list',
     [SupplierController::class, 'list']
 )->name('suppliers.list');
+
+Route::get(
+    '/setting/suppliers/search',
+    [SupplierController::class, 'search']
+)->name('suppliers.search');
 
 Route::get(
     '/setting/suppliers/{id}',
@@ -405,6 +411,7 @@ Route::patch(
     '/setting/inventory/warehouses/{stock}/toggle-status',
     [StockController::class, 'toggleStatus']
 )->name('warehouses.toggleStatus');
+
 // =====================================================
 // الصفحات التشغيلية
 // =====================================================
@@ -412,10 +419,6 @@ Route::patch(
 Route::get('/operation/sales/invoices', function () {
     return view('operation.sales.invoices.index');
 })->name('sales.index');
-
-Route::get('/operation/purchases/invoicesPurch', function () {
-    return view('operation.purchases.invoicesPurch.index');
-})->name('invoicesPurch.index');
 
 Route::get('/operation/accounting/paymentVouchers', function () {
     return view('operation.accounting.paymentVouchers.index');
@@ -461,3 +464,76 @@ Route::patch(
     '/setting/accounting/coins/{coin}/toggle-status',
     [CoinController::class, 'toggleStatus']
 )->name('coins.toggleStatus');
+
+// =====================================================
+// فواتير الشراء
+// =====================================================
+
+// -----------------------------------------------------
+// عرض الشاشة الرئيسية
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/purchases/invoicesPurch',
+    [PurchaseInvoiceController::class, 'index']
+)->name('invoicesPurch.index');
+
+
+// -----------------------------------------------------
+// رقم الفاتورة التالي
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/purchases/invoicesPurch/next-number',
+    [PurchaseInvoiceController::class, 'nextNumber']
+)->name('invoicesPurch.nextNumber');
+
+
+// -----------------------------------------------------
+// قائمة الفواتير (JSON) — لنافذة البحث
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/purchases/invoicesPurch/list',
+    [PurchaseInvoiceController::class, 'list']
+)->name('invoicesPurch.list');
+
+
+// -----------------------------------------------------
+// عرض فاتورة واحدة (JSON)
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/purchases/invoicesPurch/{id}',
+    [PurchaseInvoiceController::class, 'show']
+)->name('invoicesPurch.show');
+
+
+// -----------------------------------------------------
+// حفظ فاتورة جديدة
+// -----------------------------------------------------
+
+Route::post(
+    '/operation/purchases/invoicesPurch',
+    [PurchaseInvoiceController::class, 'store']
+)->name('invoicesPurch.store');
+
+
+// -----------------------------------------------------
+// تحديث فاتورة
+// -----------------------------------------------------
+
+Route::put(
+    '/operation/purchases/invoicesPurch/{id}',
+    [PurchaseInvoiceController::class, 'update']
+)->name('invoicesPurch.update');
+
+
+// -----------------------------------------------------
+// حذف فاتورة
+// -----------------------------------------------------
+
+Route::delete(
+    '/operation/purchases/invoicesPurch/{id}',
+    [PurchaseInvoiceController::class, 'destroy']
+)->name('invoicesPurch.destroy');

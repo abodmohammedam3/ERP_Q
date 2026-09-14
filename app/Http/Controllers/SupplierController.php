@@ -636,4 +636,39 @@ class SupplierController extends Controller
                 $html,
         ]);
     }
+
+        // =====================================================
+    // بحث الموردين (JSON) — لشاشات العمليات (المشتريات/المبيعات)
+    // =====================================================
+
+    public function search(Request $request)
+    {
+        $search = trim($request->input('search', ''));
+
+        $query = Supplier::with('account')
+            ->where('supStoped', 0) // الموردون النشطون فقط
+            ->orderBy('suplierID', 'DESC');
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('supName', 'like', "%{$search}%")
+                  ->orWhere('supPhone', 'like', "%{$search}%")
+                  ->orWhereHas('account', function ($aq) use ($search) {
+                      $aq->where('accCode', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        $suppliers = $query->limit(50)->get()->map(function ($s) {
+            return [
+                'suplierID'   => $s->suplierID,
+                'supName'     => $s->supName,
+                'accountID'   => $s->accountID,
+                'accountCode' => $s->account->accCode ?? null,
+                'supStoped'   => (int) ($s->supStoped ?? 0),
+            ];
+        });
+
+        return response()->json(['data' => $suppliers]);
+    }
 }

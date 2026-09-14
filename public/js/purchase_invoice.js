@@ -1,379 +1,278 @@
 /* =========================================================
-حالة الشاشة والمتغيرات العامة
-========================================================= */
+   فاتورة الشراء — بدون HTML + Cache + Focus Flow + Toast
+   ========================================================= */
+
+/* =========================================================
+   الخرائط الثابتة
+   ========================================================= */
+
+const PAYMENT_METHOD_TO_INT = { credit: 1, cash: 2, bank: 3, network: 4 };
+const PAYMENT_METHOD_TO_STR = { 1: 'credit', 2: 'cash', 3: 'bank', 4: 'network' };
+
+/* =========================================================
+   الحالة العامة
+   ========================================================= */
 
 let invoiceMode = 'view';
-let lastInvoiceNumber = 0;
 let currentInvoiceId = null;
 
-let supplierModal = null;
-let currencyModal = null;
-let invoiceSearchModal = null;
-let warehouseModal = null;
-let accountModal = null;
-let purchaseItemModal = null;
-let typeModal = null;
+let supplierModal, currencyModal, invoiceSearchModal,
+    warehouseModal, accountModal, purchaseItemModal, typeModal;
 
 let activePurchaseRow = null;
 let currentTypeInput = null;
+let accountSearchType = '';
 
-// =========================================================
-// البيانات التجريبية (سيتم استبدالها بقاعدة البيانات)
-// =========================================================
-
-let invoices = [
-    {
-        id: 1,
-        number: '1',
-        date: '2026-08-20',
-        supplierId: 1,
-        supplierName: 'مورد تجريبي 1',
-        currencyId: 1,
-        currencyName: 'ريال يمني',
-        exchangeRate: 1,
-        paymentMethod: 'cash',
-        paymentAccountId: 1,
-        paymentAccountName: 'الصندوق الرئيسي',
-        warehouseId: 1,
-        warehouseName: 'المخزن الرئيسي',
-        statement: 'فاتورة شراء تجريبية',
-        reference: 'REF-001',
-        expenses: 0,
-        tax: 0,
-        transportation: 0,
-        otherCost: 0,
-        otherCostDesc: '',
-        items: [
-            { itemName: 'صنف ارحبي', type: 'عود', code: 'ITM-001', unit: 'كيلو', quantity: 10, price: 10000, discount: 0, total: 100000 }
-        ]
-    },
-    {
-        id: 2,
-        number: '2',
-        date: '2026-08-21',
-        supplierId: 2,
-        supplierName: 'مورد تجريبي 2',
-        currencyId: 1,
-        currencyName: 'ريال يمني',
-        exchangeRate: 1,
-        paymentMethod: 'bank',
-        paymentAccountId: 3,
-        paymentAccountName: 'الحساب البنكي الرئيسي',
-        warehouseId: 1,
-        warehouseName: 'المخزن الرئيسي',
-        statement: 'فاتورة شراء ثانية',
-        reference: 'REF-002',
-        expenses: 5000,
-        tax: 2000,
-        transportation: 1000,
-        otherCost: 0,
-        otherCostDesc: '',
-        items: [
-            { itemName: 'ماوية', type: 'بزغه', code: 'ITM-002', unit: 'حبه', quantity: 5, price: 20000, discount: 1000, total: 99000 }
-        ]
-    }
-];
-
-let suppliers = [
-    { id: 1, name: 'مورد تجريبي 1', account: '401001' },
-    { id: 2, name: 'مورد تجريبي 2', account: '401002' },
-    { id: 3, name: 'مؤسسة التوريدات', account: '401003' }
-];
-
-let currencies = [
-    { id: 1, name: 'ريال يمني', symbol: 'YER', exchangeRate: 1 },
-    { id: 2, name: 'ريال سعودي', symbol: 'SAR', exchangeRate: 140 },
-    { id: 3, name: 'دولار أمريكي', symbol: 'USD', exchangeRate: 530 }
-];
-
-let warehouses = [
-    { id: 1, name: 'المخزن الرئيسي' },
-    { id: 2, name: 'مخزن الفرع الأول' }
-];
-
-let accounts = {
-    cash: [
-        { id: 1, name: 'الصندوق الرئيسي', type: 'نقد' },
-        { id: 2, name: 'صندوق المبيعات', type: 'نقد' }
-    ],
-    bank: [
-        { id: 3, name: 'الحساب البنكي الرئيسي', type: 'بنك' },
-        { id: 4, name: 'حساب بنك الكريمي', type: 'بنك' }
-    ],
-    network: [
-        { id: 5, name: 'محفظة MTN', type: 'شبكة' },
-        { id: 6, name: 'محفظة يمن موبايل', type: 'شبكة' }
-    ]
+const cache = {
+    units: [], coins: [], warehouses: [], items: [],
+    types: [], boxes: [], banks: [],
 };
 
-let purchaseItems = [
-    { id: 1, name: 'صنف ارحبي', code: 'ITM-001' },
-    { id: 2, name: 'ماوية', code: 'ITM-002' },
-    { id: 3, name: 'همداني', code: 'ITM-003' },
-    { id: 4, name: 'صعدي', code: 'ITM-004' }
-];
+const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
-let types = ['عود', 'بزغه', 'اميال', 'نقفه'];
+/* =========================================================
+   Helpers
+   ========================================================= */
 
-// =========================================================
-// تهيئة الشاشة
-// =========================================================
+function apiHeaders(json = false) {
+    const h = { 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF_TOKEN };
+    if (json) h['Content-Type'] = 'application/json';
+    return h;
+}
 
-document.addEventListener('DOMContentLoaded', function () {
-    supplierModal = new bootstrap.Modal(document.getElementById('supplierModal'));
-    currencyModal = new bootstrap.Modal(document.getElementById('currencyModal'));
-    invoiceSearchModal = new bootstrap.Modal(document.getElementById('invoiceSearchModal'));
-    warehouseModal = new bootstrap.Modal(document.getElementById('warehouseModal'));
-    accountModal = new bootstrap.Modal(document.getElementById('accountModal'));
-    purchaseItemModal = new bootstrap.Modal(document.getElementById('purchaseItemModal'));
-    typeModal = new bootstrap.Modal(document.getElementById('typeModal'));
+async function apiGet(url) {
+    const r = await fetch(url, { headers: apiHeaders() });
+    if (!r.ok) throw new Error(`فشل الطلب: ${r.status}`);
+    return r.json();
+}
 
-    if (invoices.length > 0) {
-        const maxId = Math.max(...invoices.map(inv => parseInt(inv.number, 10)));
-        lastInvoiceNumber = maxId;
+async function apiSend(url, method, body) {
+    const r = await fetch(url, {
+        method, headers: apiHeaders(true), body: JSON.stringify(body),
+    });
+    const json = await r.json().catch(() => ({}));
+    if (!r.ok) {
+        const e = new Error(json.message || 'فشل الطلب');
+        e.errors = json.errors;
+        throw e;
     }
+    return json;
+}
+
+function debounce(fn, ms = 50) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+function cloneTemplate(templateId) {
+    const tpl = document.getElementById(templateId);
+    if (!tpl) throw new Error(`Template not found: ${templateId}`);
+    return tpl.content.firstElementChild.cloneNode(true);
+}
+
+function unwrap(data) {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.data)) return data.data;
+    return [];
+}
+
+/* =========================================================
+   إشعار موحّد — يستخدم showSystemToast إن وُجد
+   ========================================================= */
+
+function notify(message, type = 'info') {
+    if (typeof window.showSystemToast === 'function') {
+        window.showSystemToast(message, type);
+    } else {
+        // احتياطي إن لم يكن system.js محمّلًا
+        console.warn(`[${type}] ${message}`);
+        alert(message);
+    }
+}
+
+/* =========================================================
+   تهيئة
+   ========================================================= */
+
+document.addEventListener('DOMContentLoaded', async () => {
+
+    const init = (id) => {
+        const el = document.getElementById(id);
+        if (!el) { console.warn(`⚠️ Modal غير موجود: #${id}`); return null; }
+        return new bootstrap.Modal(el);
+    };
+
+    supplierModal = init('supplierModal');
+    currencyModal = init('currencyModal');
+    invoiceSearchModal = init('invoiceSearchModal');
+    warehouseModal = init('warehouseModal');
+    accountModal = init('accountModal');
+    purchaseItemModal = init('purchaseItemModal');
+    typeModal = init('typeModal');
+
+    await preloadAll();
 
     setInvoiceMode('view');
     clearInvoiceForm();
 });
 
-// =========================================================
-// دالة مساعدة للانتقال إلى الحقل التالي
-// =========================================================
+async function preloadAll() {
+    try {
+        const [units, coins, warehouses, items, types, boxes, banks] = await Promise.all([
+            apiGet('/setting/inventory/units/list'),
+            apiGet('/setting/accounting/coins/list'),
+            apiGet('/setting/inventory/warehouses/list'),
+            apiGet('/setting/inventory/items/list'),
+            apiGet('/setting/inventory/types/list'),
+            apiGet('/setting/accounting/boxes/list'),
+            apiGet('/setting/accounting/banks/list'),
+        ]);
 
-function focusNextField(currentElement) {
-    const allInputs = Array.from(document.querySelectorAll(
-        'input:not([readonly]):not([disabled]), select:not([disabled])'
-    ));
-    const visibleInputs = allInputs.filter(el => el.offsetParent !== null);
-    const currentIndex = visibleInputs.indexOf(currentElement);
-    if (currentIndex !== -1 && currentIndex < visibleInputs.length - 1) {
-        visibleInputs[currentIndex + 1].focus();
+        cache.units = unwrap(units);
+        cache.coins = unwrap(coins);
+        cache.warehouses = unwrap(warehouses);
+        cache.items = unwrap(items);
+        cache.types = unwrap(types);
+        cache.boxes = unwrap(boxes);
+        cache.banks = unwrap(banks);
+
+        console.log('✅ تم تحميل البيانات المرجعية');
+    } catch (e) {
+        console.error('فشل تحميل البيانات المرجعية', e);
+        notify('تعذّر تحميل البيانات المرجعية', 'danger');
     }
 }
 
-// =========================================================
-// تغيير وضع الشاشة
-// =========================================================
+/* =========================================================
+   أوضاع الشاشة
+   ========================================================= */
 
 function setInvoiceMode(mode) {
     invoiceMode = mode;
 
-    const inputs = document.querySelectorAll(
+    document.querySelectorAll(
         '#PurchaseInvoicesON2, #PurchaseInvoicesDate2, #PuInPaymentMethod2, ' +
         '#paymentAccount, #supplierName, #currencyName, #PuInExchangeRate2, ' +
         '#warehouseName, #PuInStatement2, #invoiceReference, #PuInExpenses, ' +
         '#PuInTaxCost, #PuInTransportation, #PuInOtherCost, #otherCostDescription'
-    );
+    ).forEach(el => { el.disabled = (mode === 'view'); });
 
-    inputs.forEach(input => {
-        input.disabled = (mode === 'view');
-    });
+    document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row')
+        .forEach(row => enableRow(row));
 
-    const rows = document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row');
-    rows.forEach(row => enableRow(row));
+    const addBtn = document.getElementById('btnAddInvoiceRow');
+    if (addBtn) addBtn.disabled = (mode === 'view');
 
-    const addRowButton = document.getElementById('btnAddInvoiceRow');
-    if (addRowButton) addRowButton.disabled = (mode === 'view');
-
-    const saveButton = document.getElementById('btnSaveInvoice');
-    const saveNewButton = document.getElementById('btnSaveAndNew');
-    const cancelButton = document.getElementById('btnCancelInvoice');
-    const editButton = document.getElementById('btnEditInvoice');
-    const printButton = document.getElementById('btnPrintInvoice');
+    const saveBtn = document.getElementById('btnSaveInvoice');
+    const saveNewBtn = document.getElementById('btnSaveAndNew');
+    const cancelBtn = document.getElementById('btnCancelInvoice');
+    const editBtn = document.getElementById('btnEditInvoice');
+    const printBtn = document.getElementById('btnPrintInvoice');
 
     if (mode === 'view') {
-        saveButton.disabled = true;
-        saveNewButton.disabled = true;
-        cancelButton.classList.add('d-none');
-        editButton.disabled = !hasInvoiceData();
-        printButton.disabled = !hasInvoiceData();
+        saveBtn.disabled = true;
+        saveNewBtn.disabled = true;
+        cancelBtn.classList.add('d-none');
+        editBtn.disabled = !hasInvoiceData();
+        printBtn.disabled = !hasInvoiceData();
         document.getElementById('paymentAccount').disabled = true;
         document.getElementById('paymentAccountContainer').classList.add('d-none');
     } else {
-        saveButton.disabled = false;
-        saveNewButton.disabled = false;
-        cancelButton.classList.remove('d-none');
-        editButton.disabled = true;
-        printButton.disabled = true;
+        saveBtn.disabled = false;
+        saveNewBtn.disabled = false;
+        cancelBtn.classList.remove('d-none');
+        editBtn.disabled = true;
+        printBtn.disabled = true;
         paymentMethodChanged();
     }
 }
 
-// =========================================================
-// إضافة فاتورة جديدة
-// =========================================================
+/* =========================================================
+   Reset / Clear
+   ========================================================= */
 
-function resetInvoice() {
+async function resetInvoice() {
     clearInvoiceForm();
     setInvoiceMode('add');
 
-    lastInvoiceNumber++;
-    document.getElementById('PurchaseInvoicesON2').value = lastInvoiceNumber;
+    try {
+        const res = await apiGet('/operation/purchases/invoicesPurch/next-number');
+        document.getElementById('PurchaseInvoicesON2').value = res.next_number || '';
+    } catch (e) {
+        notify('تعذّر جلب رقم الفاتورة التالي', 'danger');
+    }
 
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('PurchaseInvoicesDate2').value = today;
+    document.getElementById('PurchaseInvoicesDate2').value =
+        new Date().toISOString().split('T')[0];
 
     addInvoiceRow();
-
-    document.getElementById('currencyName').disabled = false;
-    document.getElementById('PuInExchangeRate2').disabled = false;
+    document.getElementById('supplierName')?.focus();
 }
 
-// =========================================================
-// تفريغ الفاتورة
-// =========================================================
-
 function clearInvoiceForm() {
-    document.querySelectorAll('#PurchaseInvoicesON2, #PurchaseInvoicesDate2, #PuInPaymentMethod2, ' +
+    document.querySelectorAll(
+        '#PurchaseInvoicesON2, #PurchaseInvoicesDate2, #PuInPaymentMethod2, ' +
         '#paymentAccount, #supplierName, #currencyName, #PuInExchangeRate2, ' +
         '#warehouseName, #PuInStatement2, #invoiceReference, #PuInExpenses, ' +
-        '#PuInTaxCost, #PuInTransportation, #PuInOtherCost, #otherCostDescription')
-        .forEach(el => {
-            if (el.tagName === 'SELECT') el.selectedIndex = 0;
-            else el.value = '';
-        });
+        '#PuInTaxCost, #PuInTransportation, #PuInOtherCost, #otherCostDescription'
+    ).forEach(el => {
+        if (el.tagName === 'SELECT') el.selectedIndex = 0;
+        else el.value = '';
+    });
 
-    document.getElementById('suplierID').value = '';
-    document.getElementById('coinsID').value = '';
-    document.getElementById('warehouseID').value = '';
-    document.getElementById('paymentAccountId').value = '';
+    ['suplierID', 'coinsID', 'warehouseID', 'paymentAccountId', 'AmountWords']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
 
-    document.getElementById('purchaseInvoiceDetails').innerHTML = `
-        <tr>
-            <td colspan="10" class="text-center text-muted py-4">
-                لا توجد أصناف مضافة إلى الفاتورة
-            </td>
-        </tr>
-    `;
-
+    setEmptyDetailsMessage();
     document.getElementById('totalDiscountDisplay').textContent = '0.00';
     document.getElementById('invoiceTotalDisplay').textContent = '0.00';
+    document.getElementById('AmountWords').value = '';
 
     hidePaymentAccounts();
     document.getElementById('otherCostDescriptionContainer').classList.add('d-none');
-    document.getElementById('otherCostDescription').value = '';
 
     setInvoiceMode('view');
     currentInvoiceId = null;
 }
 
-// =========================================================
-// حساب الصف والإجماليات
-// =========================================================
+function setEmptyDetailsMessage() {
+    const tbody = document.getElementById('purchaseInvoiceDetails');
+    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
 
-function calculateRow(input) {
-    const row = input.closest('tr');
-    if (!row) return;
-
-    const unit = row.querySelector('.row-unit')?.value || '';
-    let quantity = 0;
-
-    if (unit === 'كيلو') {
-        quantity = parseFloat(row.querySelector('.row-weight')?.value) || 0;
-    } else if (unit === 'حبه') {
-        quantity = parseFloat(row.querySelector('.row-quantity')?.value) || 0;
-    } else {
-        quantity = parseFloat(row.querySelector('.row-quantity')?.value) || 0;
-    }
-
-    const price = parseFloat(row.querySelector('.row-price')?.value) || 0;
-    const discount = parseFloat(row.querySelector('.row-discount')?.value) || 0;
-
-    const subtotal = quantity * price;
-    const total = Math.max(0, subtotal - discount);
-
-    const totalInput = row.querySelector('.row-total');
-    if (totalInput) totalInput.value = total.toFixed(2);
-
-    calculateTotals();
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 10;
+    td.className = 'text-center text-muted py-4';
+    td.textContent = 'لا توجد أصناف مضافة إلى الفاتورة';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
 }
 
-function calculateTotals() {
-    let itemsTotal = 0;
-    let totalDiscount = 0;
-
-    document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row').forEach(row => {
-        const total = parseFloat(row.querySelector('.row-total')?.value) || 0;
-        const discount = parseFloat(row.querySelector('.row-discount')?.value) || 0;
-        itemsTotal += total;
-        totalDiscount += discount;
-    });
-
-    const exchangeRate = parseFloat(document.getElementById('PuInExchangeRate2')?.value) || 1;
-    const adjustedItemsTotal = itemsTotal * exchangeRate;
-
-    const expenses = parseFloat(document.getElementById('PuInExpenses')?.value) || 0;
-    const tax = parseFloat(document.getElementById('PuInTaxCost')?.value) || 0;
-    const transportation = parseFloat(document.getElementById('PuInTransportation')?.value) || 0;
-    const otherCost = parseFloat(document.getElementById('PuInOtherCost')?.value) || 0;
-
-    const invoiceTotal = adjustedItemsTotal + expenses + tax + transportation + otherCost;
-
-    document.getElementById('totalDiscountDisplay').textContent = totalDiscount.toFixed(2);
-    document.getElementById('invoiceTotalDisplay').textContent = invoiceTotal.toFixed(2);
-}
-
-function exchangeRateChanged() {
-    calculateTotals();
-}
-
-// =========================================================
-// إدارة الصفوف
-// =========================================================
+/* =========================================================
+   Row Template
+   ========================================================= */
 
 function addInvoiceRow() {
     if (invoiceMode === 'view') return;
 
     const tbody = document.getElementById('purchaseInvoiceDetails');
-    const emptyRow = tbody.querySelector('td[colspan="10"]');
-    if (emptyRow) tbody.innerHTML = '';
+    const emptyTd = tbody.querySelector('td[colspan="10"]');
+    if (emptyTd) while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
 
-    const rowCount = tbody.querySelectorAll('.purchase-detail-row').length + 1;
-    const row = document.createElement('tr');
-    row.className = 'purchase-detail-row';
-
-    row.innerHTML = `
-        <td class="row-num">${rowCount}</td>
-        <td>
-            <input type="text" class="form-control form-control-sm row-item" placeholder="الصنف" disabled
-                   onclick="openPurchaseItemModal(this)" onkeydown="purchaseItemKeyDown(event)" oninput="purchaseItemInput(event)">
-        </td>
-        <td>
-            <input type="text" class="form-control form-control-sm row-type" placeholder="النوع" disabled
-                   onclick="openTypeModal(this)" onkeydown="typeKeyDown(event)" oninput="typeInput(event)">
-        </td>
-        <td>
-            <input type="text" class="form-control form-control-sm row-code" placeholder="الرمز" disabled>
-        </td>
-        <td>
-            <select class="form-select form-select-sm row-unit" disabled onchange="unitChanged(this)">
-                <option value="كيلو">كيلو</option>
-                <option value="حبه">حبه</option>
-            </select>
-        </td>
-        <td>
-            <input type="number" class="form-control form-control-sm row-weight row-quantity" placeholder="العدد" min="0" step="0.001" disabled oninput="calculateRow(this)">
-        </td>
-        <td>
-            <input type="number" class="form-control form-control-sm row-price" value="0" min="0" step="0.01" disabled oninput="calculateRow(this)">
-        </td>
-        <td>
-            <input type="number" class="form-control form-control-sm row-discount" value="0" min="0" step="0.01" disabled oninput="calculateRow(this)">
-        </td>
-        <td>
-            <input type="number" class="form-control form-control-sm row-total" value="0.00" readonly>
-        </td>
-        <td>
-            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)" disabled>
-                <i class="bi bi-trash3"></i>
-            </button>
-        </td>
-    `;
+    const row = cloneTemplate('invoiceRowTemplate');
+    const unitSelect = row.querySelector('.row-unit');
+    cache.units.forEach(u => {
+        const opt = document.createElement('option');
+        opt.value = u.UnitID;
+        opt.textContent = u.UnitName;
+        unitSelect.appendChild(opt);
+    });
 
     tbody.appendChild(row);
     enableRow(row);
+    renumberRows();
     calculateTotals();
+    return row;
 }
 
 function enableRow(row) {
@@ -383,57 +282,85 @@ function enableRow(row) {
             el.disabled = (invoiceMode === 'view');
         }
     });
-    const deleteBtn = row.querySelector('button');
-    if (deleteBtn) deleteBtn.disabled = (invoiceMode === 'view');
+    const btn = row.querySelector('button');
+    if (btn) btn.disabled = (invoiceMode === 'view');
 }
 
-function removeRow(button) {
+function removeRow(btn) {
     if (invoiceMode === 'view') return;
-    const row = button.closest('tr');
+    const row = btn.closest('tr');
     if (row) row.remove();
     renumberRows();
     calculateTotals();
 
     const tbody = document.getElementById('purchaseInvoiceDetails');
-    if (tbody.querySelectorAll('.purchase-detail-row').length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="10" class="text-center text-muted py-4">
-                    لا توجد أصناف مضافة إلى الفاتورة
-                </td>
-            </tr>
-        `;
-    }
+    if (!tbody.querySelector('.purchase-detail-row')) setEmptyDetailsMessage();
 }
 
 function renumberRows() {
-    document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row').forEach((row, index) => {
-        const num = row.querySelector('.row-num');
-        if (num) num.textContent = index + 1;
-    });
+    document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row')
+        .forEach((r, i) => { r.querySelector('.row-num').textContent = i + 1; });
 }
 
-function unitChanged(select) {
-    const row = select.closest('tr');
-    const qtyInput = row.querySelector('.row-weight');
-    if (!qtyInput) return;
+/* =========================================================
+   حساب الإجماليات + المبلغ كتابة
+   ========================================================= */
 
-    if (select.value === 'كيلو') {
-        qtyInput.placeholder = 'الوزن';
-        qtyInput.step = '0.001';
-    } else if (select.value === 'حبه') {
-        qtyInput.placeholder = 'الكمية';
-        qtyInput.step = '1';
+function calculateRow(input) {
+    const row = input.closest('tr');
+    if (!row) return;
+    const qty = parseFloat(row.querySelector('.row-weight').value) || 0;
+    const price = parseFloat(row.querySelector('.row-price').value) || 0;
+    const disc = parseFloat(row.querySelector('.row-discount').value) || 0;
+    row.querySelector('.row-total').value = Math.max(0, qty * price - disc).toFixed(2);
+    calculateTotals();
+}
+
+function calculateTotals() {
+    let itemsTotal = 0, discountTotal = 0;
+    document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row')
+        .forEach(row => {
+            const q = parseFloat(row.querySelector('.row-weight').value) || 0;
+            const p = parseFloat(row.querySelector('.row-price').value) || 0;
+            const d = parseFloat(row.querySelector('.row-discount').value) || 0;
+            itemsTotal += q * p;
+            discountTotal += d;
+        });
+
+    const expenses = parseFloat(document.getElementById('PuInExpenses').value) || 0;
+    const tax = parseFloat(document.getElementById('PuInTaxCost').value) || 0;
+    const trans = parseFloat(document.getElementById('PuInTransportation').value) || 0;
+    const other = parseFloat(document.getElementById('PuInOtherCost').value) || 0;
+
+    const net = Math.max(0, itemsTotal - discountTotal);
+    const total = net + expenses + tax + trans + other;
+
+    document.getElementById('totalDiscountDisplay').textContent = discountTotal.toFixed(2);
+    document.getElementById('invoiceTotalDisplay').textContent = total.toFixed(2);
+
+    // تحديث المبلغ كتابة
+    updateAmountWords(total);
+}
+
+function updateAmountWords(total) {
+    const el = document.getElementById('AmountWords');
+    if (!el) return;
+
+    if (!total || total <= 0) { el.value = ''; return; }
+
+    if (window.Utils && typeof window.Utils.numberToWords === 'function') {
+        const currencyName = document.getElementById('currencyName')?.value || '';
+        el.value = window.Utils.numberToWords(total, currencyName);
     } else {
-        qtyInput.placeholder = 'العدد';
-        qtyInput.value = '';
+        el.value = total.toFixed(2);
     }
-    calculateRow(select);
 }
 
-// =========================================================
-// طريقة الدفع والحسابات
-// =========================================================
+function exchangeRateChanged() { calculateTotals(); }
+
+/* =========================================================
+   Payment method
+   ========================================================= */
 
 function paymentMethodChanged() {
     hidePaymentAccounts();
@@ -452,760 +379,645 @@ function paymentMethodChanged() {
     container.classList.remove('d-none');
     input.disabled = (invoiceMode === 'view');
 
-    const label = container.querySelector('label');
-    if (label) {
-        const labels = {
-            cash: 'الصندوق',
-            bank: 'الحساب البنكي',
-            network: 'حساب المحفظة'
-        };
-        label.textContent = labels[method] || 'الحساب';
-    }
+    const labels = { cash: 'الصندوق', bank: 'الحساب البنكي', network: 'حساب المحفظة' };
+    const lbl = container.querySelector('label');
+    if (lbl) lbl.textContent = labels[method] || 'الحساب';
 }
 
 function hidePaymentAccounts() {
     document.getElementById('paymentAccountContainer').classList.add('d-none');
 }
 
-let accountSearchType = '';
+/* =========================================================
+   Input handlers
+   ========================================================= */
 
-// ---- حساب الدفع ----
-
-function accountKeyDown(event) {
-    const input = event.target;
-    if (event.key === 'Enter') {
-        event.preventDefault();
-        openAccountModal();
-    } else if (event.key === 'Tab') {
-        if (input.value.trim() !== '') {
-            event.preventDefault();
-            openAccountModal();
-        }
+function supplierKeyDown(e) {
+    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
+        e.preventDefault(); openSupplierModal();
+    }
+}
+function currencyKeyDown(e) {
+    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
+        e.preventDefault(); openCurrencyModal();
+    }
+}
+function warehouseKeyDown(e) {
+    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
+        e.preventDefault(); openWarehouseModal();
+    }
+}
+function accountKeyDown(e) {
+    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
+        e.preventDefault(); openAccountModal();
     }
 }
 
-function accountInput(event) {
-    if (invoiceMode !== 'view') {
-        clearTimeout(window.accountInputTimeout);
-        window.accountInputTimeout = setTimeout(() => {
-            const input = event.target;
-            if (input.value.trim() !== '') {
-                openAccountModal();
-            }
-        }, 50);
-    }
-}
+function supplierInput(e) { debounce(() => { if (e.target.value.trim()) openSupplierModal(); })(); }
+function currencyInput(e) { debounce(() => { if (e.target.value.trim()) openCurrencyModal(); })(); }
+function warehouseInput(e) { debounce(() => { if (e.target.value.trim()) openWarehouseModal(); })(); }
+function accountInput(e) { debounce(() => { if (e.target.value.trim()) openAccountModal(); })(); }
+function purchaseItemInput(e) { debounce(() => { if (e.target.value.trim()) { activePurchaseRow = e.target.closest('tr'); openPurchaseItemModal(); } })(); }
+function typeInput(e) { debounce(() => { if (e.target.value.trim()) { currentTypeInput = e.target; openTypeModal(); } })(); }
 
-function openAccountModal() {
-    if (invoiceMode === 'view') return;
-    const method = document.getElementById('PuInPaymentMethod2').value;
-    if (!method || method === 'credit') {
-        alert('يرجى اختيار طريقة دفع مناسبة أولاً.');
-        return;
-    }
+function supplierBlur() { }
+function currencyBlur() { }
+function warehouseBlur() { }
+function accountBlur() { }
 
-    accountSearchType = method;
-    const input = document.getElementById('paymentAccount');
-    document.getElementById('accountSearchInput').value = input.value;
-
-    accountModal.show();
-    setTimeout(() => {
-        document.getElementById('accountSearchInput').focus();
-        searchAccounts();
-    }, 300);
-}
-
-function searchAccounts() {
-    const search = document.getElementById('accountSearchInput').value.trim();
-    const tbody = document.getElementById('accountResults');
-    const list = accounts[accountSearchType] || [];
-    const results = list.filter(acc => acc.name.includes(search));
-
-    tbody.innerHTML = '';
-    if (results.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3">لا توجد نتائج</td></tr>`;
-        return;
-    }
-
-    results.forEach(acc => {
-        tbody.innerHTML += `
-            <tr>
-                <td>${acc.id}</td>
-                <td>${acc.name}</td>
-                <td>${acc.type}</td>
-                <td>
-                    <button type="button" class="btn btn-sm btn-success" onclick="selectAccount('${acc.id}','${acc.name}')">
-                        اختيار
-                    </button>
-                </td>
-            </tr>
-        `;
-    });
-}
-
-function selectAccount(id, name) {
-    document.getElementById('paymentAccountId').value = id;
-    document.getElementById('paymentAccount').value = name;
-    accountModal.hide();
-    document.getElementById('supplierName').focus();
-}
-
-// ---- المورد ----
-
-function supplierKeyDown(event) {
-    const input = event.target;
-    if (event.key === 'Enter') {
-        event.preventDefault();
-        openSupplierModal();
-    } else if (event.key === 'Tab') {
-        if (input.value.trim() !== '') {
-            event.preventDefault();
-            openSupplierModal();
-        }
-    }
-}
-
-function supplierInput(event) {
-    if (invoiceMode !== 'view') {
-        clearTimeout(window.supplierInputTimeout);
-        window.supplierInputTimeout = setTimeout(() => {
-            const input = event.target;
-            if (input.value.trim() !== '') {
-                openSupplierModal();
-            }
-        }, 50);
-    }
-}
+/* =========================================================
+   Supplier Modal
+   ========================================================= */
 
 function openSupplierModal() {
-    if (invoiceMode === 'view') return;
-    const val = document.getElementById('supplierName').value;
-    document.getElementById('supplierSearchInput').value = val;
+    if (invoiceMode === 'view' || !supplierModal) return;
+    document.getElementById('supplierSearchInput').value =
+        document.getElementById('supplierName').value;
     supplierModal.show();
     setTimeout(() => {
         document.getElementById('supplierSearchInput').focus();
         searchSuppliers();
-    }, 300);
+    }, 200);
 }
 
-function searchSuppliers() {
+async function searchSuppliers() {
     const search = document.getElementById('supplierSearchInput').value.trim();
     const tbody = document.getElementById('supplierResults');
-    const results = suppliers.filter(s => s.name.includes(search) || s.account.includes(search));
+    tbody.replaceChildren();
 
-    tbody.innerHTML = '';
-    if (results.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3">لا توجد نتائج</td></tr>`;
-        return;
-    }
+    try {
+        const res = await apiGet(`/setting/suppliers/search?search=${encodeURIComponent(search)}`);
+        const rows = unwrap(res);
 
-    results.forEach(s => {
-        tbody.innerHTML += `
-            <tr>
-                <td>${s.id}</td>
-                <td>${s.name}</td>
-                <td>${s.account}</td>
-                <td>
-                    <button type="button" class="btn btn-sm btn-success" onclick="selectSupplier('${s.id}','${s.name}')">
-                        اختيار
-                    </button>
-                </td>
-            </tr>
-        `;
-    });
+        rows.forEach(s => {
+            const tr = cloneTemplate('supplierRowTemplate');
+            tr.querySelector('.c-id').textContent = s.suplierID;
+            tr.querySelector('.c-name').textContent = s.supName ?? '';
+            tr.querySelector('.c-code').textContent = s.accountCode ?? '';
+            tr.querySelector('.select-btn').addEventListener('click', () => {
+                selectSupplier(s.accountID ?? '', s.supName ?? '');
+            });
+            tbody.appendChild(tr);
+        });
+    } catch (e) { console.error(e); }
 }
 
-function selectSupplier(id, name) {
-    document.getElementById('suplierID').value = id;
+function selectSupplier(accountId, name) {
+    document.getElementById('suplierID').value = accountId;
     document.getElementById('supplierName').value = name;
-    supplierModal.hide();
-    document.getElementById('currencyName').focus();
+    if (supplierModal) supplierModal.hide();
+    setTimeout(() => document.getElementById('currencyName').focus(), 250);
 }
 
-// ---- العملة ----
-
-function currencyKeyDown(event) {
-    const input = event.target;
-    if (event.key === 'Enter') {
-        event.preventDefault();
-        openCurrencyModal();
-    } else if (event.key === 'Tab') {
-        if (input.value.trim() !== '') {
-            event.preventDefault();
-            openCurrencyModal();
-        }
-    }
-}
-
-function currencyInput(event) {
-    if (invoiceMode !== 'view') {
-        clearTimeout(window.currencyInputTimeout);
-        window.currencyInputTimeout = setTimeout(() => {
-            const input = event.target;
-            if (input.value.trim() !== '') {
-                openCurrencyModal();
-            }
-        }, 50);
-    }
-}
+/* =========================================================
+   Currency Modal
+   ========================================================= */
 
 function openCurrencyModal() {
-    if (invoiceMode === 'view') return;
-    const val = document.getElementById('currencyName').value;
-    document.getElementById('currencySearchInput').value = val;
+    if (invoiceMode === 'view' || !currencyModal) return;
+    document.getElementById('currencySearchInput').value =
+        document.getElementById('currencyName').value;
     currencyModal.show();
     setTimeout(() => {
         document.getElementById('currencySearchInput').focus();
         searchCurrencies();
-    }, 300);
+    }, 200);
 }
 
-function searchCurrencies() {
+async function searchCurrencies() {
     const search = document.getElementById('currencySearchInput').value.trim();
     const tbody = document.getElementById('currencyResults');
-    const results = currencies.filter(c => c.name.includes(search) || c.symbol.includes(search));
+    tbody.replaceChildren();
 
-    tbody.innerHTML = '';
-    if (results.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-3">لا توجد نتائج</td></tr>`;
-        return;
-    }
+    const filtered = cache.coins.filter(c =>
+        !search ||
+        (c.coinsName || '').includes(search) ||
+        (c.coinsCode || '').includes(search)
+    );
 
-    results.forEach(c => {
-        tbody.innerHTML += `
-            <tr>
-                <td>${c.id}</td>
-                <td>${c.name}</td>
-                <td>${c.symbol}</td>
-                <td>${c.exchangeRate}</td>
-                <td>
-                    <button type="button" class="btn btn-sm btn-success" onclick="selectCurrency('${c.id}','${c.name}','${c.exchangeRate}')">
-                        اختيار
-                    </button>
-                </td>
-            </tr>
-        `;
+    filtered.forEach(c => {
+        const tr = cloneTemplate('currencyRowTemplate');
+        tr.querySelector('.c-id').textContent = c.coinsID;
+        tr.querySelector('.c-name').textContent = c.coinsName ?? '';
+        tr.querySelector('.c-code').textContent = c.coinsCode ?? '';
+        tr.querySelector('.c-rate').textContent = c.coinsExchangeRate ?? '';
+        tr.querySelector('.select-btn').addEventListener('click', () => {
+            selectCurrency(c.coinsID, c.coinsName, c.coinsExchangeRate);
+        });
+        tbody.appendChild(tr);
     });
 }
 
-function selectCurrency(id, name, exchangeRate) {
+function selectCurrency(id, name, rate) {
     document.getElementById('coinsID').value = id;
     document.getElementById('currencyName').value = name;
-    document.getElementById('PuInExchangeRate2').value = exchangeRate;
-    currencyModal.hide();
-    document.getElementById('warehouseName').focus();
+    document.getElementById('PuInExchangeRate2').value = rate;
+    if (currencyModal) currencyModal.hide();
     calculateTotals();
+    setTimeout(() => document.getElementById('warehouseName').focus(), 250);
 }
 
-// ---- المخزن ----
-
-function warehouseKeyDown(event) {
-    const input = event.target;
-    if (event.key === 'Enter') {
-        event.preventDefault();
-        openWarehouseModal();
-    } else if (event.key === 'Tab') {
-        if (input.value.trim() !== '') {
-            event.preventDefault();
-            openWarehouseModal();
-        }
-    }
-}
-
-function warehouseInput(event) {
-    if (invoiceMode !== 'view') {
-        clearTimeout(window.warehouseInputTimeout);
-        window.warehouseInputTimeout = setTimeout(() => {
-            const input = event.target;
-            if (input.value.trim() !== '') {
-                openWarehouseModal();
-            }
-        }, 50);
-    }
-}
+/* =========================================================
+   Warehouse Modal
+   ========================================================= */
 
 function openWarehouseModal() {
-    if (invoiceMode === 'view') return;
-    const val = document.getElementById('warehouseName').value;
-    document.getElementById('warehouseSearchInput').value = val;
+    if (invoiceMode === 'view' || !warehouseModal) return;
+    document.getElementById('warehouseSearchInput').value =
+        document.getElementById('warehouseName').value;
     warehouseModal.show();
     setTimeout(() => {
         document.getElementById('warehouseSearchInput').focus();
         searchWarehouses();
-    }, 300);
+    }, 200);
 }
 
-function searchWarehouses() {
+async function searchWarehouses() {
     const search = document.getElementById('warehouseSearchInput').value.trim();
     const tbody = document.getElementById('warehouseResults');
-    const results = warehouses.filter(w => w.name.includes(search));
+    tbody.replaceChildren();
 
-    tbody.innerHTML = '';
-    if (results.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted py-3">لا توجد نتائج</td></tr>`;
-        return;
-    }
+    const filtered = cache.warehouses.filter(w =>
+        !search || (w.StockName || '').includes(search)
+    );
 
-    results.forEach(w => {
-        tbody.innerHTML += `
-            <tr>
-                <td>${w.id}</td>
-                <td>${w.name}</td>
-                <td>
-                    <button type="button" class="btn btn-sm btn-success" onclick="selectWarehouse('${w.id}','${w.name}')">
-                        اختيار
-                    </button>
-                </td>
-            </tr>
-        `;
+    filtered.forEach(w => {
+        const tr = cloneTemplate('warehouseRowTemplate');
+        tr.querySelector('.c-id').textContent = w.StockID;
+        tr.querySelector('.c-name').textContent = w.StockName ?? '';
+        tr.querySelector('.select-btn').addEventListener('click', () => {
+            selectWarehouse(w.StockID, w.StockName);
+        });
+        tbody.appendChild(tr);
     });
 }
 
 function selectWarehouse(id, name) {
     document.getElementById('warehouseID').value = id;
     document.getElementById('warehouseName').value = name;
-    warehouseModal.hide();
+    if (warehouseModal) warehouseModal.hide();
 
-    // التركيز على حقل "الصنف" في أول صف من الجدول
-    const firstRow = document.querySelector('#purchaseInvoiceDetails .purchase-detail-row');
-    if (firstRow) {
-        const itemInput = firstRow.querySelector('.row-item');
-        if (itemInput) itemInput.focus();
-    } else {
-        // إذا لم يوجد صف، نضيف صفاً ثم نركز
-        addInvoiceRow();
-        setTimeout(() => {
-            const newRow = document.querySelector('#purchaseInvoiceDetails .purchase-detail-row');
-            if (newRow) {
-                const itemInput = newRow.querySelector('.row-item');
-                if (itemInput) itemInput.focus();
-            }
-        }, 100);
-    }
-}
-
-// ---- الأصناف (في جدول التفاصيل) ----
-
-function purchaseItemKeyDown(event) {
-    const input = event.target;
-    if (event.key === 'Enter') {
-        event.preventDefault();
-        activePurchaseRow = input.closest('tr');
-        openPurchaseItemModal();
-    } else if (event.key === 'Tab') {
-        if (input.value.trim() !== '') {
-            event.preventDefault();
-            activePurchaseRow = input.closest('tr');
-            openPurchaseItemModal();
+    setTimeout(() => {
+        const first = document.querySelector('#purchaseInvoiceDetails .purchase-detail-row');
+        if (first) {
+            first.querySelector('.row-item')?.focus();
+        } else {
+            addInvoiceRow();
+            setTimeout(() => {
+                document.querySelector('#purchaseInvoiceDetails .purchase-detail-row .row-item')?.focus();
+            }, 100);
         }
-    }
+    }, 250);
 }
 
-function purchaseItemInput(event) {
-    if (invoiceMode !== 'view') {
-        clearTimeout(window.itemInputTimeout);
-        window.itemInputTimeout = setTimeout(() => {
-            const input = event.target;
-            if (input.value.trim() !== '') {
-                activePurchaseRow = input.closest('tr');
-                openPurchaseItemModal();
-            }
-        }, 50);
+/* =========================================================
+   Account Modal
+   ========================================================= */
+
+function openAccountModal() {
+    if (invoiceMode === 'view' || !accountModal) return;
+
+    const method = document.getElementById('PuInPaymentMethod2').value;
+    if (!method || method === 'credit') {
+        notify('يرجى اختيار طريقة دفع أولًا', 'warning');
+        return;
+    }
+    accountSearchType = method;
+
+    document.getElementById('accountSearchInput').value =
+        document.getElementById('paymentAccount').value;
+
+    const titles = { cash: 'اختيار الصندوق', bank: 'اختيار البنك', network: 'اختيار المحفظة' };
+    document.getElementById('accountModalTitle').textContent =
+        titles[method] || 'اختيار الحساب';
+
+    accountModal.show();
+    setTimeout(() => {
+        document.getElementById('accountSearchInput').focus();
+        searchAccounts();
+    }, 200);
+}
+
+async function searchAccounts() {
+    const search = document.getElementById('accountSearchInput').value.trim();
+    const tbody = document.getElementById('accountResults');
+    tbody.replaceChildren();
+
+    let source = [];
+    if (accountSearchType === 'cash') source = cache.boxes;
+    else if (accountSearchType === 'bank') source = cache.banks;
+    else if (accountSearchType === 'network') source = cache.boxes;
+    else return;
+
+    const filtered = source.filter(r => {
+        const n = r.boxName || r.bankName || '';
+        return !search || n.includes(search);
+    });
+
+    filtered.forEach(r => {
+        const id = r.accountID;
+        const name = r.boxName || r.bankName || '';
+        const tr = cloneTemplate('accountRowTemplate');
+        tr.querySelector('.c-id').textContent = id;
+        tr.querySelector('.c-name').textContent = name;
+        tr.querySelector('.select-btn').addEventListener('click', () => {
+            selectAccount(id, name);
+        });
+        tbody.appendChild(tr);
+    });
+}
+
+function selectAccount(id, name) {
+    document.getElementById('paymentAccountId').value = id;
+    document.getElementById('paymentAccount').value = name;
+    if (accountModal) accountModal.hide();
+    setTimeout(() => document.getElementById('supplierName').focus(), 250);
+}
+
+/* =========================================================
+   Item Modal
+   ========================================================= */
+
+function purchaseItemKeyDown(e) {
+    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
+        e.preventDefault();
+        activePurchaseRow = e.target.closest('tr');
+        openPurchaseItemModal();
     }
 }
 
 function openPurchaseItemModal(input) {
-    if (invoiceMode === 'view') return;
+    if (invoiceMode === 'view' || !purchaseItemModal) return;
     if (input) activePurchaseRow = input.closest('tr');
     if (!activePurchaseRow) return;
 
-    const val = activePurchaseRow.querySelector('.row-item')?.value || '';
-    document.getElementById('purchaseItemSearchInput').value = val;
+    document.getElementById('purchaseItemSearchInput').value =
+        activePurchaseRow.querySelector('.row-item')?.value || '';
     purchaseItemModal.show();
     setTimeout(() => {
         document.getElementById('purchaseItemSearchInput').focus();
         searchPurchaseItems();
-    }, 300);
+    }, 200);
 }
 
-function searchPurchaseItems() {
+async function searchPurchaseItems() {
     const search = document.getElementById('purchaseItemSearchInput').value.trim();
     const tbody = document.getElementById('purchaseItemResults');
-    const results = purchaseItems.filter(item => item.name.includes(search) || item.code.includes(search));
+    tbody.replaceChildren();
 
-    tbody.innerHTML = '';
-    if (results.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3">لا توجد نتائج</td></tr>`;
-        return;
-    }
+    const filtered = cache.items.filter(i =>
+        !search || (i.itemName2 || '').includes(search)
+    );
 
-    results.forEach(item => {
-        tbody.innerHTML += `
-            <tr>
-                <td>${item.id}</td>
-                <td>${item.name}</td>
-                <td>${item.code}</td>
-                <td>
-                    <button type="button" class="btn btn-sm btn-success" onclick="selectPurchaseItem('${item.id}','${item.name}','${item.code}')">
-                        اختيار
-                    </button>
-                </td>
-            </tr>
-        `;
+    filtered.forEach(item => {
+        const tr = cloneTemplate('itemRowTemplate');
+        tr.querySelector('.c-id').textContent = item.itemID;
+        tr.querySelector('.c-name').textContent = item.itemName2 ?? '';
+        tr.querySelector('.select-btn').addEventListener('click', () => {
+            selectPurchaseItem(item.itemID, item.itemName2);
+        });
+        tbody.appendChild(tr);
     });
 }
 
-function selectPurchaseItem(id, name, code) {
+function selectPurchaseItem(id, name) {
     if (!activePurchaseRow) return;
-    activePurchaseRow.querySelector('.row-item').value = name;
-    activePurchaseRow.querySelector('.row-code').value = code;
-    purchaseItemModal.hide();
-    // التركيز على حقل النوع
-    const typeInput = activePurchaseRow.querySelector('.row-type');
-    if (typeInput) typeInput.focus();
+    const inp = activePurchaseRow.querySelector('.row-item');
+    inp.value = name;
+    inp.dataset.itemId = id;
+    if (purchaseItemModal) purchaseItemModal.hide();
+    setTimeout(() => activePurchaseRow.querySelector('.row-type')?.focus(), 250);
 }
 
-// ---- الأنواع ----
+/* =========================================================
+   Type Modal
+   ========================================================= */
 
-function typeKeyDown(event) {
-    const input = event.target;
-    if (event.key === 'Enter') {
-        event.preventDefault();
-        currentTypeInput = input;
+function typeKeyDown(e) {
+    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
+        e.preventDefault();
+        currentTypeInput = e.target;
         openTypeModal();
-    } else if (event.key === 'Tab') {
-        if (input.value.trim() !== '') {
-            event.preventDefault();
-            currentTypeInput = input;
-            openTypeModal();
-        }
-    }
-}
-
-function typeInput(event) {
-    if (invoiceMode !== 'view') {
-        clearTimeout(window.typeInputTimeout);
-        window.typeInputTimeout = setTimeout(() => {
-            const input = event.target;
-            if (input.value.trim() !== '') {
-                currentTypeInput = input;
-                openTypeModal();
-            }
-        }, 50);
     }
 }
 
 function openTypeModal(input) {
-    if (invoiceMode === 'view') return;
-    currentTypeInput = input || window.currentTypeInput || document.activeElement;
-    if (!currentTypeInput || !currentTypeInput.classList.contains('row-type')) return;
+    if (invoiceMode === 'view' || !typeModal) return;
 
-    const val = currentTypeInput.value || '';
-    document.getElementById('typeSearchInput').value = val;
+    currentTypeInput = input || currentTypeInput || document.activeElement;
+    if (!currentTypeInput?.classList.contains('row-type')) return;
+
+    document.getElementById('typeSearchInput').value = currentTypeInput.value || '';
     typeModal.show();
     setTimeout(() => {
         document.getElementById('typeSearchInput').focus();
         searchTypes();
-    }, 300);
+    }, 200);
 }
 
-function searchTypes() {
+async function searchTypes() {
     const search = document.getElementById('typeSearchInput').value.trim();
     const tbody = document.getElementById('typeResults');
-    const results = types.filter(t => t.includes(search));
+    tbody.replaceChildren();
 
-    tbody.innerHTML = '';
-    if (results.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="2" class="text-center text-muted py-3">لا توجد نتائج</td></tr>`;
-        return;
-    }
-
-    results.forEach(type => {
-        tbody.innerHTML += `
-            <tr>
-                <td>${type}</td>
-                <td>
-                    <button type="button" class="btn btn-sm btn-success" onclick="selectType('${type}')">
-                        اختيار
-                    </button>
-                </td>
-            </tr>
-        `;
-    });
-}
-
-function selectType(name) {
-    if (currentTypeInput) {
-        currentTypeInput.value = name;
-    }
-    typeModal.hide();
-    // التركيز على حقل الرمز (بدلاً من الوحدة)
-    if (currentTypeInput) {
-        const row = currentTypeInput.closest('tr');
-        const codeInput = row.querySelector('.row-code');
-        if (codeInput) codeInput.focus();
-    }
-}
-
-// =========================================================
-// التكاليف الأخرى
-// =========================================================
-
-function otherCostChanged() {
-    const value = parseFloat(document.getElementById('PuInOtherCost').value) || 0;
-    const container = document.getElementById('otherCostDescriptionContainer');
-    const desc = document.getElementById('otherCostDescription');
-
-    if (value > 0) {
-        container.classList.remove('d-none');
-        desc.disabled = (invoiceMode === 'view');
-    } else {
-        container.classList.add('d-none');
-        desc.value = '';
-    }
-    calculateTotals();
-}
-
-// =========================================================
-// البحث عن الفاتورة
-// =========================================================
-
-function searchInvoice() {
-    document.getElementById('invoiceSearchInput').value = '';
-    document.getElementById('invoiceSearchResults').innerHTML = `
-        <tr>
-            <td colspan="7" class="text-center text-muted py-4">
-                أدخل بيانات البحث ثم اضغط بحث
-            </td>
-        </tr>
-    `;
-    invoiceSearchModal.show();
-    setTimeout(() => {
-        document.getElementById('invoiceSearchInput').focus();
-    }, 300);
-}
-
-function performInvoiceSearch() {
-    const search = document.getElementById('invoiceSearchInput').value.trim();
-    const tbody = document.getElementById('invoiceSearchResults');
-    const results = invoices.filter(inv =>
-        inv.number.includes(search) ||
-        inv.supplierName.includes(search)
+    const filtered = cache.types.filter(t =>
+        !search || (t.name || '').includes(search)
     );
 
-    tbody.innerHTML = '';
-    if (results.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4">لا توجد فواتير مطابقة للبحث</td></tr>`;
-        return;
-    }
-
-    results.forEach(inv => {
-        const total = inv.items.reduce((sum, item) => sum + item.total, 0);
-        tbody.innerHTML += `
-            <tr>
-                <td>${inv.number}</td>
-                <td>${inv.date}</td>
-                <td>${inv.supplierName}</td>
-                <td>${inv.currencyName}</td>
-                <td>${inv.paymentMethod}</td>
-                <td>${total.toFixed(2)}</td>
-                <td>
-                    <button type="button" class="btn btn-sm btn-primary" onclick="loadInvoice(${inv.id})">
-                        <i class="bi bi-eye"></i> عرض
-                    </button>
-                </td>
-            </tr>
-        `;
+    filtered.forEach(t => {
+        const tr = cloneTemplate('typeRowTemplate');
+        tr.querySelector('.c-id').textContent = t.id;
+        tr.querySelector('.c-name').textContent = t.name ?? '';
+        tr.querySelector('.select-btn').addEventListener('click', () => {
+            selectType(t.id, t.name);
+        });
+        tbody.appendChild(tr);
     });
 }
 
-function loadInvoice(invoiceId) {
-    const invoice = invoices.find(inv => inv.id === invoiceId);
-    if (!invoice) {
-        alert('الفاتورة غير موجودة');
-        return;
+function selectType(id, name) {
+    if (currentTypeInput) {
+        currentTypeInput.value = name;
+        currentTypeInput.dataset.typeId = id;
+        const row = currentTypeInput.closest('tr');
+        if (typeModal) typeModal.hide();
+        setTimeout(() => row.querySelector('.row-weight')?.focus(), 250);
+    } else if (typeModal) {
+        typeModal.hide();
     }
+}
 
-    clearInvoiceForm();
-    setInvoiceMode('view');
+/* =========================================================
+   Other cost
+   ========================================================= */
 
-    // تعبئة البيانات
-    document.getElementById('PurchaseInvoicesON2').value = invoice.number;
-    document.getElementById('PurchaseInvoicesDate2').value = invoice.date;
-    document.getElementById('suplierID').value = invoice.supplierId;
-    document.getElementById('supplierName').value = invoice.supplierName;
-    document.getElementById('coinsID').value = invoice.currencyId;
-    document.getElementById('currencyName').value = invoice.currencyName;
-    document.getElementById('PuInExchangeRate2').value = invoice.exchangeRate;
-    document.getElementById('warehouseID').value = invoice.warehouseId;
-    document.getElementById('warehouseName').value = invoice.warehouseName;
-    document.getElementById('PuInPaymentMethod2').value = invoice.paymentMethod;
-    document.getElementById('paymentAccountId').value = invoice.paymentAccountId || '';
-    document.getElementById('paymentAccount').value = invoice.paymentAccountName || '';
-    document.getElementById('PuInStatement2').value = invoice.statement || '';
-    document.getElementById('invoiceReference').value = invoice.reference || '';
-    document.getElementById('PuInExpenses').value = invoice.expenses || 0;
-    document.getElementById('PuInTaxCost').value = invoice.tax || 0;
-    document.getElementById('PuInTransportation').value = invoice.transportation || 0;
-    document.getElementById('PuInOtherCost').value = invoice.otherCost || 0;
-    document.getElementById('otherCostDescription').value = invoice.otherCostDesc || '';
+function otherCostChanged() {
+    const v = parseFloat(document.getElementById('PuInOtherCost').value) || 0;
+    const c = document.getElementById('otherCostDescriptionContainer');
+    const d = document.getElementById('otherCostDescription');
+    if (v > 0) { c.classList.remove('d-none'); d.disabled = (invoiceMode === 'view'); }
+    else { c.classList.add('d-none'); d.value = ''; }
+    calculateTotals();
+}
 
-    if (invoice.otherCost > 0) {
-        document.getElementById('otherCostDescriptionContainer').classList.remove('d-none');
-        document.getElementById('otherCostDescription').disabled = true;
+/* =========================================================
+   Search Invoice
+   ========================================================= */
+
+function searchInvoice() {
+    if (!invoiceSearchModal) return;
+
+    document.getElementById('invoiceSearchInput').value = '';
+    const tb = document.getElementById('invoiceSearchResults');
+    tb.replaceChildren();
+
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 7;
+    td.className = 'text-center text-muted py-4';
+    td.textContent = 'أدخل بيانات البحث ثم اضغط بحث';
+    tr.appendChild(td);
+    tb.appendChild(tr);
+
+    invoiceSearchModal.show();
+    setTimeout(() => document.getElementById('invoiceSearchInput').focus(), 200);
+}
+
+async function performInvoiceSearch() {
+    const search = document.getElementById('invoiceSearchInput').value.trim();
+    const tbody = document.getElementById('invoiceSearchResults');
+    tbody.replaceChildren();
+
+    try {
+        const raw = await apiGet(`/operation/purchases/invoicesPurch/list?search=${encodeURIComponent(search)}`);
+        const rows = unwrap(raw);
+        const labels = { 1: 'أجل', 2: 'نقد', 3: 'بنك', 4: 'شبكة' };
+
+        rows.forEach(inv => {
+            const tr = document.createElement('tr');
+            [
+                inv.invoice_number,
+                inv.invoice_date,
+                inv.supplier_name,
+                inv.coin_name,
+                labels[inv.payment_method] || '',
+                Number(inv.total).toFixed(2)
+            ].forEach(v => {
+                const td = document.createElement('td');
+                td.textContent = v;
+                tr.appendChild(td);
+            });
+
+            const tdBtn = document.createElement('td');
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-sm btn-primary';
+            btn.textContent = 'عرض';
+            btn.addEventListener('click', () => loadInvoice(inv.purchase_invoice_id));
+            tdBtn.appendChild(btn);
+            tr.appendChild(tdBtn);
+
+            tbody.appendChild(tr);
+        });
+    } catch (e) {
+        console.error(e);
+        notify('فشل البحث عن الفواتير', 'danger');
     }
+}
 
-    paymentMethodChanged();
+/* =========================================================
+   Load Invoice
+   ========================================================= */
 
-    const tbody = document.getElementById('purchaseInvoiceDetails');
-    tbody.innerHTML = '';
-    if (invoice.items && invoice.items.length > 0) {
-        invoice.items.forEach((item, index) => {
-            const row = document.createElement('tr');
-            row.className = 'purchase-detail-row';
-            row.innerHTML = `
-                <td class="row-num">${index + 1}</td>
-                <td><input type="text" class="form-control form-control-sm row-item" value="${item.itemName}" disabled></td>
-                <td><input type="text" class="form-control form-control-sm row-type" value="${item.type || ''}" disabled></td>
-                <td><input type="text" class="form-control form-control-sm row-code" value="${item.code || ''}" disabled></td>
-                <td>
-                    <select class="form-select form-select-sm row-unit" disabled>
-                        <option value="كيلو" ${item.unit === 'كيلو' ? 'selected' : ''}>كيلو</option>
-                        <option value="حبه" ${item.unit === 'حبه' ? 'selected' : ''}>حبه</option>
-                    </select>
-                </td>
-                <td><input type="number" class="form-control form-control-sm row-weight row-quantity" value="${item.quantity}" disabled></td>
-                <td><input type="number" class="form-control form-control-sm row-price" value="${item.price}" disabled></td>
-                <td><input type="number" class="form-control form-control-sm row-discount" value="${item.discount || 0}" disabled></td>
-                <td><input type="number" class="form-control form-control-sm row-total" value="${item.total.toFixed(2)}" readonly></td>
-                <td>
-                    <button type="button" class="btn btn-sm btn-outline-danger" disabled>
-                        <i class="bi bi-trash3"></i>
-                    </button>
-                </td>
-            `;
+async function loadInvoice(id) {
+    try {
+        const res = await apiGet(`/operation/purchases/invoicesPurch/${id}`);
+        const h = res.header;
+        const details = res.details || [];
+
+        clearInvoiceForm();
+
+        document.getElementById('PurchaseInvoicesON2').value = h.invoice_number ?? '';
+        document.getElementById('PurchaseInvoicesDate2').value = h.invoice_date ?? '';
+        document.getElementById('suplierID').value = h.account_id ?? '';
+        document.getElementById('supplierName').value = h.supplier_name ?? '';
+        document.getElementById('coinsID').value = h.coin_id ?? '';
+        document.getElementById('currencyName').value = h.coin_name ?? '';
+        document.getElementById('PuInExchangeRate2').value = h.exchange_rate ?? 1;
+        document.getElementById('warehouseID').value = h.warehouse_id ?? '';
+        document.getElementById('warehouseName').value = h.warehouse_name ?? '';
+        document.getElementById('PuInPaymentMethod2').value =
+            PAYMENT_METHOD_TO_STR[h.payment_method] || '';
+        document.getElementById('paymentAccountId').value = h.payment_account_id ?? '';
+        document.getElementById('paymentAccount').value = h.payment_account_name ?? '';
+        document.getElementById('PuInStatement2').value = h.statement ?? '';
+        document.getElementById('invoiceReference').value = h.reference ?? '';
+        document.getElementById('PuInExpenses').value = h.expenses ?? 0;
+        document.getElementById('PuInTaxCost').value = h.tax_cost ?? 0;
+        document.getElementById('PuInTransportation').value = h.transportation ?? 0;
+        document.getElementById('PuInOtherCost').value = h.other_cost ?? 0;
+        document.getElementById('otherCostDescription').value = h.other_cost_description ?? '';
+
+        if (Number(h.other_cost) > 0)
+            document.getElementById('otherCostDescriptionContainer').classList.remove('d-none');
+
+        paymentMethodChanged();
+
+        const tbody = document.getElementById('purchaseInvoiceDetails');
+        tbody.replaceChildren();
+
+        details.forEach((d, i) => {
+            const row = cloneTemplate('invoiceRowTemplate');
+            const unitSel = row.querySelector('.row-unit');
+            cache.units.forEach(u => {
+                const opt = document.createElement('option');
+                opt.value = u.UnitID;
+                opt.textContent = u.UnitName;
+                if (u.UnitID == d.unit_id) opt.selected = true;
+                unitSel.appendChild(opt);
+            });
+            row.querySelector('.row-num').textContent = i + 1;
+            row.querySelector('.row-item').value = d.item_name ?? '';
+            row.querySelector('.row-item').dataset.itemId = d.item_id ?? '';
+            row.querySelector('.row-type').value = d.type_name ?? '';
+            row.querySelector('.row-type').dataset.typeId = d.type_id ?? '';
+            row.querySelector('.row-code').value = d.code ?? '';
+            row.querySelector('.row-weight').value = d.quantity;
+            row.querySelector('.row-price').value = d.price;
+            row.querySelector('.row-discount').value = d.discount;
+            row.querySelector('.row-total').value = Number(d.total).toFixed(2);
             tbody.appendChild(row);
         });
-    } else {
-        tbody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-4">لا توجد أصناف مضافة إلى الفاتورة</td></tr>`;
-    }
 
-    calculateTotals();
-    invoiceSearchModal.hide();
-    currentInvoiceId = invoice.id;
+        if (!details.length) setEmptyDetailsMessage();
+
+        calculateTotals();
+        if (invoiceSearchModal) invoiceSearchModal.hide();
+        currentInvoiceId = h.purchase_invoice_id;
+        setInvoiceMode('view');
+
+        notify('تم تحميل الفاتورة بنجاح', 'success');
+    } catch (e) {
+        notify('فشل تحميل الفاتورة: ' + e.message, 'danger');
+    }
 }
 
-// =========================================================
-// عمليات الفاتورة (تعديل، حفظ، إلغاء، طباعة)
-// =========================================================
-
-function editInvoice() {
-    if (!hasInvoiceData()) {
-        alert('لا توجد فاتورة محددة للتعديل.');
-        return;
-    }
-    setInvoiceMode('edit');
-    document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row').forEach(row => enableRow(row));
-    document.querySelectorAll('#PurchaseInvoicesDate2, #PuInPaymentMethod2, #paymentAccount, #supplierName, #currencyName, #PuInExchangeRate2, #warehouseName, #PuInStatement2, #invoiceReference, #PuInExpenses, #PuInTaxCost, #PuInTransportation, #PuInOtherCost, #otherCostDescription')
-        .forEach(el => el.disabled = false);
-    paymentMethodChanged();
-}
+/* =========================================================
+   Save / Edit / Cancel / Print
+   ========================================================= */
 
 function hasInvoiceData() {
     return document.getElementById('PurchaseInvoicesON2').value.trim() !== '';
 }
 
-function cancelInvoice() {
-    if (!confirm('هل أنت متأكد من إلغاء العملية؟ سيتم مسح البيانات الحالية.')) return;
-    clearInvoiceForm();
+function editInvoice() {
+    if (!hasInvoiceData() || !currentInvoiceId) {
+        notify('لا توجد فاتورة للتعديل', 'warning');
+        return;
+    }
+    setInvoiceMode('edit');
+    document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row')
+        .forEach(r => enableRow(r));
+    document.querySelectorAll(
+        '#PurchaseInvoicesDate2, #PuInPaymentMethod2, #paymentAccount, #supplierName, ' +
+        '#currencyName, #PuInExchangeRate2, #warehouseName, #PuInStatement2, ' +
+        '#invoiceReference, #PuInExpenses, #PuInTaxCost, #PuInTransportation, ' +
+        '#PuInOtherCost, #otherCostDescription'
+    ).forEach(el => el.disabled = false);
+    paymentMethodChanged();
 }
 
-function saveInvoice() {
+function cancelInvoice() {
+    if (!confirm('هل أنت متأكد من إلغاء العملية؟')) return;
+    clearInvoiceForm();
+    notify('تم إلغاء العملية', 'info');
+}
+
+async function saveInvoice() {
     const number = document.getElementById('PurchaseInvoicesON2').value.trim();
-    if (!number) {
-        alert('رقم الفاتورة مطلوب.');
-        return;
-    }
+    if (!number) return notify('رقم الفاتورة مطلوب', 'warning');
 
-    const supplier = document.getElementById('supplierName').value.trim();
-    if (!supplier) {
-        alert('يرجى اختيار المورد.');
-        return;
-    }
+    const accountId = document.getElementById('suplierID').value;
+    if (!accountId) return notify('يجب اختيار المورد', 'warning');
 
-    const currency = document.getElementById('currencyName').value.trim();
-    if (!currency) {
-        alert('يرجى اختيار العملة.');
-        return;
-    }
+    const coinId = document.getElementById('coinsID').value;
+    if (!coinId) return notify('يجب اختيار العملة', 'warning');
+
+    const wid = document.getElementById('warehouseID').value;
+    if (!wid) return notify('يجب اختيار المخزن', 'warning');
+
+    const methodStr = document.getElementById('PuInPaymentMethod2').value;
+    if (!methodStr) return notify('يجب اختيار طريقة الدفع', 'warning');
+
+    const methodInt = PAYMENT_METHOD_TO_INT[methodStr];
+    if (!methodInt) return notify('طريقة الدفع غير صالحة', 'danger');
 
     const rows = document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row');
-    if (rows.length === 0) {
-        alert('يرجى إضافة صنف واحد على الأقل.');
-        return;
-    }
+    if (!rows.length) return notify('أضف صنفًا واحدًا على الأقل', 'warning');
 
-    const invoiceData = {
-        id: currentInvoiceId || Date.now(),
-        number: number,
-        date: document.getElementById('PurchaseInvoicesDate2').value,
-        supplierId: document.getElementById('suplierID').value,
-        supplierName: supplier,
-        currencyId: document.getElementById('coinsID').value,
-        currencyName: currency,
-        exchangeRate: parseFloat(document.getElementById('PuInExchangeRate2').value) || 1,
-        paymentMethod: document.getElementById('PuInPaymentMethod2').value,
-        paymentAccountId: document.getElementById('paymentAccountId').value,
-        paymentAccountName: document.getElementById('paymentAccount').value,
-        warehouseId: document.getElementById('warehouseID').value,
-        warehouseName: document.getElementById('warehouseName').value,
-        statement: document.getElementById('PuInStatement2').value,
-        reference: document.getElementById('invoiceReference').value,
-        expenses: parseFloat(document.getElementById('PuInExpenses').value) || 0,
-        tax: parseFloat(document.getElementById('PuInTaxCost').value) || 0,
-        transportation: parseFloat(document.getElementById('PuInTransportation').value) || 0,
-        otherCost: parseFloat(document.getElementById('PuInOtherCost').value) || 0,
-        otherCostDesc: document.getElementById('otherCostDescription').value,
-        items: []
-    };
+    const details = [];
+    for (const row of rows) {
+        const itemId = row.querySelector('.row-item').dataset.itemId;
+        if (!itemId) return notify('يجب اختيار الصنف في كل الصفوف', 'warning');
 
-    rows.forEach(row => {
-        invoiceData.items.push({
-            itemName: row.querySelector('.row-item').value,
-            type: row.querySelector('.row-type').value,
-            code: row.querySelector('.row-code').value,
-            unit: row.querySelector('.row-unit').value,
-            quantity: parseFloat(row.querySelector('.row-weight').value) || 0,
+        const qty = parseFloat(row.querySelector('.row-weight').value) || 0;
+        if (qty <= 0) return notify('الكمية يجب أن تكون أكبر من صفر', 'warning');
+
+        details.push({
+            item_id: Number(itemId),
+            type_id: row.querySelector('.row-type').dataset.typeId
+                ? Number(row.querySelector('.row-type').dataset.typeId) : null,
+            unit_id: row.querySelector('.row-unit').value
+                ? Number(row.querySelector('.row-unit').value) : null,
+            code: row.querySelector('.row-code').value || null,
+            quantity: qty,
             price: parseFloat(row.querySelector('.row-price').value) || 0,
             discount: parseFloat(row.querySelector('.row-discount').value) || 0,
-            total: parseFloat(row.querySelector('.row-total').value) || 0
         });
-    });
-
-    const existingIndex = invoices.findIndex(inv => inv.id === invoiceData.id);
-    if (existingIndex !== -1) {
-        invoices[existingIndex] = invoiceData;
-    } else {
-        invoices.push(invoiceData);
-        if (parseInt(invoiceData.number) > lastInvoiceNumber) {
-            lastInvoiceNumber = parseInt(invoiceData.number);
-        }
     }
 
-    alert(invoiceMode === 'edit' ? 'تم تعديل الفاتورة بنجاح.' : 'تم حفظ الفاتورة بنجاح.');
-    setInvoiceMode('view');
-    currentInvoiceId = invoiceData.id;
+    const payload = {
+        invoice_number: number,
+        invoice_date: document.getElementById('PurchaseInvoicesDate2').value,
+        account_id: Number(accountId),
+        payment_method: methodInt,
+        payment_account_id: document.getElementById('paymentAccountId').value || null,
+        coin_id: Number(coinId),
+        warehouse_id: Number(wid),
+        exchange_rate: parseFloat(document.getElementById('PuInExchangeRate2').value) || 1,
+        expenses: parseFloat(document.getElementById('PuInExpenses').value) || 0,
+        tax_cost: parseFloat(document.getElementById('PuInTaxCost').value) || 0,
+        transportation: parseFloat(document.getElementById('PuInTransportation').value) || 0,
+        other_cost: parseFloat(document.getElementById('PuInOtherCost').value) || 0,
+        other_cost_description: document.getElementById('otherCostDescription').value || null,
+        statement: document.getElementById('PuInStatement2').value || null,
+        reference: document.getElementById('invoiceReference').value || null,
+        details,
+    };
+
+    try {
+        let r;
+        if (invoiceMode === 'edit' && currentInvoiceId) {
+            r = await apiSend(`/operation/purchases/invoicesPurch/${currentInvoiceId}`, 'PUT', payload);
+        } else {
+            r = await apiSend('/operation/purchases/invoicesPurch', 'POST', payload);
+            currentInvoiceId = r.purchase_invoice_id;
+        }
+        notify(r.message || 'تم الحفظ بنجاح', 'success');
+        setInvoiceMode('view');
+    } catch (e) {
+        let m = e.message;
+        if (e.errors) m += ' — ' + Object.values(e.errors).flat().join(' | ');
+        notify(m, 'danger');
+    }
 }
 
-function saveAndNewInvoice() {
-    saveInvoice();
-    resetInvoice();
+async function saveAndNewInvoice() {
+    await saveInvoice();
+    if (invoiceMode === 'view') await resetInvoice();
 }
 
 function printInvoice() {
-    if (!hasInvoiceData()) {
-        alert('لا توجد فاتورة للطباعة.');
-        return;
-    }
+    if (!hasInvoiceData()) { notify('لا توجد فاتورة للطباعة', 'warning'); return; }
     window.print();
 }

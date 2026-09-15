@@ -73,7 +73,7 @@
                     id="PuInPaymentMethod2"
                     name="PuInPaymentMethod2"
                     disabled
-                    onchange="paymentMethodChanged()"
+                    onchange="paymentMethodChanged(true)"
                 >
 
                     <option value="">

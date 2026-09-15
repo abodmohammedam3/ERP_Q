@@ -22,6 +22,7 @@ let supplierModal, currencyModal, invoiceSearchModal,
 let activePurchaseRow = null;
 let currentTypeInput = null;
 let accountSearchType = '';
+let isSavingInvoice = false;
 
 const cache = {
     units: [], coins: [], warehouses: [], items: [],
@@ -170,19 +171,23 @@ function setInvoiceMode(mode) {
     const printBtn = document.getElementById('btnPrintInvoice');
 
     if (mode === 'view') {
-        saveBtn.disabled = true;
-        saveNewBtn.disabled = true;
-        cancelBtn.classList.add('d-none');
-        editBtn.disabled = !hasInvoiceData();
-        printBtn.disabled = !hasInvoiceData();
-        document.getElementById('paymentAccount').disabled = true;
-        document.getElementById('paymentAccountContainer').classList.add('d-none');
+        if (saveBtn) saveBtn.disabled = true;
+        if (saveNewBtn) saveNewBtn.disabled = true;
+        if (cancelBtn) cancelBtn.classList.add('d-none');
+        if (editBtn) editBtn.disabled = !hasInvoiceData();
+        if (printBtn) printBtn.disabled = !hasInvoiceData();
+
+        const paymentInput = document.getElementById('paymentAccount');
+        if (paymentInput) paymentInput.disabled = true;
+
+        const paymentContainer = document.getElementById('paymentAccountContainer');
+        if (paymentContainer) paymentContainer.classList.add('d-none');
     } else {
-        saveBtn.disabled = false;
-        saveNewBtn.disabled = false;
-        cancelBtn.classList.remove('d-none');
-        editBtn.disabled = true;
-        printBtn.disabled = true;
+        if (saveBtn) saveBtn.disabled = false;
+        if (saveNewBtn) saveNewBtn.disabled = false;
+        if (cancelBtn) cancelBtn.classList.remove('d-none');
+        if (editBtn) editBtn.disabled = true;
+        if (printBtn) printBtn.disabled = true;
         paymentMethodChanged();
     }
 }
@@ -195,18 +200,26 @@ async function resetInvoice() {
     clearInvoiceForm();
     setInvoiceMode('add');
 
+    const numberEl = document.getElementById('PurchaseInvoicesON2');
+    if (!numberEl) {
+        notify('حقل رقم الفاتورة غير موجود — تحقق من تضمين رأس الفاتورة', 'danger');
+        return;
+    }
+
     try {
         const res = await apiGet('/operation/purchases/invoicesPurch/next-number');
-        document.getElementById('PurchaseInvoicesON2').value = res.next_number || '';
+        numberEl.value = res.next_number || '';
     } catch (e) {
         notify('تعذّر جلب رقم الفاتورة التالي', 'danger');
     }
 
-    document.getElementById('PurchaseInvoicesDate2').value =
-        new Date().toISOString().split('T')[0];
+    const dateEl = document.getElementById('PurchaseInvoicesDate2');
+    if (dateEl) dateEl.value = new Date().toISOString().split('T')[0];
 
     addInvoiceRow();
-    document.getElementById('supplierName')?.focus();
+
+    const supplierEl = document.getElementById('supplierName');
+    if (supplierEl) supplierEl.focus();
 }
 
 function clearInvoiceForm() {
@@ -224,12 +237,20 @@ function clearInvoiceForm() {
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
 
     setEmptyDetailsMessage();
-    document.getElementById('totalDiscountDisplay').textContent = '0.00';
-    document.getElementById('invoiceTotalDisplay').textContent = '0.00';
-    document.getElementById('AmountWords').value = '';
+
+    const discEl = document.getElementById('totalDiscountDisplay');
+    if (discEl) discEl.textContent = '0.00';
+
+    const totalEl = document.getElementById('invoiceTotalDisplay');
+    if (totalEl) totalEl.textContent = '0.00';
+
+    const amountEl = document.getElementById('AmountWords');
+    if (amountEl) amountEl.value = '';
 
     hidePaymentAccounts();
-    document.getElementById('otherCostDescriptionContainer').classList.add('d-none');
+
+    const otherCostDesc = document.getElementById('otherCostDescriptionContainer');
+    if (otherCostDesc) otherCostDesc.classList.add('d-none');
 
     setInvoiceMode('view');
     currentInvoiceId = null;
@@ -237,6 +258,8 @@ function clearInvoiceForm() {
 
 function setEmptyDetailsMessage() {
     const tbody = document.getElementById('purchaseInvoiceDetails');
+    if (!tbody) return;
+
     while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
 
     const tr = document.createElement('tr');
@@ -256,6 +279,8 @@ function addInvoiceRow() {
     if (invoiceMode === 'view') return;
 
     const tbody = document.getElementById('purchaseInvoiceDetails');
+    if (!tbody) return;
+
     const emptyTd = tbody.querySelector('td[colspan="10"]');
     if (emptyTd) while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
 
@@ -294,12 +319,15 @@ function removeRow(btn) {
     calculateTotals();
 
     const tbody = document.getElementById('purchaseInvoiceDetails');
-    if (!tbody.querySelector('.purchase-detail-row')) setEmptyDetailsMessage();
+    if (tbody && !tbody.querySelector('.purchase-detail-row')) setEmptyDetailsMessage();
 }
 
 function renumberRows() {
     document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row')
-        .forEach((r, i) => { r.querySelector('.row-num').textContent = i + 1; });
+        .forEach((r, i) => {
+            const numEl = r.querySelector('.row-num');
+            if (numEl) numEl.textContent = i + 1;
+        });
 }
 
 /* =========================================================
@@ -309,10 +337,13 @@ function renumberRows() {
 function calculateRow(input) {
     const row = input.closest('tr');
     if (!row) return;
-    const qty = parseFloat(row.querySelector('.row-weight').value) || 0;
-    const price = parseFloat(row.querySelector('.row-price').value) || 0;
-    const disc = parseFloat(row.querySelector('.row-discount').value) || 0;
-    row.querySelector('.row-total').value = Math.max(0, qty * price - disc).toFixed(2);
+    const qty = parseFloat(row.querySelector('.row-weight')?.value) || 0;
+    const price = parseFloat(row.querySelector('.row-price')?.value) || 0;
+    const disc = parseFloat(row.querySelector('.row-discount')?.value) || 0;
+
+    const totalEl = row.querySelector('.row-total');
+    if (totalEl) totalEl.value = Math.max(0, qty * price - disc).toFixed(2);
+
     calculateTotals();
 }
 
@@ -320,25 +351,27 @@ function calculateTotals() {
     let itemsTotal = 0, discountTotal = 0;
     document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row')
         .forEach(row => {
-            const q = parseFloat(row.querySelector('.row-weight').value) || 0;
-            const p = parseFloat(row.querySelector('.row-price').value) || 0;
-            const d = parseFloat(row.querySelector('.row-discount').value) || 0;
+            const q = parseFloat(row.querySelector('.row-weight')?.value) || 0;
+            const p = parseFloat(row.querySelector('.row-price')?.value) || 0;
+            const d = parseFloat(row.querySelector('.row-discount')?.value) || 0;
             itemsTotal += q * p;
             discountTotal += d;
         });
 
-    const expenses = parseFloat(document.getElementById('PuInExpenses').value) || 0;
-    const tax = parseFloat(document.getElementById('PuInTaxCost').value) || 0;
-    const trans = parseFloat(document.getElementById('PuInTransportation').value) || 0;
-    const other = parseFloat(document.getElementById('PuInOtherCost').value) || 0;
+    const expenses = parseFloat(document.getElementById('PuInExpenses')?.value) || 0;
+    const tax = parseFloat(document.getElementById('PuInTaxCost')?.value) || 0;
+    const trans = parseFloat(document.getElementById('PuInTransportation')?.value) || 0;
+    const other = parseFloat(document.getElementById('PuInOtherCost')?.value) || 0;
 
     const net = Math.max(0, itemsTotal - discountTotal);
     const total = net + expenses + tax + trans + other;
 
-    document.getElementById('totalDiscountDisplay').textContent = discountTotal.toFixed(2);
-    document.getElementById('invoiceTotalDisplay').textContent = total.toFixed(2);
+    const discEl = document.getElementById('totalDiscountDisplay');
+    if (discEl) discEl.textContent = discountTotal.toFixed(2);
 
-    // تحديث المبلغ كتابة
+    const totalEl = document.getElementById('invoiceTotalDisplay');
+    if (totalEl) totalEl.textContent = total.toFixed(2);
+
     updateAmountWords(total);
 }
 
@@ -349,7 +382,8 @@ function updateAmountWords(total) {
     if (!total || total <= 0) { el.value = ''; return; }
 
     if (window.Utils && typeof window.Utils.numberToWords === 'function') {
-        const currencyName = document.getElementById('currencyName')?.value || '';
+        const currencyEl = document.getElementById('currencyName');
+        const currencyName = currencyEl ? currencyEl.value : '';
         el.value = window.Utils.numberToWords(total, currencyName);
     } else {
         el.value = total.toFixed(2);
@@ -362,17 +396,30 @@ function exchangeRateChanged() { calculateTotals(); }
    Payment method
    ========================================================= */
 
-function paymentMethodChanged() {
+function paymentMethodChanged(clearPrevious = false) {
+    if (clearPrevious) {
+        const inp = document.getElementById('paymentAccount');
+        const inpId = document.getElementById('paymentAccountId');
+        if (inp) inp.value = '';
+        if (inpId) inpId.value = '';
+    }
+
     hidePaymentAccounts();
-    const method = document.getElementById('PuInPaymentMethod2').value;
+
+    const methodEl = document.getElementById('PuInPaymentMethod2');
     const container = document.getElementById('paymentAccountContainer');
     const input = document.getElementById('paymentAccount');
+
+    if (!methodEl || !container || !input) return;
+
+    const method = methodEl.value;
 
     if (!method || method === 'credit') {
         container.classList.add('d-none');
         input.disabled = true;
         input.value = '';
-        document.getElementById('paymentAccountId').value = '';
+        const inpId = document.getElementById('paymentAccountId');
+        if (inpId) inpId.value = '';
         return;
     }
 
@@ -385,7 +432,8 @@ function paymentMethodChanged() {
 }
 
 function hidePaymentAccounts() {
-    document.getElementById('paymentAccountContainer').classList.add('d-none');
+    const el = document.getElementById('paymentAccountContainer');
+    if (el) el.classList.add('d-none');
 }
 
 /* =========================================================
@@ -907,7 +955,9 @@ async function loadInvoice(id) {
    ========================================================= */
 
 function hasInvoiceData() {
-    return document.getElementById('PurchaseInvoicesON2').value.trim() !== '';
+    const el = document.getElementById('PurchaseInvoicesON2');
+    if (!el) return false;
+    return el.value.trim() !== '';
 }
 
 function editInvoice() {
@@ -934,6 +984,9 @@ function cancelInvoice() {
 }
 
 async function saveInvoice() {
+    // حماية من الحفظ المزدوج
+    if (isSavingInvoice) return;
+
     const number = document.getElementById('PurchaseInvoicesON2').value.trim();
     if (!number) return notify('رقم الفاتورة مطلوب', 'warning');
 
@@ -952,6 +1005,11 @@ async function saveInvoice() {
     const methodInt = PAYMENT_METHOD_TO_INT[methodStr];
     if (!methodInt) return notify('طريقة الدفع غير صالحة', 'danger');
 
+    // التحقق المنطقي: طرق الدفع الفوري تتطلب حسابًا
+    if (methodInt !== 1 && !document.getElementById('paymentAccountId').value) {
+        return notify('يجب اختيار حساب الدفع', 'warning');
+    }
+
     const rows = document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row');
     if (!rows.length) return notify('أضف صنفًا واحدًا على الأقل', 'warning');
 
@@ -963,6 +1021,20 @@ async function saveInvoice() {
         const qty = parseFloat(row.querySelector('.row-weight').value) || 0;
         if (qty <= 0) return notify('الكمية يجب أن تكون أكبر من صفر', 'warning');
 
+        const price = parseFloat(row.querySelector('.row-price').value) || 0;
+        if (price <= 0) return notify('سعر الوحدة يجب أن يكون أكبر من صفر', 'warning');
+
+        const discount = parseFloat(row.querySelector('.row-discount').value) || 0;
+
+        if (discount > qty * price) {
+            return notify('الخصم لا يمكن أن يتجاوز قيمة الصف', 'warning');
+        }
+
+        const rowTotal = Math.max(0, qty * price - discount);
+        if (rowTotal <= 0) {
+            return notify('إجمالي الصف يجب أن يكون أكبر من صفر', 'warning');
+        }
+
         details.push({
             item_id: Number(itemId),
             type_id: row.querySelector('.row-type').dataset.typeId
@@ -971,8 +1043,8 @@ async function saveInvoice() {
                 ? Number(row.querySelector('.row-unit').value) : null,
             code: row.querySelector('.row-code').value || null,
             quantity: qty,
-            price: parseFloat(row.querySelector('.row-price').value) || 0,
-            discount: parseFloat(row.querySelector('.row-discount').value) || 0,
+            price: price,
+            discount: discount,
         });
     }
 
@@ -995,6 +1067,14 @@ async function saveInvoice() {
         details,
     };
 
+    // بدء الحماية من الحفظ المزدوج
+    isSavingInvoice = true;
+
+    const saveBtn = document.getElementById('btnSaveInvoice');
+    const saveNewBtn = document.getElementById('btnSaveAndNew');
+    if (saveBtn) saveBtn.disabled = true;
+    if (saveNewBtn) saveNewBtn.disabled = true;
+
     try {
         let r;
         if (invoiceMode === 'edit' && currentInvoiceId) {
@@ -1002,6 +1082,11 @@ async function saveInvoice() {
         } else {
             r = await apiSend('/operation/purchases/invoicesPurch', 'POST', payload);
             currentInvoiceId = r.purchase_invoice_id;
+
+            // عرض رقم الفاتورة الفعلي الذي وضعه الخادم
+            if (r.invoice_number) {
+                document.getElementById('PurchaseInvoicesON2').value = r.invoice_number;
+            }
         }
         notify(r.message || 'تم الحفظ بنجاح', 'success');
         setInvoiceMode('view');
@@ -1009,6 +1094,12 @@ async function saveInvoice() {
         let m = e.message;
         if (e.errors) m += ' — ' + Object.values(e.errors).flat().join(' | ');
         notify(m, 'danger');
+    } finally {
+        isSavingInvoice = false;
+        if (invoiceMode !== 'view') {
+            if (saveBtn) saveBtn.disabled = false;
+            if (saveNewBtn) saveNewBtn.disabled = false;
+        }
     }
 }
 

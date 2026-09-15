@@ -121,7 +121,7 @@ class PurchaseInvoiceController extends Controller
     }
 
     /**
-     * رقم الفاتورة التالي
+     * رقم الفاتورة التالي (مقترح للعرض فقط)
      */
     public function nextNumber()
     {
@@ -148,7 +148,17 @@ class PurchaseInvoiceController extends Controller
         try {
             DB::beginTransaction();
 
-            $invoice = PurchaseInvoice::create($this->headerData($request));
+            // توليد رقم الفاتورة على الخادم بشكل آمن (مع Lock)
+            $last = PurchaseInvoice::lockForUpdate()
+                ->orderBy('purchase_invoice_id', 'desc')
+                ->first();
+
+            $nextNumber = $last ? ((int) $last->invoice_number + 1) : 1;
+
+            $data = $this->headerData($request);
+            $data['invoice_number'] = (string) $nextNumber;
+
+            $invoice = PurchaseInvoice::create($data);
 
             $this->saveDetails($invoice, $request->input('details', []));
 
@@ -182,7 +192,7 @@ class PurchaseInvoiceController extends Controller
             return response()->json(['message' => 'الفاتورة غير موجودة'], 404);
         }
 
-        $validator = $this->validateInvoice($request, $id);
+        $validator = $this->validateInvoice($request);
 
         if ($validator->fails()) {
             return response()->json([
@@ -194,7 +204,10 @@ class PurchaseInvoiceController extends Controller
         try {
             DB::beginTransaction();
 
-            $invoice->update($this->headerData($request));
+            $data = $this->headerData($request);
+            unset($data['invoice_number']); // لا نسمح بتغيير رقم الفاتورة
+
+            $invoice->update($data);
 
             // حذف التفاصيل القديمة وإعادة إضافتها
             $invoice->details()->delete();
@@ -251,15 +264,10 @@ class PurchaseInvoiceController extends Controller
     /**
      * التحقق من البيانات
      */
-    private function validateInvoice(Request $request, $ignoreId = null)
+    private function validateInvoice(Request $request)
     {
-        $uniqueRule = 'unique:purchase_invoices,invoice_number';
-        if ($ignoreId) {
-            $uniqueRule .= ',' . $ignoreId . ',purchase_invoice_id';
-        }
-
-        return Validator::make($request->all(), [
-            'invoice_number'      => ['required', 'string', 'max:50', $uniqueRule],
+        $validator = Validator::make($request->all(), [
+            'invoice_number'      => ['required', 'string', 'max:50'],
             'invoice_date'        => ['required', 'date'],
             'account_id'          => ['required', 'exists:characcount,accountID'],
             'payment_method'      => ['required', 'integer', 'in:1,2,3,4'],
@@ -280,12 +288,11 @@ class PurchaseInvoiceController extends Controller
             'details.*.type_id'        => ['nullable', 'exists:type,id'],
             'details.*.unit_id'        => ['nullable', 'exists:units,UnitID'],
             'details.*.code'           => ['nullable', 'string', 'max:50'],
-            'details.*.quantity'       => ['required', 'numeric', 'min:0'],
-            'details.*.price'          => ['required', 'numeric', 'min:0'],
+            'details.*.quantity'       => ['required', 'numeric', 'gt:0'],
+            'details.*.price'          => ['required', 'numeric', 'gt:0'],
             'details.*.discount'       => ['nullable', 'numeric', 'min:0'],
         ], [
             'invoice_number.required'  => 'رقم الفاتورة مطلوب',
-            'invoice_number.unique'    => 'رقم الفاتورة مستخدم مسبقًا',
             'invoice_date.required'    => 'تاريخ الفاتورة مطلوب',
             'account_id.required'      => 'يجب اختيار المورد',
             'account_id.exists'        => 'المورد المحدد غير موجود',
@@ -298,9 +305,55 @@ class PurchaseInvoiceController extends Controller
             'details.min'              => 'يجب إضافة صنف واحد على الأقل',
             'details.*.item_id.required'=> 'يجب اختيار الصنف في كل الصفوف',
             'details.*.item_id.exists' => 'أحد الأصناف المحددة غير موجود',
-            'details.*.quantity.min'   => 'الكمية يجب أن تكون صفرًا أو أكثر',
-            'details.*.price.min'      => 'السعر يجب أن يكون صفرًا أو أكثر',
+            'details.*.quantity.gt'    => 'الكمية يجب أن تكون أكبر من صفر',
+            'details.*.price.gt'       => 'سعر الوحدة يجب أن يكون أكبر من صفر',
         ]);
+
+        // تحقق منطقي إضافي
+        $validator->after(function ($v) use ($request) {
+            $method    = (int) $request->input('payment_method');
+            $accountId = $request->input('payment_account_id');
+
+            // طريقة الدفع الفوري تتطلب حساب دفع
+            if ($method === 1 && !empty($accountId)) {
+                $v->errors()->add(
+                    'payment_account_id',
+                    'طريقة الدفع "أجل" لا تحتاج إلى حساب دفع'
+                );
+            }
+
+            if (in_array($method, [2, 3, 4]) && empty($accountId)) {
+                $v->errors()->add(
+                    'payment_account_id',
+                    'يجب اختيار حساب الدفع'
+                );
+            }
+
+            // التحقق من الخصم + إجمالي كل صف
+            foreach ($request->input('details', []) as $i => $row) {
+                $qty      = (float) ($row['quantity'] ?? 0);
+                $price    = (float) ($row['price'] ?? 0);
+                $discount = (float) ($row['discount'] ?? 0);
+
+                // منع خصم يتجاوز قيمة الصف
+                if ($discount > $qty * $price) {
+                    $v->errors()->add(
+                        "details.{$i}.discount",
+                        'الخصم لا يمكن أن يتجاوز قيمة الصف'
+                    );
+                }
+
+                // منع صف بإجمالي صفر
+                if (max(0, $qty * $price - $discount) <= 0) {
+                    $v->errors()->add(
+                        "details.{$i}.price",
+                        'إجمالي الصف يجب أن يكون أكبر من صفر'
+                    );
+                }
+            }
+        });
+
+        return $validator;
     }
 
     /**

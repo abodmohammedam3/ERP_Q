@@ -1,433 +1,217 @@
-/**
- * ============================================================
- * حركات المخزون
- * Inventory Movements
- * Laravel 12 + Bootstrap 5.3.8 + Bootstrap Icons
- * ============================================================
- *
- * أوضاع الشاشة:
- *
- * view = عرض حركة موجودة
- * add  = إضافة حركة يدوية
- *
- * لا يوجد edit ولا delete.
- *
- * النوافذ المنبثقة تعمل فقط عند:
- * - أمر توريد مخزني
- * - أمر صرف مخزني
- *
- * ============================================================
- */
-
+/* ============================================================
+   حركات المخزون — ربط كامل بـ Laravel API
+   ============================================================ */
 
 /* ============================================================
-   حالة الشاشة
+   الثوابت
+   ============================================================ */
+
+const MOVEMENT_TYPE_LABELS = {
+    supply: 'توريد مخزني',
+    issue: 'صرف مخزني',
+    purchase: 'توريد شراء',
+    sale: 'صرف بيع',
+    purchase_return: 'مرتجع شراء',
+    sale_return: 'مرتجع بيع',
+};
+
+const MOVEMENT_DIRECTION_LABELS = {
+    in: 'دخول',
+    out: 'خروج',
+};
+
+/* ============================================================
+   الحالة العامة
    ============================================================ */
 
 let movementMode = 'view';
-
-
-/*
- * نوع الحركة الحالية
- *
- * supply = توريد مخزني
- * issue  = صرف مخزني
- */
 let currentMovementType = null;
-
-
-/*
- * بيانات الحركة الحالية
- */
-let currentMovement = null;
-
-
-/*
- * عداد مؤقت للصفوف
- */
-let movementRowCounter = 0;
-
-
-/*
- * ============================================================
- * بيانات تجريبية مؤقتة
- * سيتم استبدالها لاحقاً ببيانات Laravel / Database
- * ============================================================
- */
-
-
-/* المخازن */
-
-const movementWarehouses = [
-    {
-        id: 1,
-        name: 'المخزن الرئيسي'
-    },
-    {
-        id: 2,
-        name: 'المخزن الثاني'
-    },
-    {
-        id: 3,
-        name: 'مخزن الفرع'
-    }
-];
-
-
-/* الأصناف */
-
-const movementItems = [
-    {
-        id: 1,
-        name: 'أرحبي'
-    },
-    {
-        id: 2,
-        name: 'ماوية'
-    },
-    {
-        id: 3,
-        name: 'حاشدي'
-    }
-];
-
-
-/* الأنواع */
-
-const movementTypes = [
-    {
-        id: 1,
-        item_id: 1,
-        name: 'قطل'
-    },
-    {
-        id: 2,
-        item_id: 1,
-        name: 'عود أحمر'
-    },
-    {
-        id: 3,
-        item_id: 2,
-        name: 'قطل'
-    },
-    {
-        id: 4,
-        item_id: 2,
-        name: 'عود'
-    },
-    {
-        id: 5,
-        item_id: 3,
-        name: 'متوسط'
-    }
-];
-
-
-/* الوحدات */
-
-const movementUnits = [
-    {
-        id: 1,
-        name: 'حبة'
-    },
-    {
-        id: 2,
-        name: 'كيلو'
-    },
-    {
-        id: 3,
-        name: 'كيس'
-    }
-];
-
+let currentMovementId = null;
+let activeMovementRow = null;
+let activeWarehouseTarget = null;
+let isSavingMovement = false;
 
 /* ============================================================
-   تشغيل الشاشة
+   الكاش
    ============================================================ */
 
-document.addEventListener('DOMContentLoaded', function () {
-
-    /*
-     * عند فتح الشاشة لأول مرة
-     * تكون في وضع العرض.
-     */
-
-    setMovementMode('view');
-
-    clearMovementForm();
-
-});
-
+const cache = {
+    warehouses: [],
+    items: [],
+    types: [],
+    units: [],
+};
 
 /* ============================================================
-   تغيير وضع الشاشة
+   النوافذ
+   ============================================================ */
+
+let movementItemModal,
+    movementTypeModal,
+    movementWarehouseModal,
+    movementUnitModal;
+
+const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+/* ============================================================
+   Helpers
+   ============================================================ */
+
+function apiHeaders(json = false) {
+    const h = { 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF_TOKEN };
+    if (json) h['Content-Type'] = 'application/json';
+    return h;
+}
+
+async function apiGet(url) {
+    const r = await fetch(url, { headers: apiHeaders() });
+    if (!r.ok) throw new Error(`فشل الطلب: ${r.status}`);
+    return r.json();
+}
+
+async function apiSend(url, method, body) {
+    const r = await fetch(url, {
+        method, headers: apiHeaders(true), body: JSON.stringify(body),
+    });
+    const json = await r.json().catch(() => ({}));
+    if (!r.ok) {
+        let message = json.message || 'فشل الطلب';
+
+        if (json.errors) {
+            message = Object.values(json.errors).flat().join(' | ');
+        } else if (json.error) {
+            message = json.error;
+        }
+
+        const e = new Error(message);
+        e.errors = json.errors;
+        e.raw = json;
+        console.error('API Error:', json);
+        throw e;
+    }
+    return json;
+}
+
+function debounce(fn, ms = 50) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+function cloneTemplate(id) {
+    const tpl = document.getElementById(id);
+    if (!tpl) throw new Error(`Template not found: ${id}`);
+    return tpl.content.firstElementChild.cloneNode(true);
+}
+
+function unwrap(data) {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.data)) return data.data;
+    return [];
+}
+
+function notify(message, type = 'info') {
+    if (typeof window.showSystemToast === 'function') {
+        window.showSystemToast(message, type);
+    } else {
+        console.warn(`[${type}] ${message}`);
+        alert(message);
+    }
+}
+
+/* ============================================================
+   التهيئة
+   ============================================================ */
+
+document.addEventListener('DOMContentLoaded', async () => {
+
+    const init = (id) => {
+        const el = document.getElementById(id);
+        if (!el) { console.warn(`⚠️ Modal غير موجود: #${id}`); return null; }
+        return new bootstrap.Modal(el);
+    };
+
+    movementItemModal = init('movementItemModal');
+    movementTypeModal = init('movementTypeModal');
+    movementWarehouseModal = init('movementWarehouseModal');
+    movementUnitModal = init('movementUnitModal');
+
+    await preloadAll();
+
+    setMovementMode('view');
+    clearMovementForm();
+});
+
+async function preloadAll() {
+    try {
+        const [warehouses, items, types, units] = await Promise.all([
+            apiGet('/setting/inventory/warehouses/list'),
+            apiGet('/setting/inventory/items/list'),
+            apiGet('/setting/inventory/types/list'),
+            apiGet('/setting/inventory/units/list'),
+        ]);
+
+        cache.warehouses = unwrap(warehouses);
+        cache.items = unwrap(items);
+        cache.types = unwrap(types);
+        cache.units = unwrap(units);
+
+        console.log('✅ تم تحميل البيانات المرجعية', {
+            warehouses: cache.warehouses.length,
+            items: cache.items.length,
+            types: cache.types.length,
+            units: cache.units.length,
+        });
+    } catch (e) {
+        console.error('فشل تحميل البيانات المرجعية', e);
+        notify('تعذّر تحميل البيانات المرجعية', 'danger');
+    }
+}
+
+/* ============================================================
+   أوضاع الشاشة
    ============================================================ */
 
 function setMovementMode(mode) {
-
-    /*
-     * لا نسمح إلا بوضعين
-     */
-
-    if (mode !== 'view' && mode !== 'add') {
-        return;
-    }
-
-
+    if (mode !== 'view' && mode !== 'add') return;
     movementMode = mode;
 
+    const editableHeaderIds = [
+        'movementDate',
+        'movementDocumentNumber',
+        'movementStatement',
+        'movementWarehouse',
+    ];
 
-    /*
-     * عناصر الرأس
-     */
+    editableHeaderIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (mode === 'add') el.removeAttribute('readonly');
+        else el.setAttribute('readonly', true);
+    });
 
-    const movementDate =
-        document.getElementById('movementDate');
+    const btnAddRow = document.getElementById('btnAddMovementRow');
+    if (btnAddRow) btnAddRow.disabled = (mode === 'view');
 
-    const movementDocumentNumber =
-        document.getElementById('movementDocumentNumber');
-
-    const movementStatement =
-        document.getElementById('movementStatement');
-
-
-    /*
-     * زر إضافة صف
-     */
-
-    const btnAddMovementRow =
-        document.getElementById('btnAddMovementRow');
-
-
-    /*
-     * منطقة أزرار الحفظ
-     */
-
-    const movementSaveActions =
-        document.getElementById('movementSaveActions');
-
-
-    /*
-     * في وضع الإضافة
-     */
-
-    if (mode === 'add') {
-
-        if (movementDate) {
-            movementDate.removeAttribute('readonly');
-        }
-
-        if (movementDocumentNumber) {
-            movementDocumentNumber.removeAttribute('readonly');
-        }
-
-        if (movementStatement) {
-            movementStatement.removeAttribute('readonly');
-        }
-
-        if (btnAddMovementRow) {
-            btnAddMovementRow.disabled = false;
-        }
-
-        if (movementSaveActions) {
-            movementSaveActions.classList.remove('d-none');
-        }
-
+    const saveActions = document.getElementById('movementSaveActions');
+    if (saveActions) {
+        if (mode === 'add') saveActions.classList.remove('d-none');
+        else saveActions.classList.add('d-none');
     }
 
-
-    /*
-     * في وضع العرض
-     */
-
-    else {
-
-        if (movementDate) {
-            movementDate.setAttribute('readonly', true);
-        }
-
-        if (movementDocumentNumber) {
-            movementDocumentNumber.setAttribute('readonly', true);
-        }
-
-        if (movementStatement) {
-            movementStatement.setAttribute('readonly', true);
-        }
-
-        if (btnAddMovementRow) {
-            btnAddMovementRow.disabled = true;
-        }
-
-        if (movementSaveActions) {
-            movementSaveActions.classList.add('d-none');
-        }
-
-    }
-
+    document.querySelectorAll('#movementDetails .movement-detail-row').forEach(row => {
+        applyRowMode(row);
+    });
 }
 
-
 /* ============================================================
-   بدء أمر توريد مخزني
-   ============================================================ */
-
-function startSupplyMovement() {
-
-    /*
-     * هذه حركة يدوية.
-     * لذلك يسمح باستخدام النوافذ المنبثقة.
-     */
-
-    currentMovementType = 'supply';
-
-
-    clearMovementForm();
-
-
-    setMovementMode('add');
-
-
-    /*
-     * تحديد نوع الحركة
-     */
-
-    const movementType =
-        document.getElementById('movementType');
-
-    if (movementType) {
-        movementType.value = 'توريد مخزني';
-    }
-
-
-    /*
-     * تحديد الاتجاه
-     */
-
-    const movementDirection =
-        document.getElementById('movementDirection');
-
-    if (movementDirection) {
-        movementDirection.value = 'دخول';
-    }
-
-
-    /*
-     * التاريخ الحالي
-     */
-
-    setTodayDate();
-
-
-    /*
-     * إنشاء رقم حركة تجريبي
-     */
-
-    const movementDisplayId =
-        document.getElementById('movementDisplayId');
-
-    if (movementDisplayId) {
-
-        movementDisplayId.value =
-            generateTemporaryMovementNumber();
-
-    }
-
-
-    /*
-     * إضافة صف فارغ مباشرة
-     */
-
-    addMovementRow();
-
-}
-
-
-/* ============================================================
-   بدء أمر صرف مخزني
-   ============================================================ */
-
-function startIssueMovement() {
-
-    /*
-     * حركة يدوية.
-     */
-
-    currentMovementType = 'issue';
-
-
-    clearMovementForm();
-
-
-    setMovementMode('add');
-
-
-    /*
-     * نوع الحركة
-     */
-
-    const movementType =
-        document.getElementById('movementType');
-
-    if (movementType) {
-        movementType.value = 'صرف مخزني';
-    }
-
-
-    /*
-     * اتجاه الحركة
-     */
-
-    const movementDirection =
-        document.getElementById('movementDirection');
-
-    if (movementDirection) {
-        movementDirection.value = 'خروج';
-    }
-
-
-    /*
-     * التاريخ
-     */
-
-    setTodayDate();
-
-
-    /*
-     * رقم الحركة
-     */
-
-    const movementDisplayId =
-        document.getElementById('movementDisplayId');
-
-    if (movementDisplayId) {
-
-        movementDisplayId.value =
-            generateTemporaryMovementNumber();
-
-    }
-
-
-    /*
-     * إضافة صف
-     */
-
-    addMovementRow();
-
-}
-
-
-/* ============================================================
-   تنظيف نموذج الحركة
+   تفريغ النموذج
    ============================================================ */
 
 function clearMovementForm() {
-
-    currentMovement = null;
-
-
-    /*
-     * الرأس
-     */
+    currentMovementId = null;
+    currentMovementType = null;
+    activeMovementRow = null;
+    activeWarehouseTarget = null;
 
     setValue('movementDisplayId', '');
     setValue('movementType', '');
@@ -438,2541 +222,814 @@ function clearMovementForm() {
     setValue('movementWarehouse', '');
     setValue('movementWarehouseId', '');
 
-
-    /*
-     * التفاصيل
-     */
-
-    const details =
-        document.getElementById('movementDetails');
-
-    if (details) {
-        details.innerHTML = '';
-    }
-
-
-    /*
-     * الإجمالي
-     */
+    const tbody = document.getElementById('movementDetails');
+    if (tbody) tbody.replaceChildren();
 
     setValue('movementTotal', '0.00');
 
-
-    movementRowCounter = 0;
-
-
-    /*
-     * العودة إلى العرض
-     */
+    const searchResults = document.getElementById('movementSearchResults');
+    if (searchResults) searchResults.classList.add('d-none');
 
     setMovementMode('view');
-
 }
 
-
 /* ============================================================
-   إضافة صف تفاصيل
+   إدارة الصفوف
    ============================================================ */
 
 function addMovementRow() {
+    if (movementMode !== 'add') return;
 
-    /*
-     * لا يسمح بإضافة صف في وضع العرض
-     */
+    const tbody = document.getElementById('movementDetails');
+    if (!tbody) return;
 
-    if (movementMode !== 'add') {
-        return;
+    const row = cloneTemplate('movementRowTemplate');
+
+    const headerWarehouseId = getValue('movementWarehouseId');
+    const headerWarehouseName = getValue('movementWarehouse');
+
+    if (headerWarehouseId && headerWarehouseName) {
+        row.querySelector('.movement-warehouse-id').value = headerWarehouseId;
+        row.querySelector('.movement-warehouse').value = headerWarehouseName;
     }
-
-
-    const tbody =
-        document.getElementById('movementDetails');
-
-    if (!tbody) {
-        return;
-    }
-
-
-    movementRowCounter++;
-
-
-    const row =
-        document.createElement('tr');
-
-
-    row.className =
-        'movement-detail-row';
-
-
-    row.dataset.rowId =
-        movementRowCounter;
-
-
-    /*
-     * إنشاء الصف
-     *
-     * لا يوجد عمود إجراء.
-     */
-
-    row.innerHTML = `
-
-        <td class="movement-row-number">
-            ${movementRowCounter}
-        </td>
-
-
-        <td>
-
-            <input
-                type="hidden"
-                class="movement-item-id"
-            >
-
-            <input
-                type="text"
-                class="form-control form-control-sm movement-item"
-                placeholder="اختر الصنف"
-                readonly
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="hidden"
-                class="movement-type-id"
-            >
-
-            <input
-                type="text"
-                class="form-control form-control-sm movement-type"
-                placeholder="اختر النوع"
-                readonly
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="text"
-                class="form-control form-control-sm movement-code"
-                placeholder="الرمز"
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="hidden"
-                class="movement-warehouse-id"
-            >
-
-            <input
-                type="text"
-                class="form-control form-control-sm movement-warehouse"
-                placeholder="اختر المخزن"
-                readonly
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="hidden"
-                class="movement-unit-id"
-            >
-
-            <input
-                type="text"
-                class="form-control form-control-sm movement-unit"
-                placeholder="اختر الوحدة"
-                readonly
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="number"
-                class="form-control form-control-sm movement-quantity text-center"
-                min="0"
-                step="0.01"
-                value="0"
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="number"
-                class="form-control form-control-sm movement-unit-cost text-center"
-                min="0"
-                step="0.01"
-                value="0"
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="number"
-                class="form-control form-control-sm movement-sale-price text-center"
-                min="0"
-                step="0.01"
-                value="0"
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="text"
-                class="form-control form-control-sm movement-total text-center"
-                value="0.00"
-                readonly
-            >
-
-        </td>
-
-    `;
-
 
     tbody.appendChild(row);
-
-
     enableMovementRow(row);
+    renumberMovementRows();
+    calculateMovementTotal();
 
-
+    return row;
 }
-
-
-/* ============================================================
-   تفعيل صف الحركة
-   ============================================================ */
 
 function enableMovementRow(row) {
+    if (!row) return;
 
-    if (!row) {
-        return;
-    }
+    // ملاحظة: أحداث input موجودة مباشرة في القالب عبر oninput
+    // هنا نضيف فقط ما لا يمكن ربطه في القالب.
 
-
-    /*
-     * اختيار الصنف
-     */
-
-    const itemInput =
-        row.querySelector('.movement-item');
-
-    if (itemInput) {
-
-        itemInput.addEventListener(
-            'click',
-            function () {
-
-                if (movementMode !== 'add') {
-                    return;
-                }
-
-                openMovementItemModal(row);
-
-            }
-        );
-
-    }
-
-
-    /*
-     * اختيار النوع
-     */
-
-    const typeInput =
-        row.querySelector('.movement-type');
-
-    if (typeInput) {
-
-        typeInput.addEventListener(
-            'click',
-            function () {
-
-                if (movementMode !== 'add') {
-                    return;
-                }
-
-                openMovementTypeModal(row);
-
-            }
-        );
-
-    }
-
-
-    /*
-     * اختيار المخزن
-     */
-
-    const warehouseInput =
-        row.querySelector('.movement-warehouse');
-
-    if (warehouseInput) {
-
-        warehouseInput.addEventListener(
-            'click',
-            function () {
-
-                if (movementMode !== 'add') {
-                    return;
-                }
-
-                openMovementWarehouseModal(row);
-
-            }
-        );
-
-    }
-
-
-    /*
-     * اختيار الوحدة
-     */
-
-    const unitInput =
-        row.querySelector('.movement-unit');
-
-    if (unitInput) {
-
-        unitInput.addEventListener(
-            'click',
-            function () {
-
-                if (movementMode !== 'add') {
-                    return;
-                }
-
-                openMovementUnitModal(row);
-
-            }
-        );
-
-    }
-
-
-    /*
-     * الكمية
-     */
-
-    const quantity =
-        row.querySelector('.movement-quantity');
-
-
-    /*
-     * تكلفة الوحدة
-     */
-
-    const unitCost =
-        row.querySelector('.movement-unit-cost');
-
-
-    if (quantity) {
-
-        quantity.addEventListener(
-            'input',
-            function () {
-                calculateMovementRow(row);
-            }
-        );
-
-    }
-
-
-    if (unitCost) {
-
-        unitCost.addEventListener(
-            'input',
-            function () {
-                calculateMovementRow(row);
-            }
-        );
-
-    }
-
+    applyRowMode(row);
 }
 
+function applyRowMode(row) {
+    if (!row) return;
+
+    const isView = movementMode === 'view';
+
+    row.querySelectorAll('input').forEach(input => {
+        if (input.classList.contains('movement-total')) return;
+        if (input.type === 'hidden') return;
+
+        if (isView) {
+            input.setAttribute('readonly', true);
+        } else {
+            input.removeAttribute('readonly');
+        }
+    });
+}
+
+function renumberMovementRows() {
+    document.querySelectorAll('#movementDetails .movement-detail-row')
+        .forEach((row, index) => {
+            const numEl = row.querySelector('.movement-row-number');
+            if (numEl) numEl.textContent = index + 1;
+        });
+}
 
 /* ============================================================
-   حساب إجمالي الصف
+   الحسابات
    ============================================================ */
 
-function calculateMovementRow(row) {
+/**
+ * حساب إجمالي الصف
+ * يقبل: عنصر input أو صف tr
+ */
+function calculateMovementRow(element) {
+    if (!element) return;
 
-    if (!row) {
-        return;
+    let row = null;
+
+    if (element.tagName === 'TR') {
+        row = element;
+    } else if (element.closest) {
+        row = element.closest('tr');
     }
 
+    if (!row) return;
 
-    const quantity =
-        parseFloat(
-            row.querySelector('.movement-quantity')?.value
-        ) || 0;
+    const quantity = parseFloat(row.querySelector('.movement-quantity')?.value) || 0;
+    const unitCost = parseFloat(row.querySelector('.movement-unit-cost')?.value) || 0;
+    const total = quantity * unitCost;
 
-
-    const unitCost =
-        parseFloat(
-            row.querySelector('.movement-unit-cost')?.value
-        ) || 0;
-
-
-    const total =
-        quantity * unitCost;
-
-
-    const totalInput =
-        row.querySelector('.movement-total');
-
-
-    if (totalInput) {
-
-        totalInput.value =
-            total.toFixed(2);
-
-    }
-
+    const totalInput = row.querySelector('.movement-total');
+    if (totalInput) totalInput.value = total.toFixed(2);
 
     calculateMovementTotal();
-
 }
-
-
-/* ============================================================
-   حساب إجمالي الحركة
-   ============================================================ */
 
 function calculateMovementTotal() {
-
     let total = 0;
 
-
-    const rows =
-        document.querySelectorAll(
-            '#movementDetails .movement-detail-row'
-        );
-
-
-    rows.forEach(function (row) {
-
-        const rowTotal =
-            parseFloat(
-                row.querySelector('.movement-total')?.value
-            ) || 0;
-
-
+    document.querySelectorAll('#movementDetails .movement-detail-row').forEach(row => {
+        const rowTotal = parseFloat(row.querySelector('.movement-total')?.value) || 0;
         total += rowTotal;
-
     });
 
+    setValue('movementTotal', total.toFixed(2));
+}
 
-    setValue(
-        'movementTotal',
-        total.toFixed(2)
+function validateSalePrice(row) {
+    if (!row) return;
+
+    const minPriceInput = row.querySelector('.movement-min-price');
+    const maxPriceInput = row.querySelector('.movement-max-price');
+    const salePriceInput = row.querySelector('.movement-sale-price');
+
+    if (!salePriceInput) return;
+
+    const min = minPriceInput && minPriceInput.value !== '' ? parseFloat(minPriceInput.value) : null;
+    const max = maxPriceInput && maxPriceInput.value !== '' ? parseFloat(maxPriceInput.value) : null;
+    const sale = salePriceInput.value !== '' ? parseFloat(salePriceInput.value) : null;
+
+    salePriceInput.classList.remove('is-invalid');
+
+    if (sale === null) return;
+
+    if (min !== null && sale < min) {
+        salePriceInput.classList.add('is-invalid');
+        return;
+    }
+
+    if (max !== null && sale > max) {
+        salePriceInput.classList.add('is-invalid');
+    }
+}
+
+/* ============================================================
+   KeyDown Handlers — Tab/Enter يفتح النافذة
+   ============================================================ */
+
+function movementItemKeyDown(e) {
+    if (movementMode !== 'add') return;
+    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
+        e.preventDefault();
+        activeMovementRow = e.target.closest('tr');
+        openMovementItemModal();
+    }
+}
+
+function movementTypeKeyDown(e) {
+    if (movementMode !== 'add') return;
+    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
+        e.preventDefault();
+        activeMovementRow = e.target.closest('tr');
+        openMovementTypeModal();
+    }
+}
+
+function movementWarehouseRowKeyDown(e) {
+    if (movementMode !== 'add') return;
+    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
+        e.preventDefault();
+        activeMovementRow = e.target.closest('tr');
+        activeWarehouseTarget = 'row';
+        openMovementWarehouseModal();
+    }
+}
+
+function movementWarehouseHeaderKeyDown(e) {
+    if (movementMode !== 'add') return;
+    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
+        e.preventDefault();
+        activeMovementRow = null;
+        activeWarehouseTarget = 'header';
+        openMovementWarehouseModal();
+    }
+}
+
+function movementUnitKeyDown(e) {
+    if (movementMode !== 'add') return;
+    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
+        e.preventDefault();
+        activeMovementRow = e.target.closest('tr');
+        openMovementUnitModal();
+    }
+}
+
+/* ============================================================
+   Modal الصنف
+   ============================================================ */
+
+function openMovementItemModal() {
+    if (movementMode !== 'add' || !movementItemModal) return;
+    if (!activeMovementRow) return;
+
+    document.getElementById('movementItemSearchInput').value =
+        activeMovementRow.querySelector('.movement-item')?.value || '';
+
+    movementItemModal.show();
+    setTimeout(() => {
+        document.getElementById('movementItemSearchInput').focus();
+        searchMovementItems();
+    }, 200);
+}
+
+function searchMovementItems() {
+    const search = document.getElementById('movementItemSearchInput').value.trim();
+    const tbody = document.getElementById('movementItemResults');
+    tbody.replaceChildren();
+
+    const filtered = cache.items.filter(i =>
+        !search || (i.itemName2 || '').includes(search)
     );
 
+    filtered.forEach(item => {
+        const tr = cloneTemplate('movementItemRowTemplate');
+        tr.querySelector('.c-id').textContent = item.itemID;
+        tr.querySelector('.c-name').textContent = item.itemName2 ?? '';
+        tr.addEventListener('click', () => selectMovementItem(item.itemID, item.itemName2));
+        tbody.appendChild(tr);
+    });
 }
 
+function selectMovementItem(id, name) {
+    if (!activeMovementRow) return;
 
-/* ============================================================
-   نافذة اختيار الصنف
-   ============================================================ */
+    activeMovementRow.querySelector('.movement-item-id').value = id;
+    activeMovementRow.querySelector('.movement-item').value = name;
 
-function openMovementItemModal(row) {
+    activeMovementRow.querySelector('.movement-type-id').value = '';
+    activeMovementRow.querySelector('.movement-type').value = '';
 
-    if (movementMode !== 'add') {
-        return;
-    }
-
-
-    const modalId =
-        'movementItemModal';
-
-
-    const modal =
-        createMovementModal(
-            modalId,
-            'اختيار الصنف',
-            `
-            <div class="mb-3">
-
-                <input
-                    type="text"
-                    id="movementItemSearchInput"
-                    class="form-control"
-                    placeholder="بحث عن الصنف..."
-                >
-
-            </div>
-
-            <div
-                id="movementItemResults"
-                class="list-group"
-            ></div>
-            `
-        );
-
-
-    /*
-     * البحث
-     */
-
-    const searchInput =
-        document.getElementById(
-            'movementItemSearchInput'
-        );
-
-
-    function renderItems(search = '') {
-
-        const results =
-            document.getElementById(
-                'movementItemResults'
-            );
-
-
-        if (!results) {
-            return;
-        }
-
-
-        const filtered =
-            movementItems.filter(function (item) {
-
-                return item.name
-                    .toLowerCase()
-                    .includes(search.toLowerCase());
-
-            });
-
-
-        results.innerHTML = '';
-
-
-        filtered.forEach(function (item) {
-
-            const button =
-                document.createElement('button');
-
-
-            button.type = 'button';
-
-            button.className =
-                'list-group-item list-group-item-action';
-
-
-            button.textContent =
-                item.name;
-
-
-            button.addEventListener(
-                'click',
-                function () {
-
-                    selectMovementItem(
-                        row,
-                        item
-                    );
-
-                    bootstrap.Modal
-                        .getInstance(modal)
-                        .hide();
-
-                }
-            );
-
-
-            results.appendChild(button);
-
-        });
-
-    }
-
-
-    if (searchInput) {
-
-        searchInput.addEventListener(
-            'input',
-            function () {
-
-                renderItems(
-                    this.value
-                );
-
-            }
-        );
-
-    }
-
-
-    renderItems();
-
-
-    bootstrap.Modal
-        .getOrCreateInstance(modal)
-        .show();
-
+    if (movementItemModal) movementItemModal.hide();
+    setTimeout(() => activeMovementRow.querySelector('.movement-type')?.focus(), 250);
 }
 
-
-/* ============================================================
-   اختيار الصنف
-   ============================================================ */
-
-function selectMovementItem(row, item) {
-
-    if (!row || !item) {
-        return;
-    }
-
-
-    const idInput =
-        row.querySelector(
-            '.movement-item-id'
-        );
-
-
-    const nameInput =
-        row.querySelector(
-            '.movement-item'
-        );
-
-
-    if (idInput) {
-        idInput.value = item.id;
-    }
-
-
-    if (nameInput) {
-        nameInput.value = item.name;
-    }
-
-
-    /*
-     * عند تغيير الصنف
-     * نمسح النوع السابق.
-     */
-
-    const typeId =
-        row.querySelector(
-            '.movement-type-id'
-        );
-
-
-    const typeName =
-        row.querySelector(
-            '.movement-type'
-        );
-
-
-    if (typeId) {
-        typeId.value = '';
-    }
-
-
-    if (typeName) {
-        typeName.value = '';
-    }
-
+function movementItemInput(e) {
+    debounce(() => searchMovementItems())();
 }
 
-
 /* ============================================================
-   نافذة اختيار النوع
+   Modal النوع
    ============================================================ */
 
-function openMovementTypeModal(row) {
+function openMovementTypeModal() {
+    if (movementMode !== 'add' || !movementTypeModal) return;
+    if (!activeMovementRow) return;
 
-    if (movementMode !== 'add') {
-        return;
-    }
-
-
-    const itemId =
-        row.querySelector(
-            '.movement-item-id'
-        )?.value;
-
-
+    const itemId = activeMovementRow.querySelector('.movement-item-id')?.value;
     if (!itemId) {
-
-        alert(
-            'يرجى اختيار الصنف أولاً.'
-        );
-
+        notify('يرجى اختيار الصنف أولاً', 'warning');
         return;
-
     }
 
+    document.getElementById('movementTypeSearchInput').value =
+        activeMovementRow.querySelector('.movement-type')?.value || '';
 
-    const modal =
-        createMovementModal(
-            'movementTypeModal',
-            'اختيار النوع',
-            `
-            <div class="mb-3">
+    movementTypeModal.show();
+    setTimeout(() => {
+        document.getElementById('movementTypeSearchInput').focus();
+        searchMovementTypes();
+    }, 200);
+}
 
-                <input
-                    type="text"
-                    id="movementTypeSearchInput"
-                    class="form-control"
-                    placeholder="بحث عن النوع..."
-                >
+function searchMovementTypes() {
+    const search = document.getElementById('movementTypeSearchInput').value.trim();
+    const tbody = document.getElementById('movementTypeResults');
+    tbody.replaceChildren();
 
-            </div>
+    const filtered = cache.types.filter(t =>
+        !search || (t.name || '').includes(search)
+    );
 
-            <div
-                id="movementTypeResults"
-                class="list-group"
-            ></div>
-            `
-        );
+    filtered.forEach(type => {
+        const tr = cloneTemplate('movementTypeRowTemplate');
+        tr.querySelector('.c-id').textContent = type.id;
+        tr.querySelector('.c-name').textContent = type.name ?? '';
+        tr.addEventListener('click', () => selectMovementType(type.id, type.name));
+        tbody.appendChild(tr);
+    });
+}
 
+function selectMovementType(id, name) {
+    if (!activeMovementRow) return;
 
-    const searchInput =
-        document.getElementById(
-            'movementTypeSearchInput'
-        );
+    activeMovementRow.querySelector('.movement-type-id').value = id;
+    activeMovementRow.querySelector('.movement-type').value = name;
 
+    if (movementTypeModal) movementTypeModal.hide();
+    setTimeout(() => activeMovementRow.querySelector('.movement-code')?.focus(), 250);
+}
 
-    function renderTypes(search = '') {
+function movementTypeInput(e) {
+    debounce(() => searchMovementTypes())();
+}
 
-        const results =
-            document.getElementById(
-                'movementTypeResults'
-            );
+/* ============================================================
+   Modal المخزن
+   ============================================================ */
 
+function openMovementWarehouseModal() {
+    if (movementMode !== 'add' || !movementWarehouseModal) return;
 
-        if (!results) {
-            return;
+    const currentValue = activeWarehouseTarget === 'header'
+        ? getValue('movementWarehouse')
+        : activeMovementRow?.querySelector('.movement-warehouse')?.value || '';
+
+    document.getElementById('movementWarehouseSearchInput').value = currentValue;
+
+    movementWarehouseModal.show();
+    setTimeout(() => {
+        document.getElementById('movementWarehouseSearchInput').focus();
+        searchMovementWarehouses();
+    }, 200);
+}
+
+function searchMovementWarehouses() {
+    const search = document.getElementById('movementWarehouseSearchInput').value.trim();
+    const tbody = document.getElementById('movementWarehouseResults');
+    tbody.replaceChildren();
+
+    const filtered = cache.warehouses.filter(w =>
+        !search || (w.StockName || '').includes(search)
+    );
+
+    filtered.forEach(w => {
+        const tr = cloneTemplate('movementWarehouseRowTemplate');
+        tr.querySelector('.c-id').textContent = w.StockID;
+        tr.querySelector('.c-name').textContent = w.StockName ?? '';
+        tr.addEventListener('click', () => selectMovementWarehouse(w.StockID, w.StockName));
+        tbody.appendChild(tr);
+    });
+}
+
+function selectMovementWarehouse(id, name) {
+    if (activeWarehouseTarget === 'header') {
+        setValue('movementWarehouseId', id);
+        setValue('movementWarehouse', name);
+    } else if (activeMovementRow) {
+        activeMovementRow.querySelector('.movement-warehouse-id').value = id;
+        activeMovementRow.querySelector('.movement-warehouse').value = name;
+    }
+
+    if (movementWarehouseModal) movementWarehouseModal.hide();
+
+    setTimeout(() => {
+        if (activeWarehouseTarget === 'header') {
+            const firstRow = document.querySelector('#movementDetails .movement-detail-row');
+            if (firstRow) {
+                firstRow.querySelector('.movement-item')?.focus();
+            } else {
+                const row = addMovementRow();
+                row?.querySelector('.movement-item')?.focus();
+            }
+        } else if (activeMovementRow) {
+            activeMovementRow.querySelector('.movement-unit')?.focus();
         }
+    }, 250);
+}
 
+function movementWarehouseInput(e) {
+    debounce(() => searchMovementWarehouses())();
+}
 
-        const filtered =
-            movementTypes.filter(function (type) {
+/* ============================================================
+   Modal الوحدة
+   ============================================================ */
 
-                const belongsToItem =
-                    String(type.item_id) ===
-                    String(itemId);
+function openMovementUnitModal() {
+    if (movementMode !== 'add' || !movementUnitModal) return;
+    if (!activeMovementRow) return;
 
+    document.getElementById('movementUnitSearchInput').value =
+        activeMovementRow.querySelector('.movement-unit')?.value || '';
 
-                const matchesSearch =
-                    type.name
-                        .toLowerCase()
-                        .includes(
-                            search.toLowerCase()
-                        );
+    movementUnitModal.show();
+    setTimeout(() => {
+        document.getElementById('movementUnitSearchInput').focus();
+        searchMovementUnits();
+    }, 200);
+}
 
+function searchMovementUnits() {
+    const search = document.getElementById('movementUnitSearchInput').value.trim();
+    const tbody = document.getElementById('movementUnitResults');
+    tbody.replaceChildren();
 
-                return belongsToItem &&
-                    matchesSearch;
+    const filtered = cache.units.filter(u =>
+        !search || (u.UnitName || '').includes(search)
+    );
 
-            });
+    filtered.forEach(u => {
+        const tr = cloneTemplate('movementUnitRowTemplate');
+        tr.querySelector('.c-id').textContent = u.UnitID;
+        tr.querySelector('.c-name').textContent = u.UnitName ?? '';
+        tr.addEventListener('click', () => selectMovementUnit(u.UnitID, u.UnitName));
+        tbody.appendChild(tr);
+    });
+}
 
+function selectMovementUnit(id, name) {
+    if (!activeMovementRow) return;
 
-        results.innerHTML = '';
+    activeMovementRow.querySelector('.movement-unit-id').value = id;
+    activeMovementRow.querySelector('.movement-unit').value = name;
 
+    if (movementUnitModal) movementUnitModal.hide();
+    setTimeout(() => activeMovementRow.querySelector('.movement-quantity')?.focus(), 250);
+}
 
-        if (filtered.length === 0) {
+function movementUnitInput(e) {
+    debounce(() => searchMovementUnits())();
+}
 
-            results.innerHTML = `
-                <div class="alert alert-warning mb-0">
-                    لا توجد أنواع لهذا الصنف.
-                </div>
-            `;
+/* ============================================================
+   بدء الحركات
+   ============================================================ */
 
-            return;
+async function startSupplyMovement() {
+    clearMovementForm();
+    currentMovementType = 'supply';
+
+    setMovementMode('add');
+    setValue('movementType', MOVEMENT_TYPE_LABELS.supply);
+    setValue('movementDirection', MOVEMENT_DIRECTION_LABELS.in);
+    setTodayDate();
+
+    const displayEl = document.getElementById('movementDisplayId');
+    if (displayEl) {
+        try {
+            const res = await apiGet('/operation/movements/next-number');
+            displayEl.value = res.next_number || '';
+        } catch (e) {
+            displayEl.value = '';
+            notify('تعذّر جلب رقم الحركة التالي', 'danger');
         }
+    }
 
+    document.getElementById('movementWarehouse')?.focus();
+}
 
-        filtered.forEach(function (type) {
+async function startIssueMovement() {
+    clearMovementForm();
+    currentMovementType = 'issue';
 
-            const button =
-                document.createElement('button');
+    setMovementMode('add');
+    setValue('movementType', MOVEMENT_TYPE_LABELS.issue);
+    setValue('movementDirection', MOVEMENT_DIRECTION_LABELS.out);
+    setTodayDate();
 
+    const displayEl = document.getElementById('movementDisplayId');
+    if (displayEl) {
+        try {
+            const res = await apiGet('/operation/movements/next-number');
+            displayEl.value = res.next_number || '';
+        } catch (e) {
+            displayEl.value = '';
+            notify('تعذّر جلب رقم الحركة التالي', 'danger');
+        }
+    }
 
-            button.type = 'button';
+    document.getElementById('movementWarehouse')?.focus();
+}
 
-            button.className =
-                'list-group-item list-group-item-action';
+/* ============================================================
+   البحث
+   ============================================================ */
 
+async function searchMovements() {
+    const warehouseId = getValue('searchWarehouse');
+    const movementType = getValue('searchMovementType');
+    const dateFrom = getValue('searchDateFrom');
+    const dateTo = getValue('searchDateTo');
 
-            button.textContent =
-                type.name;
+    const params = new URLSearchParams();
+    if (warehouseId) params.append('warehouse_id', warehouseId);
+    if (movementType) params.append('movement_type', movementType);
+    if (dateFrom) params.append('date_from', dateFrom);
+    if (dateTo) params.append('date_to', dateTo);
 
+    try {
+        const raw = await apiGet('/operation/movements/list?' + params.toString());
+        displayMovementSearchResults(unwrap(raw));
+    } catch (e) {
+        console.error(e);
+        notify('فشل البحث عن الحركات', 'danger');
+    }
+}
 
-            button.addEventListener(
-                'click',
-                function () {
+function displayMovementSearchResults(results) {
+    const container = document.getElementById('movementSearchResults');
+    const tbody = document.getElementById('movementSearchResultsBody');
+    if (!container || !tbody) return;
 
-                    selectMovementType(
-                        row,
-                        type
-                    );
+    tbody.replaceChildren();
 
+    if (!results.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 6;
+        td.className = 'text-center text-muted py-3';
+        td.textContent = 'لا توجد حركات مطابقة للبحث.';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        container.classList.remove('d-none');
+        return;
+    }
 
-                    bootstrap.Modal
-                        .getInstance(modal)
-                        .hide();
+    results.forEach(m => {
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
 
-                }
-            );
-
-
-            results.appendChild(button);
-
+        [
+            m.display_id,
+            MOVEMENT_TYPE_LABELS[m.movement_type] || m.movement_type,
+            MOVEMENT_DIRECTION_LABELS[m.direction] || m.direction,
+            m.movement_date,
+            m.document_number ?? '',
+            m.warehouse_name ?? '',
+        ].forEach(value => {
+            const td = document.createElement('td');
+            td.textContent = value;
+            tr.appendChild(td);
         });
 
-    }
+        tr.addEventListener('click', () => loadMovement(m.movement_id));
+        tbody.appendChild(tr);
+    });
 
-
-    if (searchInput) {
-
-        searchInput.addEventListener(
-            'input',
-            function () {
-
-                renderTypes(
-                    this.value
-                );
-
-            }
-        );
-
-    }
-
-
-    renderTypes();
-
-
-    bootstrap.Modal
-        .getOrCreateInstance(modal)
-        .show();
-
+    container.classList.remove('d-none');
 }
 
-
 /* ============================================================
-   اختيار النوع
+   تحميل حركة
    ============================================================ */
 
-function selectMovementType(row, type) {
+async function loadMovement(movementId) {
+    try {
+        const res = await apiGet(`/operation/movements/${movementId}`);
+        const h = res.header;
+        const details = res.details || [];
 
-    if (!row || !type) {
-        return;
-    }
+        clearMovementForm();
 
+        setValue('movementDisplayId', h.display_id ?? '');
+        setValue('movementType', MOVEMENT_TYPE_LABELS[h.movement_type] || '');
+        setValue('movementDirection', MOVEMENT_DIRECTION_LABELS[h.direction] || '');
+        setValue('movementDate', h.movement_date ?? '');
+        setValue('movementDocumentNumber', h.document_number ?? '');
+        setValue('movementStatement', h.statement ?? '');
+        setValue('movementWarehouse', h.warehouse_name ?? '');
+        setValue('movementWarehouseId', h.warehouse_id ?? '');
 
-    const idInput =
-        row.querySelector(
-            '.movement-type-id'
-        );
+        const tbody = document.getElementById('movementDetails');
+        tbody.replaceChildren();
 
+        details.forEach(d => {
+            const row = cloneTemplate('movementRowTemplate');
 
-    const nameInput =
-        row.querySelector(
-            '.movement-type'
-        );
+            row.querySelector('.movement-item-id').value = d.item_id ?? '';
+            row.querySelector('.movement-item').value = d.item_name ?? '';
 
+            row.querySelector('.movement-type-id').value = d.type_id ?? '';
+            row.querySelector('.movement-type').value = d.type_name ?? '';
 
-    if (idInput) {
-        idInput.value = type.id;
-    }
+            row.querySelector('.movement-code').value = d.code ?? '';
 
+            row.querySelector('.movement-warehouse-id').value = d.warehouse_id ?? '';
+            row.querySelector('.movement-warehouse').value = d.warehouse_name ?? '';
 
-    if (nameInput) {
-        nameInput.value = type.name;
-    }
+            row.querySelector('.movement-unit-id').value = d.unit_id ?? '';
+            row.querySelector('.movement-unit').value = d.unit_name ?? '';
 
-}
+            row.querySelector('.movement-quantity').value = d.quantity ?? 0;
+            row.querySelector('.movement-unit-cost').value = d.unit_cost ?? 0;
+            row.querySelector('.movement-min-price').value = d.min_price ?? '';
+            row.querySelector('.movement-max-price').value = d.max_price ?? '';
+            row.querySelector('.movement-sale-price').value = d.sale_price ?? 0;
 
-
-/* ============================================================
-   نافذة اختيار المخزن
-   ============================================================ */
-
-function openMovementWarehouseModal(row) {
-
-    if (movementMode !== 'add') {
-        return;
-    }
-
-
-    const modal =
-        createMovementModal(
-            'movementWarehouseModal',
-            'اختيار المخزن',
-            `
-            <div class="mb-3">
-
-                <input
-                    type="text"
-                    id="movementWarehouseSearchInput"
-                    class="form-control"
-                    placeholder="بحث عن المخزن..."
-                >
-
-            </div>
-
-            <div
-                id="movementWarehouseResults"
-                class="list-group"
-            ></div>
-            `
-        );
-
-
-    const searchInput =
-        document.getElementById(
-            'movementWarehouseSearchInput'
-        );
-
-
-    function renderWarehouses(search = '') {
-
-        const results =
-            document.getElementById(
-                'movementWarehouseResults'
-            );
-
-
-        if (!results) {
-            return;
-        }
-
-
-        const filtered =
-            movementWarehouses.filter(
-                function (warehouse) {
-
-                    return warehouse.name
-                        .toLowerCase()
-                        .includes(
-                            search.toLowerCase()
-                        );
-
-                }
-            );
-
-
-        results.innerHTML = '';
-
-
-        filtered.forEach(
-            function (warehouse) {
-
-                const button =
-                    document.createElement(
-                        'button'
-                    );
-
-
-                button.type = 'button';
-
-                button.className =
-                    'list-group-item list-group-item-action';
-
-
-                button.textContent =
-                    warehouse.name;
-
-
-                button.addEventListener(
-                    'click',
-                    function () {
-
-                        selectMovementWarehouse(
-                            row,
-                            warehouse
-                        );
-
-
-                        bootstrap.Modal
-                            .getInstance(modal)
-                            .hide();
-
-                    }
-                );
-
-
-                results.appendChild(
-                    button
-                );
-
-            }
-        );
-
-    }
-
-
-    if (searchInput) {
-
-        searchInput.addEventListener(
-            'input',
-            function () {
-
-                renderWarehouses(
-                    this.value
-                );
-
-            }
-        );
-
-    }
-
-
-    renderWarehouses();
-
-
-    bootstrap.Modal
-        .getOrCreateInstance(modal)
-        .show();
-
-}
-
-
-/* ============================================================
-   اختيار المخزن
-   ============================================================ */
-
-function selectMovementWarehouse(
-    row,
-    warehouse
-) {
-
-    if (!row || !warehouse) {
-        return;
-    }
-
-
-    const idInput =
-        row.querySelector(
-            '.movement-warehouse-id'
-        );
-
-
-    const nameInput =
-        row.querySelector(
-            '.movement-warehouse'
-        );
-
-
-    if (idInput) {
-        idInput.value =
-            warehouse.id;
-    }
-
-
-    if (nameInput) {
-        nameInput.value =
-            warehouse.name;
-    }
-
-}
-
-
-/* ============================================================
-   نافذة اختيار الوحدة
-   ============================================================ */
-
-function openMovementUnitModal(row) {
-
-    if (movementMode !== 'add') {
-        return;
-    }
-
-
-    const modal =
-        createMovementModal(
-            'movementUnitModal',
-            'اختيار الوحدة',
-            `
-            <div class="mb-3">
-
-                <input
-                    type="text"
-                    id="movementUnitSearchInput"
-                    class="form-control"
-                    placeholder="بحث عن الوحدة..."
-                >
-
-            </div>
-
-            <div
-                id="movementUnitResults"
-                class="list-group"
-            ></div>
-            `
-        );
-
-
-    const searchInput =
-        document.getElementById(
-            'movementUnitSearchInput'
-        );
-
-
-    function renderUnits(search = '') {
-
-        const results =
-            document.getElementById(
-                'movementUnitResults'
-            );
-
-
-        if (!results) {
-            return;
-        }
-
-
-        const filtered =
-            movementUnits.filter(
-                function (unit) {
-
-                    return unit.name
-                        .toLowerCase()
-                        .includes(
-                            search.toLowerCase()
-                        );
-
-                }
-            );
-
-
-        results.innerHTML = '';
-
-
-        filtered.forEach(
-            function (unit) {
-
-                const button =
-                    document.createElement(
-                        'button'
-                    );
-
-
-                button.type = 'button';
-
-                button.className =
-                    'list-group-item list-group-item-action';
-
-
-                button.textContent =
-                    unit.name;
-
-
-                button.addEventListener(
-                    'click',
-                    function () {
-
-                        selectMovementUnit(
-                            row,
-                            unit
-                        );
-
-
-                        bootstrap.Modal
-                            .getInstance(modal)
-                            .hide();
-
-                    }
-                );
-
-
-                results.appendChild(
-                    button
-                );
-
-            }
-        );
-
-    }
-
-
-    if (searchInput) {
-
-        searchInput.addEventListener(
-            'input',
-            function () {
-
-                renderUnits(
-                    this.value
-                );
-
-            }
-        );
-
-    }
-
-
-    renderUnits();
-
-
-    bootstrap.Modal
-        .getOrCreateInstance(modal)
-        .show();
-
-}
-
-
-/* ============================================================
-   اختيار الوحدة
-   ============================================================ */
-
-function selectMovementUnit(
-    row,
-    unit
-) {
-
-    if (!row || !unit) {
-        return;
-    }
-
-
-    const idInput =
-        row.querySelector(
-            '.movement-unit-id'
-        );
-
-
-    const nameInput =
-        row.querySelector(
-            '.movement-unit'
-        );
-
-
-    if (idInput) {
-        idInput.value =
-            unit.id;
-    }
-
-
-    if (nameInput) {
-        nameInput.value =
-            unit.name;
-    }
-
-}
-
-
-/* ============================================================
-   إنشاء Modal ديناميكي
-   ============================================================ */
-
-function createMovementModal(
-    id,
-    title,
-    body
-) {
-
-    /*
-     * إذا كانت نافذة موجودة
-     * نحذفها أولاً حتى لا تتكرر.
-     */
-
-    const oldModal =
-        document.getElementById(id);
-
-
-    if (oldModal) {
-
-        const oldInstance =
-            bootstrap.Modal.getInstance(
-                oldModal
-            );
-
-
-        if (oldInstance) {
-            oldInstance.dispose();
-        }
-
-
-        oldModal.remove();
-
-    }
-
-
-    const modal =
-        document.createElement('div');
-
-
-    modal.className =
-        'modal fade';
-
-
-    modal.id = id;
-
-
-    modal.tabIndex = -1;
-
-
-    modal.setAttribute(
-        'aria-hidden',
-        'true'
-    );
-
-
-    modal.innerHTML = `
-
-        <div class="modal-dialog modal-dialog-centered">
-
-            <div class="modal-content">
-
-                <div class="modal-header">
-
-                    <h5 class="modal-title">
-                        ${title}
-                    </h5>
-
-                    <button
-                        type="button"
-                        class="btn-close"
-                        data-bs-dismiss="modal"
-                        aria-label="إغلاق"
-                    ></button>
-
-                </div>
-
-                <div class="modal-body">
-
-                    ${body}
-
-                </div>
-
-            </div>
-
-        </div>
-
-    `;
-
-
-    document.body.appendChild(modal);
-
-
-    return modal;
-
-}
-
-
-/* ============================================================
-   البحث في حركات المخزون
-   ============================================================ */
-
-function searchMovements() {
-
-    /*
-     * البحث لا يستخدم Modal.
-     */
-
-    const warehouse =
-        document.getElementById(
-            'searchWarehouse'
-        )?.value || '';
-
-
-    const movementType =
-        document.getElementById(
-            'searchMovementType'
-        )?.value || '';
-
-
-    const dateFrom =
-        document.getElementById(
-            'searchDateFrom'
-        )?.value || '';
-
-
-    const dateTo =
-        document.getElementById(
-            'searchDateTo'
-        )?.value || '';
-
-
-    /*
-     * حالياً بيانات تجريبية.
-     *
-     * لاحقاً:
-     *
-     * fetch()
-     *    ↓
-     * Laravel Route
-     *    ↓
-     * Controller
-     *    ↓
-     * Database
-     */
-
-    const results =
-        getTemporaryMovementResults(
-            warehouse,
-            movementType,
-            dateFrom,
-            dateTo
-        );
-
-
-    displayMovementSearchResults(
-        results
-    );
-
-
-}
-
-
-/* ============================================================
-   بيانات بحث تجريبية
-   ============================================================ */
-
-function getTemporaryMovementResults(
-    warehouse,
-    movementType,
-    dateFrom,
-    dateTo
-) {
-
-    /*
-     * هذه بيانات مؤقتة فقط.
-     */
-
-    const movements = [
-
-        {
-            id: 1001,
-            display_id: 'MOV-0001',
-            type: 'توريد مخزني',
-            type_code: 'supply',
-            direction: 'دخول',
-            date: '2026-09-01',
-            document_number: 'SUP-001',
-            warehouse_id: 1,
-            warehouse_name: 'المخزن الرئيسي',
-            statement: 'توريد مخزني يدوي'
-        },
-
-        {
-            id: 1002,
-            display_id: 'MOV-0002',
-            type: 'صرف مخزني',
-            type_code: 'issue',
-            direction: 'خروج',
-            date: '2026-09-02',
-            document_number: 'ISS-001',
-            warehouse_id: 2,
-            warehouse_name: 'المخزن الثاني',
-            statement: 'صرف مخزني'
-        }
-
-    ];
-
-
-    return movements.filter(
-        function (movement) {
-
-            /*
-             * المخزن
-             */
-
-            if (
-                warehouse &&
-                String(movement.warehouse_id) !==
-                String(warehouse)
-            ) {
-                return false;
-            }
-
-
-            /*
-             * نوع الحركة
-             */
-
-            if (
-                movementType &&
-                movement.type_code !==
-                movementType
-            ) {
-                return false;
-            }
-
-
-            /*
-             * من تاريخ
-             */
-
-            if (
-                dateFrom &&
-                movement.date < dateFrom
-            ) {
-                return false;
-            }
-
-
-            /*
-             * إلى تاريخ
-             */
-
-            if (
-                dateTo &&
-                movement.date > dateTo
-            ) {
-                return false;
-            }
-
-
-            return true;
-
-        }
-    );
-
-}
-
-
-/* ============================================================
-   عرض نتائج البحث
-   ============================================================ */
-
-function displayMovementSearchResults(
-    results
-) {
-
-    const container =
-        document.getElementById(
-            'movementSearchResults'
-        );
-
-
-    const tbody =
-        document.getElementById(
-            'movementSearchResultsBody'
-        );
-
-
-    if (!container || !tbody) {
-        return;
-    }
-
-
-    tbody.innerHTML = '';
-
-
-    /*
-     * لا توجد نتائج
-     */
-
-    if (results.length === 0) {
-
-        tbody.innerHTML = `
-
-            <tr>
-
-                <td
-                    colspan="6"
-                    class="text-center text-muted"
-                >
-
-                    لا توجد حركات مطابقة للبحث.
-
-                </td>
-
-            </tr>
-
-        `;
-
-
-        container.classList.remove(
-            'd-none'
-        );
-
-
-        return;
-
-    }
-
-
-    /*
-     * النتائج
-     */
-
-    results.forEach(
-        function (movement) {
-
-            const row =
-                document.createElement('tr');
-
-
-            row.style.cursor =
-                'pointer';
-
-
-            row.innerHTML = `
-
-                <td>
-                    ${movement.display_id}
-                </td>
-
-                <td>
-                    ${movement.type}
-                </td>
-
-                <td>
-                    ${movement.direction}
-                </td>
-
-                <td>
-                    ${movement.date}
-                </td>
-
-                <td>
-                    ${movement.document_number}
-                </td>
-
-                <td>
-                    ${movement.warehouse_name}
-                </td>
-
-            `;
-
-
-            /*
-             * عند الضغط على النتيجة
-             * يتم تحميل الحركة في وضع view.
-             */
-
-            row.addEventListener(
-                'click',
-                function () {
-
-                    loadMovement(
-                        movement
-                    );
-
-                }
-            );
-
+            row.querySelector('.movement-total').value = Number(d.total).toFixed(2);
 
             tbody.appendChild(row);
+        });
 
-        }
-    );
+        renumberMovementRows();
+        calculateMovementTotal();
+        setMovementMode('view');
 
+        currentMovementId = h.movement_id;
 
-    container.classList.remove(
-        'd-none'
-    );
+        const searchResults = document.getElementById('movementSearchResults');
+        if (searchResults) searchResults.classList.add('d-none');
 
+        notify('تم تحميل الحركة بنجاح', 'success');
+    } catch (e) {
+        notify('فشل تحميل الحركة: ' + e.message, 'danger');
+    }
 }
 
-
 /* ============================================================
-   تحميل حركة موجودة
+   حفظ
    ============================================================ */
 
-function loadMovement(movement) {
-
-    if (!movement) {
-        return;
-    }
-
-
-    /*
-     * مهم:
-     *
-     * هذه حركة موجودة في النظام.
-     *
-     * لذلك لا نفتح أي Modal.
-     */
-
-    clearMovementForm();
-
-
-    currentMovement =
-        movement;
-
-
-    setMovementMode('view');
-
-
-    /*
-     * الرأس
-     */
-
-    setValue(
-        'movementDisplayId',
-        movement.display_id || ''
-    );
-
-
-    setValue(
-        'movementType',
-        movement.type || ''
-    );
-
-
-    setValue(
-        'movementDirection',
-        movement.direction || ''
-    );
-
-
-    setValue(
-        'movementDate',
-        movement.date || ''
-    );
-
-
-    setValue(
-        'movementDocumentNumber',
-        movement.document_number || ''
-    );
-
-
-    setValue(
-        'movementStatement',
-        movement.statement || ''
-    );
-
-
-    setValue(
-        'movementWarehouse',
-        movement.warehouse_name || ''
-    );
-
-
-    setValue(
-        'movementWarehouseId',
-        movement.warehouse_id || ''
-    );
-
-
-    /*
-     * التفاصيل
-     *
-     * إذا كانت التفاصيل موجودة مع الحركة
-     * نقوم بعرضها مباشرة.
-     */
-
-    if (movement.details) {
-
-        movement.details.forEach(
-            function (detail) {
-
-                addReadOnlyMovementRow(
-                    detail
-                );
-
-            }
-        );
-
-    }
-
-
-    calculateMovementTotal();
-
-}
-
-
-/* ============================================================
-   إضافة صف قراءة فقط
-   ============================================================ */
-
-function addReadOnlyMovementRow(
-    detail
-) {
-
-    const tbody =
-        document.getElementById(
-            'movementDetails'
-        );
-
-
-    if (!tbody) {
-        return;
-    }
-
-
-    movementRowCounter++;
-
-
-    const row =
-        document.createElement('tr');
-
-
-    row.className =
-        'movement-detail-row';
-
-
-    row.dataset.rowId =
-        movementRowCounter;
-
-
-    row.innerHTML = `
-
-        <td>
-            ${movementRowCounter}
-        </td>
-
-
-        <td>
-
-            <input
-                type="hidden"
-                class="movement-item-id"
-                value="${escapeHtml(detail.item_id || '')}"
-            >
-
-            <input
-                type="text"
-                class="form-control form-control-sm"
-                value="${escapeHtml(detail.item_name || '')}"
-                readonly
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="hidden"
-                class="movement-type-id"
-                value="${escapeHtml(detail.type_id || '')}"
-            >
-
-            <input
-                type="text"
-                class="form-control form-control-sm"
-                value="${escapeHtml(detail.type_name || '')}"
-                readonly
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="text"
-                class="form-control form-control-sm"
-                value="${escapeHtml(detail.code || '')}"
-                readonly
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="text"
-                class="form-control form-control-sm"
-                value="${escapeHtml(detail.warehouse_name || '')}"
-                readonly
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="text"
-                class="form-control form-control-sm"
-                value="${escapeHtml(detail.unit_name || '')}"
-                readonly
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="number"
-                class="form-control form-control-sm"
-                value="${escapeHtml(detail.quantity || 0)}"
-                readonly
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="number"
-                class="form-control form-control-sm"
-                value="${escapeHtml(detail.unit_cost || 0)}"
-                readonly
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="number"
-                class="form-control form-control-sm"
-                value="${escapeHtml(detail.sale_price || 0)}"
-                readonly
-            >
-
-        </td>
-
-
-        <td>
-
-            <input
-                type="text"
-                class="form-control form-control-sm"
-                value="${escapeHtml(detail.total || 0)}"
-                readonly
-            >
-
-        </td>
-
-    `;
-
-
-    tbody.appendChild(row);
-
-}
-
-
-/* ============================================================
-   حفظ الحركة
-   ============================================================ */
-
-function saveMovement() {
-
-    /*
-     * لا يمكن الحفظ إلا في add.
-     */
-
-    if (movementMode !== 'add') {
-        return;
-    }
-
-
-    /*
-     * التحقق من نوع الحركة
-     */
+async function saveMovement() {
+    if (isSavingMovement) return;
+    if (movementMode !== 'add') return;
 
     if (!currentMovementType) {
-
-        alert(
-            'لم يتم تحديد نوع الحركة.'
-        );
-
-        return;
-
-    }
-
-
-    /*
-     * التحقق من البيانات
-     */
-
-    if (!validateMovement()) {
+        notify('لم يتم تحديد نوع الحركة.', 'warning');
         return;
     }
 
+    if (!validateMovement()) return;
 
-    /*
-     * جمع البيانات
-     */
+    const payload = collectMovementData();
 
-    const movementData =
-        collectMovementData();
+    isSavingMovement = true;
+    const saveBtn = document.getElementById('btnSaveMovement');
+    const cancelBtn = document.getElementById('btnCancelMovement');
+    if (saveBtn) saveBtn.disabled = true;
+    if (cancelBtn) cancelBtn.disabled = true;
 
+    try {
+        const r = await apiSend('/operation/movements', 'POST', payload);
 
-    /*
-     * حالياً نحاكي عملية الحفظ.
-     *
-     * لاحقاً سيتم إرسال البيانات إلى Laravel.
-     */
+        if (r.display_id) setValue('movementDisplayId', r.display_id);
+        currentMovementId = r.movement_id;
 
-    console.log(
-        'Movement data:',
-        movementData
-    );
-
-
-    alert(
-        'تم حفظ حركة المخزون بنجاح.'
-    );
-
-
-    /*
-     * بعد الحفظ:
-     *
-     * add → view
-     *
-     * ولا يوجد edit.
-     */
-
-    currentMovement =
-        movementData;
-
-
-    setMovementMode('view');
-
-
-    /*
-     * إخفاء أزرار الحفظ
-     */
-
-    const actions =
-        document.getElementById(
-            'movementSaveActions'
-        );
-
-
-    if (actions) {
-        actions.classList.add(
-            'd-none'
-        );
+        notify(r.message || 'تم حفظ حركة المخزون بنجاح', 'success');
+        setMovementMode('view');
+    } catch (e) {
+        let m = e.message;
+        if (e.errors) m += ' — ' + Object.values(e.errors).flat().join(' | ');
+        notify(m, 'danger');
+    } finally {
+        isSavingMovement = false;
+        if (saveBtn) saveBtn.disabled = false;
+        if (cancelBtn) cancelBtn.disabled = false;
     }
-
 }
-
-
-/* ============================================================
-   جمع بيانات الحركة
-   ============================================================ */
 
 function collectMovementData() {
-
     const details = [];
 
-
-    const rows =
-        document.querySelectorAll(
-            '#movementDetails .movement-detail-row'
-        );
-
-
-    rows.forEach(
-        function (row) {
-
-            details.push({
-
-                item_id:
-                    row.querySelector(
-                        '.movement-item-id'
-                    )?.value || null,
-
-                item_name:
-                    row.querySelector(
-                        '.movement-item'
-                    )?.value || '',
-
-                type_id:
-                    row.querySelector(
-                        '.movement-type-id'
-                    )?.value || null,
-
-                type_name:
-                    row.querySelector(
-                        '.movement-type'
-                    )?.value || '',
-
-                code:
-                    row.querySelector(
-                        '.movement-code'
-                    )?.value || '',
-
-                warehouse_id:
-                    row.querySelector(
-                        '.movement-warehouse-id'
-                    )?.value || null,
-
-                warehouse_name:
-                    row.querySelector(
-                        '.movement-warehouse'
-                    )?.value || '',
-
-                unit_id:
-                    row.querySelector(
-                        '.movement-unit-id'
-                    )?.value || null,
-
-                unit_name:
-                    row.querySelector(
-                        '.movement-unit'
-                    )?.value || '',
-
-                quantity:
-                    parseFloat(
-                        row.querySelector(
-                            '.movement-quantity'
-                        )?.value
-                    ) || 0,
-
-                unit_cost:
-                    parseFloat(
-                        row.querySelector(
-                            '.movement-unit-cost'
-                        )?.value
-                    ) || 0,
-
-                sale_price:
-                    parseFloat(
-                        row.querySelector(
-                            '.movement-sale-price'
-                        )?.value
-                    ) || 0,
-
-                total:
-                    parseFloat(
-                        row.querySelector(
-                            '.movement-total'
-                        )?.value
-                    ) || 0
-
-            });
-
-        }
-    );
-
+    document.querySelectorAll('#movementDetails .movement-detail-row').forEach(row => {
+        details.push({
+            item_id: row.querySelector('.movement-item-id')?.value || null,
+            type_id: row.querySelector('.movement-type-id')?.value || null,
+            unit_id: row.querySelector('.movement-unit-id')?.value || null,
+            code: row.querySelector('.movement-code')?.value || null,
+            warehouse_id: row.querySelector('.movement-warehouse-id')?.value || null,
+            quantity: parseFloat(row.querySelector('.movement-quantity')?.value) || 0,
+            unit_cost: parseFloat(row.querySelector('.movement-unit-cost')?.value) || 0,
+            min_price: row.querySelector('.movement-min-price')?.value !== ''
+                ? parseFloat(row.querySelector('.movement-min-price').value) : null,
+            max_price: row.querySelector('.movement-max-price')?.value !== ''
+                ? parseFloat(row.querySelector('.movement-max-price').value) : null,
+            sale_price: row.querySelector('.movement-sale-price')?.value !== ''
+                ? parseFloat(row.querySelector('.movement-sale-price').value) : null,
+        });
+    });
 
     return {
-
-        display_id:
-            getValue(
-                'movementDisplayId'
-            ),
-
-        type:
-            getValue(
-                'movementType'
-            ),
-
-        direction:
-            getValue(
-                'movementDirection'
-            ),
-
-        date:
-            getValue(
-                'movementDate'
-            ),
-
-        document_number:
-            getValue(
-                'movementDocumentNumber'
-            ),
-
-        statement:
-            getValue(
-                'movementStatement'
-            ),
-
-        warehouse_id:
-            getValue(
-                'movementWarehouseId'
-            ),
-
-        warehouse_name:
-            getValue(
-                'movementWarehouse'
-            ),
-
-        total:
-            parseFloat(
-                getValue(
-                    'movementTotal'
-                )
-            ) || 0,
-
-        details:
-            details
-
+        movement_type: currentMovementType,
+        movement_date: getValue('movementDate'),
+        document_number: getValue('movementDocumentNumber') || null,
+        warehouse_id: getValue('movementWarehouseId') || null,
+        statement: getValue('movementStatement') || null,
+        details: details,
     };
-
 }
-
-
-/* ============================================================
-   التحقق من الحركة قبل الحفظ
-   ============================================================ */
 
 function validateMovement() {
-
-    const date =
-        getValue(
-            'movementDate'
-        );
-
-
-    if (!date) {
-
-        alert(
-            'يرجى تحديد تاريخ الحركة.'
-        );
-
+    if (!getValue('movementDate')) {
+        notify('يرجى تحديد تاريخ الحركة.', 'warning');
         return false;
-
     }
 
-
-    const rows =
-        document.querySelectorAll(
-            '#movementDetails .movement-detail-row'
-        );
-
-
-    if (rows.length === 0) {
-
-        alert(
-            'يجب إضافة صنف واحد على الأقل.'
-        );
-
+    if (!getValue('movementWarehouseId')) {
+        notify('يرجى اختيار المخزن في رأس الحركة.', 'warning');
         return false;
-
     }
 
+    const rows = document.querySelectorAll('#movementDetails .movement-detail-row');
+    if (!rows.length) {
+        notify('يجب إضافة صنف واحد على الأقل.', 'warning');
+        return false;
+    }
 
-    let valid =
-        true;
+    for (const row of rows) {
+        const itemId = row.querySelector('.movement-item-id')?.value;
+        const unitId = row.querySelector('.movement-unit-id')?.value;
+        const warehouseId = row.querySelector('.movement-warehouse-id')?.value;
+        const quantity = parseFloat(row.querySelector('.movement-quantity')?.value) || 0;
+        const unitCost = parseFloat(row.querySelector('.movement-unit-cost')?.value) || 0;
 
-
-    rows.forEach(
-        function (row) {
-
-            const item =
-                row.querySelector(
-                    '.movement-item-id'
-                )?.value;
-
-
-            const type =
-                row.querySelector(
-                    '.movement-type-id'
-                )?.value;
-
-
-            const warehouse =
-                row.querySelector(
-                    '.movement-warehouse-id'
-                )?.value;
-
-
-            const unit =
-                row.querySelector(
-                    '.movement-unit-id'
-                )?.value;
-
-
-            const quantity =
-                parseFloat(
-                    row.querySelector(
-                        '.movement-quantity'
-                    )?.value
-                ) || 0;
-
-
-            const unitCost =
-                parseFloat(
-                    row.querySelector(
-                        '.movement-unit-cost'
-                    )?.value
-                ) || 0;
-
-
-            if (!item) {
-
-                alert(
-                    'يجب اختيار الصنف في جميع الصفوف.'
-                );
-
-                valid = false;
-
-                return;
-
-            }
-
-
-            if (!type) {
-
-                alert(
-                    'يجب اختيار النوع في جميع الصفوف.'
-                );
-
-                valid = false;
-
-                return;
-
-            }
-
-
-            if (!warehouse) {
-
-                alert(
-                    'يجب اختيار المخزن في جميع الصفوف.'
-                );
-
-                valid = false;
-
-                return;
-
-            }
-
-
-            if (!unit) {
-
-                alert(
-                    'يجب اختيار الوحدة في جميع الصفوف.'
-                );
-
-                valid = false;
-
-                return;
-
-            }
-
-
-            if (quantity <= 0) {
-
-                alert(
-                    'الكمية يجب أن تكون أكبر من صفر.'
-                );
-
-                valid = false;
-
-                return;
-
-            }
-
-
-            if (unitCost < 0) {
-
-                alert(
-                    'سعر تكلفة الوحدة غير صحيح.'
-                );
-
-                valid = false;
-
-                return;
-
-            }
-
+        if (!itemId) {
+            notify('يجب اختيار الصنف في جميع الصفوف.', 'warning');
+            return false;
         }
-    );
+        if (!warehouseId) {
+            notify('يجب اختيار المخزن في جميع الصفوف.', 'warning');
+            return false;
+        }
+        if (!unitId) {
+            notify('يجب اختيار الوحدة في جميع الصفوف.', 'warning');
+            return false;
+        }
+        if (quantity <= 0) {
+            notify('الكمية يجب أن تكون أكبر من صفر.', 'warning');
+            return false;
+        }
+        if (unitCost < 0) {
+            notify('سعر التكلفة لا يمكن أن يكون سالبًا.', 'warning');
+            return false;
+        }
 
+        const minPrice = row.querySelector('.movement-min-price')?.value;
+        const maxPrice = row.querySelector('.movement-max-price')?.value;
+        const salePrice = row.querySelector('.movement-sale-price')?.value;
 
-    return valid;
+        if (minPrice !== '' && maxPrice !== '' && parseFloat(minPrice) > parseFloat(maxPrice)) {
+            notify('الحد الأدنى للسعر لا يمكن أن يكون أكبر من الحد الأعلى.', 'warning');
+            return false;
+        }
 
+        if (salePrice !== '') {
+            const sale = parseFloat(salePrice);
+            if (minPrice !== '' && sale < parseFloat(minPrice)) {
+                notify('سعر البيع أقل من الحد الأدنى.', 'warning');
+                return false;
+            }
+            if (maxPrice !== '' && sale > parseFloat(maxPrice)) {
+                notify('سعر البيع أكبر من الحد الأعلى.', 'warning');
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
-
 /* ============================================================
-   إلغاء إضافة الحركة
+   إلغاء / طباعة
    ============================================================ */
 
 function cancelMovement() {
-
-    if (movementMode !== 'add') {
-        return;
-    }
-
-
-    const confirmed =
-        confirm(
-            'هل تريد إلغاء الحركة الحالية؟'
-        );
-
-
-    if (!confirmed) {
-        return;
-    }
-
+    if (movementMode !== 'add') return;
+    if (!confirm('هل تريد إلغاء الحركة الحالية؟')) return;
 
     clearMovementForm();
-
+    notify('تم إلغاء العملية', 'info');
 }
-
-
-/* ============================================================
-   طباعة الحركة
-   ============================================================ */
 
 function printMovement() {
-
-    /*
-     * الطباعة تعمل على الحركة المعروضة.
-     */
-
     if (movementMode !== 'view') {
-
-        alert(
-            'يجب حفظ الحركة أولاً قبل طباعتها.'
-        );
-
+        notify('يجب حفظ الحركة أولاً قبل طباعتها.', 'warning');
         return;
-
     }
-
-
     window.print();
-
 }
 
-
 /* ============================================================
-   تحديد تاريخ اليوم
+   Utilities
    ============================================================ */
 
 function setTodayDate() {
+    const input = document.getElementById('movementDate');
+    if (!input) return;
 
-    const input =
-        document.getElementById(
-            'movementDate'
-        );
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
 
-
-    if (!input) {
-        return;
-    }
-
-
-    const today =
-        new Date();
-
-
-    const year =
-        today.getFullYear();
-
-
-    const month =
-        String(
-            today.getMonth() + 1
-        ).padStart(
-            2,
-            '0'
-        );
-
-
-    const day =
-        String(
-            today.getDate()
-        ).padStart(
-            2,
-            '0'
-        );
-
-
-    input.value =
-        `${year}-${month}-${day}`;
-
+    input.value = `${y}-${m}-${d}`;
 }
 
-
-/* ============================================================
-   إنشاء رقم حركة مؤقت
-   ============================================================ */
-
-function generateTemporaryMovementNumber() {
-
-    const timestamp =
-        Date.now();
-
-
-    return `MOV-${String(timestamp).slice(-6)}`;
-
-}
-
-
-/* ============================================================
-   الحصول على قيمة عنصر
-   ============================================================ */
-
+/**
+ * الحصول على قيمة عنصر
+ */
 function getValue(id) {
-
-    const element =
-        document.getElementById(id);
-
-
-    if (!element) {
-        return '';
-    }
-
-
-    return element.value || '';
-
+    const el = document.getElementById(id);
+    return el ? (el.value || '') : '';
 }
 
+/**
+ * تعيين قيمة عنصر — يدعم input و textarea و select و عناصر HTML العادية
+ */
+function setValue(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
 
-/* ============================================================
-   وضع قيمة في عنصر
-   ============================================================ */
+    const safeValue = value ?? '';
 
-function setValue(
-    id,
-    value
-) {
-
-    const element =
-        document.getElementById(id);
-
-
-    if (!element) {
-        return;
+    if (
+        el.tagName === 'INPUT' ||
+        el.tagName === 'TEXTAREA' ||
+        el.tagName === 'SELECT'
+    ) {
+        el.value = safeValue;
+    } else {
+        el.textContent = safeValue;
     }
-
-
-    element.value =
-        value ?? '';
-
-}
-
-
-/* ============================================================
-   حماية النص قبل وضعه داخل HTML
-   ============================================================ */
-
-function escapeHtml(value) {
-
-    return String(value ?? '')
-        .replace(
-            /&/g,
-            '&amp;'
-        )
-        .replace(
-            /</g,
-            '&lt;'
-        )
-        .replace(
-            />/g,
-            '&gt;'
-        )
-        .replace(
-            /"/g,
-            '&quot;'
-        )
-        .replace(
-            /'/g,
-            '&#039;'
-        );
-
 }

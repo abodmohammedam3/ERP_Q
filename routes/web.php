@@ -13,6 +13,8 @@ use App\Http\Controllers\Accounting\CoinController;
 use App\Http\Controllers\Accounting\BoxController;
 use App\Http\Controllers\Accounting\BankController;
 use App\Http\Controllers\Operation\Purchases\PurchaseInvoiceController;
+use App\Http\Controllers\Operation\Movements\InventoryMovementController;
+
 
 Route::get('/', function () {
     return view('dashboard.index');
@@ -428,9 +430,7 @@ Route::get('/operation/accounting/receiptVouchers', function () {
     return view('operation.accounting.receiptVouchers.index');
 })->name('receiptVouchers.index');
 
-Route::get('/operation/movements', function () {
-    return view('operation.movements.index');
-})->name('movements.index');
+
 
 // =====================================================
 // العملات
@@ -537,3 +537,57 @@ Route::delete(
     '/operation/purchases/invoicesPurch/{id}',
     [PurchaseInvoiceController::class, 'destroy']
 )->name('invoicesPurch.destroy');
+
+
+// =====================================================
+// حركات المخزون
+// =====================================================
+
+// -----------------------------------------------------
+// عرض الشاشة الرئيسية
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/movements',
+    [InventoryMovementController::class, 'index']
+)->name('movements.index');
+
+
+// -----------------------------------------------------
+// رقم الحركة التالي
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/movements/next-number',
+    [InventoryMovementController::class, 'nextNumber']
+)->name('movements.nextNumber');
+
+
+// -----------------------------------------------------
+// قائمة الحركات (JSON) — للبحث
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/movements/list',
+    [InventoryMovementController::class, 'list']
+)->name('movements.list');
+
+
+// -----------------------------------------------------
+// عرض حركة واحدة (JSON)
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/movements/{id}',
+    [InventoryMovementController::class, 'show']
+)->name('movements.show');
+
+
+// -----------------------------------------------------
+// حفظ حركة جديدة
+// -----------------------------------------------------
+
+Route::post(
+    '/operation/movements',
+    [InventoryMovementController::class, 'store']
+)->name('movements.store');

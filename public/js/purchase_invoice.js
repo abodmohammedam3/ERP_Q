@@ -23,6 +23,7 @@ let activePurchaseRow = null;
 let currentTypeInput = null;
 let accountSearchType = '';
 let isSavingInvoice = false;
+let editSnapshot = null;
 
 const cache = {
     units: [], coins: [], warehouses: [], items: [],
@@ -85,10 +86,46 @@ function notify(message, type = 'info') {
     if (typeof window.showSystemToast === 'function') {
         window.showSystemToast(message, type);
     } else {
-        // احتياطي إن لم يكن system.js محمّلًا
         console.warn(`[${type}] ${message}`);
         alert(message);
     }
+}
+
+/* =========================================================
+   Snapshot — لكشف عدم وجود تعديلات
+   ========================================================= */
+
+function takeSnapshot() {
+    const data = {
+        invoice_date: document.getElementById('PurchaseInvoicesDate2')?.value || '',
+        account_id: document.getElementById('suplierID')?.value || '',
+        coin_id: document.getElementById('coinsID')?.value || '',
+        exchange_rate: document.getElementById('PuInExchangeRate2')?.value || '',
+        warehouse_id: document.getElementById('warehouseID')?.value || '',
+        payment_method: document.getElementById('PuInPaymentMethod2')?.value || '',
+        payment_account_id: document.getElementById('paymentAccountId')?.value || '',
+        statement: document.getElementById('PuInStatement2')?.value || '',
+        reference: document.getElementById('invoiceReference')?.value || '',
+        expenses: document.getElementById('PuInExpenses')?.value || '',
+        tax_cost: document.getElementById('PuInTaxCost')?.value || '',
+        transportation: document.getElementById('PuInTransportation')?.value || '',
+        other_cost: document.getElementById('PuInOtherCost')?.value || '',
+        other_cost_desc: document.getElementById('otherCostDescription')?.value || '',
+
+        details: Array.from(
+            document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row')
+        ).map(r => ({
+            item: r.querySelector('.row-item')?.dataset.itemId || '',
+            type: r.querySelector('.row-type')?.dataset.typeId || '',
+            code: r.querySelector('.row-code')?.value || '',
+            unit: r.querySelector('.row-unit')?.value || '',
+            qty: r.querySelector('.row-weight')?.value || '',
+            price: r.querySelector('.row-price')?.value || '',
+            discount: r.querySelector('.row-discount')?.value || '',
+        })),
+    };
+
+    return JSON.stringify(data);
 }
 
 /* =========================================================
@@ -254,6 +291,7 @@ function clearInvoiceForm() {
 
     setInvoiceMode('view');
     currentInvoiceId = null;
+    editSnapshot = null;
 }
 
 function setEmptyDetailsMessage() {
@@ -943,6 +981,7 @@ async function loadInvoice(id) {
         if (invoiceSearchModal) invoiceSearchModal.hide();
         currentInvoiceId = h.purchase_invoice_id;
         setInvoiceMode('view');
+        editSnapshot = null;
 
         notify('تم تحميل الفاتورة بنجاح', 'success');
     } catch (e) {
@@ -975,6 +1014,9 @@ function editInvoice() {
         '#PuInOtherCost, #otherCostDescription'
     ).forEach(el => el.disabled = false);
     paymentMethodChanged();
+
+    // ✅ حفظ لقطة للفاتورة بعد الدخول في وضع التعديل
+    editSnapshot = takeSnapshot();
 }
 
 function cancelInvoice() {
@@ -1048,6 +1090,15 @@ async function saveInvoice() {
         });
     }
 
+    // ✅ كشف عدم وجود تعديلات في وضع التعديل
+    if (invoiceMode === 'edit' && editSnapshot) {
+        const currentSnapshot = takeSnapshot();
+        if (currentSnapshot === editSnapshot) {
+            notify('لم يتم إجراء أي تعديل على الفاتورة', 'info');
+            return;
+        }
+    }
+
     const payload = {
         invoice_number: number,
         invoice_date: document.getElementById('PurchaseInvoicesDate2').value,
@@ -1083,13 +1134,13 @@ async function saveInvoice() {
             r = await apiSend('/operation/purchases/invoicesPurch', 'POST', payload);
             currentInvoiceId = r.purchase_invoice_id;
 
-            // عرض رقم الفاتورة الفعلي الذي وضعه الخادم
             if (r.invoice_number) {
                 document.getElementById('PurchaseInvoicesON2').value = r.invoice_number;
             }
         }
         notify(r.message || 'تم الحفظ بنجاح', 'success');
         setInvoiceMode('view');
+        editSnapshot = null;
     } catch (e) {
         let m = e.message;
         if (e.errors) m += ' — ' + Object.values(e.errors).flat().join(' | ');

@@ -7,12 +7,7 @@ use App\Models\Inventory\Stock;
 
 class CharAccountObserver
 {
-    /**
-     * الحصول على الحساب الأب للمخازن.
-     *
-     * الحساب النظامي:
-     * system_key = inventory
-     */
+    
     private function getStockParent()
     {
         return CharAccount::where('system_key', 'inventory')

@@ -2,7 +2,7 @@
      مودالات إضافة/تعديل الحساب + البحث عن الحساب الأب
 ===================================================== --}}
 
-@push('modals')
+
 
 {{-- ================================
      مودال إضافة / تعديل حساب
@@ -21,7 +21,10 @@
             {{-- رأس المودال --}}
             <div class="modal-header position-relative">
 
-                <h5 class="modal-title" id="accountModalTitle">
+                <h5
+                    class="modal-title"
+                    id="accountModalTitle"
+                >
                     إضافة حساب جديد
                 </h5>
 
@@ -42,18 +45,28 @@
                     id="accountForm"
                     action="{{ route('chartOfAccounts.store') }}"
                     method="POST"
+                    autocomplete="off"
                 >
 
                     @csrf
 
-                    <input type="hidden" name="accountID" id="accountID">
+                    <input
+                        type="hidden"
+                        name="accountID"
+                        id="accountID"
+                        value=""
+                    >
+
 
                     <div class="row g-3">
 
                         {{-- 1 - الحساب الأب --}}
                         <div class="col-md-6">
 
-                            <label for="accParentDisplay" class="form-label">
+                            <label
+                                for="accParentDisplay"
+                                class="form-label"
+                            >
                                 الحساب الأب
                             </label>
 
@@ -63,11 +76,18 @@
                                 id="accParentDisplay"
                                 placeholder="اضغط لاختيار الحساب الأب"
                                 readonly
+                                role="button"
                                 style="cursor: pointer; background-color: #fff;"
                             >
 
-                            <select name="accParent" id="accParent" style="display: none;">
-                                <option value="">لا يوجد (حساب رئيسي)</option>
+                            <select
+                                name="accParent"
+                                id="accParent"
+                                class="d-none"
+                            >
+                                <option value="">
+                                    لا يوجد (حساب رئيسي)
+                                </option>
                             </select>
 
                         </div>
@@ -76,7 +96,10 @@
                         {{-- 2 - رقم الحساب --}}
                         <div class="col-md-6">
 
-                            <label for="accCode" class="form-label">
+                            <label
+                                for="accCode"
+                                class="form-label"
+                            >
                                 رقم الحساب
                             </label>
 
@@ -86,6 +109,7 @@
                                 name="accCode"
                                 id="accCode"
                                 autocomplete="off"
+                                inputmode="numeric"
                             >
 
                         </div>
@@ -94,7 +118,10 @@
                         {{-- 3 - اسم الحساب --}}
                         <div class="col-md-6">
 
-                            <label for="accName" class="form-label">
+                            <label
+                                for="accName"
+                                class="form-label"
+                            >
                                 اسم الحساب
                             </label>
 
@@ -112,16 +139,43 @@
                         {{-- 4 - نوع الحساب --}}
                         <div class="col-md-6">
 
-                            <label for="accTypeID" class="form-label">
+                            <label
+                                for="accTypeID"
+                                class="form-label"
+                            >
                                 نوع الحساب
                             </label>
 
-                            <select class="form-select" name="accTypeID" id="accTypeID">
-                                <option value="1">أصول</option>
-                                <option value="2">خصوم</option>
-                                <option value="3">حقوق ملكية</option>
-                                <option value="4">إيرادات</option>
-                                <option value="5">مصروفات</option>
+                            <select
+                                class="form-select"
+                                name="accTypeID"
+                                id="accTypeID"
+                            >
+
+                                <option value="0">
+                                    عام
+                                </option>
+
+                                <option value="1">
+                                    أصول
+                                </option>
+
+                                <option value="2">
+                                    خصوم
+                                </option>
+
+                                <option value="3">
+                                    حقوق ملكية
+                                </option>
+
+                                <option value="4">
+                                    إيرادات
+                                </option>
+
+                                <option value="5">
+                                    مصروفات
+                                </option>
+
                             </select>
 
                         </div>
@@ -130,13 +184,27 @@
                         {{-- 5 - طبيعة الحساب --}}
                         <div class="col-md-6">
 
-                            <label for="nature" class="form-label">
+                            <label
+                                for="nature"
+                                class="form-label"
+                            >
                                 طبيعة الحساب
                             </label>
 
-                            <select class="form-select" name="nature" id="nature">
-                                <option value="0">مدين</option>
-                                <option value="1">دائن</option>
+                            <select
+                                class="form-select"
+                                name="nature"
+                                id="nature"
+                            >
+
+                                <option value="0">
+                                    مدين
+                                </option>
+
+                                <option value="1">
+                                    دائن
+                                </option>
+
                             </select>
 
                         </div>
@@ -145,7 +213,10 @@
                         {{-- 6 - مستوى الحساب --}}
                         <div class="col-md-6">
 
-                            <label for="accLevel" class="form-label">
+                            <label
+                                for="accLevel"
+                                class="form-label"
+                            >
                                 مستوى الحساب
                             </label>
 
@@ -168,13 +239,27 @@
                         {{-- 7 - الحالة --}}
                         <div class="col-md-6">
 
-                            <label for="IsActive" class="form-label">
+                            <label
+                                for="IsActive"
+                                class="form-label"
+                            >
                                 الحالة
                             </label>
 
-                            <select class="form-select" name="IsActive" id="IsActive">
-                                <option value="1">نشط</option>
-                                <option value="0">غير نشط</option>
+                            <select
+                                class="form-select"
+                                name="IsActive"
+                                id="IsActive"
+                            >
+
+                                <option value="1">
+                                    نشط
+                                </option>
+
+                                <option value="0">
+                                    غير نشط
+                                </option>
+
                             </select>
 
                         </div>
@@ -183,13 +268,27 @@
                         {{-- 8 - يقبل عليه العمليات --}}
                         <div class="col-md-6">
 
-                            <label for="isPostable" class="form-label">
+                            <label
+                                for="isPostable"
+                                class="form-label"
+                            >
                                 يقبل عليه العمليات
                             </label>
 
-                            <select class="form-select" name="isPostable" id="isPostable">
-                                <option value="1">نعم</option>
-                                <option value="0">لا</option>
+                            <select
+                                class="form-select"
+                                name="isPostable"
+                                id="isPostable"
+                            >
+
+                                <option value="1">
+                                    نعم
+                                </option>
+
+                                <option value="0">
+                                    لا
+                                </option>
+
                             </select>
 
                         </div>
@@ -197,6 +296,7 @@
                     </div>
 
 
+                    {{-- أزرار المودال --}}
                     <div class="modal-footer mt-4">
 
                         <button
@@ -227,6 +327,7 @@
 </div>
 
 
+
 {{-- ================================
      مودال البحث عن الحساب الأب
 ================================ --}}
@@ -237,13 +338,20 @@
     tabindex="-1"
     aria-hidden="true"
 >
+
     <div class="modal-dialog modal-dialog-centered">
 
-        <div class="modal-content" style="height: 550px;">
+        <div
+            class="modal-content"
+            style="height: 550px;"
+        >
 
+            {{-- رأس المودال --}}
             <div class="modal-header position-relative">
 
-                <h5 class="modal-title">اختيار الحساب الأب</h5>
+                <h5 class="modal-title">
+                    اختيار الحساب الأب
+                </h5>
 
                 <button
                     type="button"
@@ -254,8 +362,14 @@
 
             </div>
 
-            <div class="modal-body d-flex flex-column p-0" style="overflow: hidden;">
 
+            {{-- جسم البحث --}}
+            <div
+                class="modal-body d-flex flex-column p-0"
+                style="overflow: hidden;"
+            >
+
+                {{-- البحث --}}
                 <div class="p-3 border-bottom">
 
                     <input
@@ -268,6 +382,8 @@
 
                 </div>
 
+
+                {{-- النتائج --}}
                 <div
                     id="parentAccountSearchResults"
                     class="flex-grow-1"
@@ -278,18 +394,7 @@
                         class="list-group list-group-flush"
                         id="parentAccountSearchList"
                     >
-                        <li
-                            class="list-group-item list-group-item-action parent-search-item"
-                            data-id=""
-                            data-code=""
-                            data-name="لا يوجد (حساب رئيسي)"
-                            data-level="0"
-                            style="cursor: pointer;"
-                        >
-                            <strong class="text-muted">
-                                لا يوجد (حساب رئيسي)
-                            </strong>
-                        </li>
+
                     </ul>
 
                 </div>
@@ -299,6 +404,84 @@
         </div>
 
     </div>
+
 </div>
 
-@endpush
+
+
+{{-- =====================================================
+     Template: الحساب الأب
+===================================================== --}}
+
+<template id="parentAccountItemTemplate">
+
+    <li
+        class="list-group-item list-group-item-action parent-search-item"
+        role="button"
+        tabindex="0"
+    >
+
+        <div class="d-flex justify-content-between align-items-center gap-3">
+
+            <div class="d-flex align-items-center gap-2">
+
+                <i class="bi bi-folder account-parent-icon"></i>
+
+                <div>
+
+                    <div class="fw-semibold parent-account-name"></div>
+
+                    <div class="small text-body-secondary">
+
+                        رقم الحساب:
+
+                        <span class="parent-account-code"></span>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <span
+                class="badge bg-body-secondary text-body-secondary parent-account-level"
+            ></span>
+
+        </div>
+
+    </li>
+
+</template>
+
+
+
+{{-- =====================================================
+     Template: الحساب الرئيسي
+===================================================== --}}
+
+<template id="parentRootAccountItemTemplate">
+
+    <li
+        class="list-group-item list-group-item-action parent-search-item"
+        role="button"
+        tabindex="0"
+        data-id=""
+        data-code=""
+        data-name="لا يوجد (حساب رئيسي)"
+        data-level="0"
+    >
+
+        <div class="d-flex align-items-center gap-2">
+
+            <i class="bi bi-diagram-3 text-secondary"></i>
+
+            <strong class="text-muted">
+                لا يوجد (حساب رئيسي)
+            </strong>
+
+        </div>
+
+    </li>
+
+</template>

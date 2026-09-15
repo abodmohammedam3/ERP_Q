@@ -1,953 +1,1337 @@
 /**
  * chartOfAccounts.js
  * إدارة دليل الحسابات
- *
- * المعتمد:
- * - الشجرة تعرض الحسابات التجميعية فقط.
- * - الحسابات التحليلية لا يتم تحميلها داخل الشجرة.
- * - الحساب النظامي لا تظهر له أزرار التعديل والحذف.
- * - الحذف يعتمد على Backend في جميع التحققات.
- * - التعديل بدون تغيير يعرض رسالة تحقق ولا يرسل Request.
- * - البحث + Pagination + فتح/إغلاق الشجرة.
  */
 
 (function () {
 
     'use strict';
 
-    // ✅ FIX: ننتظر DOM فقط إذا لم يكن جاهزاً
+
+    // =====================================================
+    // تشغيل النظام
+    // =====================================================
+
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
         init();
     }
 
+
+    // =====================================================
+    // Initialization
+    // =====================================================
+
     function init() {
 
-        console.log('[ChartOfAccounts] init called');
-
-        // =====================================================
-        // العناصر
-        // =====================================================
+        // =================================================
+        // عناصر الصفحة
+        // =================================================
 
         const addAccountBtn = document.getElementById('addAccountBtn');
-
         const accountForm = document.getElementById('accountForm');
+        const accountModalElement = document.getElementById('addAccountModal');
+        const saveAccountBtn = document.getElementById('saveAccountBtn');
+        const accountModalTitle = document.getElementById('accountModalTitle');
+        const accountsTreeBody = document.getElementById('accountsTreeBody');
 
-        const accountModalElement =
-            document.getElementById('addAccountModal');
+        const searchCode = document.getElementById('searchCode');
+        const searchName = document.getElementById('searchName');
 
-        const saveAccountBtn =
-            document.getElementById('saveAccountBtn');
+        const accountID = document.getElementById('accountID');
+        const accTypeID = document.getElementById('accTypeID');
+        const accCode = document.getElementById('accCode');
+        const accParent = document.getElementById('accParent');
+        const accName = document.getElementById('accName');
+        const nature = document.getElementById('nature');
+        const accLevel = document.getElementById('accLevel');
+        const IsActive = document.getElementById('IsActive');
+        const isPostable = document.getElementById('isPostable');
+        const accParentDisplay = document.getElementById('accParentDisplay');
 
-        const accountModalTitle =
-            document.getElementById('accountModalTitle');
+        const accountRowTemplate = document.getElementById('accountRowTemplate');
+        const accountsLoadingTemplate = document.getElementById('accountsLoadingTemplate');
+        const accountsEmptyTemplate = document.getElementById('accountsEmptyTemplate');
+        const accountsErrorTemplate = document.getElementById('accountsErrorTemplate');
 
-        const accountsTreeBody =
-            document.getElementById('accountsTreeBody');
+        const parentAccountItemTemplate = document.getElementById('parentAccountItemTemplate');
+        const parentRootAccountItemTemplate = document.getElementById('parentRootAccountItemTemplate');
 
-        const searchCode =
-            document.getElementById('searchCode');
+        const paginationPageTemplate = document.getElementById('paginationPageTemplate');
+        const paginationPreviousTemplate = document.getElementById('paginationPreviousTemplate');
+        const paginationNextTemplate = document.getElementById('paginationNextTemplate');
+        const paginationEllipsisTemplate = document.getElementById('paginationEllipsisTemplate');
 
-        const searchName =
-            document.getElementById('searchName');
+        const accountsPaginationInfo = document.getElementById('accountsPaginationInfo');
+        const accountsPaginationList = document.getElementById('accountsPaginationList');
 
-        const searchNature =
-            document.getElementById('searchNature');
+        const analyticalAccountsModalElement = document.getElementById('analyticalAccountsModal');
+        const analyticalAccountsParent = document.getElementById('analyticalAccountsParent');
+        const analyticalAccountsBody = document.getElementById('analyticalAccountsBody');
+        const analyticalSearchCode = document.getElementById('analyticalSearchCode');
+        const analyticalSearchName = document.getElementById('analyticalSearchName');
+        const analyticalPaginationInfo = document.getElementById('analyticalPaginationInfo');
+        const analyticalPaginationList = document.getElementById('analyticalPaginationList');
+        const analyticalAccountRowTemplate = document.getElementById('analyticalAccountRowTemplate');
+        const analyticalLoadingTemplate = document.getElementById('analyticalLoadingTemplate');
+        const analyticalEmptyTemplate = document.getElementById('analyticalEmptyTemplate');
+        const analyticalErrorTemplate = document.getElementById('analyticalErrorTemplate');
 
-        // الحقول
-        const accountID =
-            document.getElementById('accountID');
+        const deleteConfirmModalElement = document.getElementById('deleteConfirmModal');
+        const deleteConfirmBtn = document.getElementById('deleteConfirmBtn');
+        const deleteCancelBtn = document.getElementById('deleteCancelBtn');
+        const deleteCancelBtnFooter = document.getElementById('deleteCancelBtnFooter');
 
-        const accTypeID =
-            document.getElementById('accTypeID');
-
-        const accCode =
-            document.getElementById('accCode');
-
-        const accParent =
-            document.getElementById('accParent');
-
-        const accName =
-            document.getElementById('accName');
-
-        const nature =
-            document.getElementById('nature');
-
-        const accLevel =
-            document.getElementById('accLevel');
-
-        const IsActive =
-            document.getElementById('IsActive');
-
-        const isPostable =
-            document.getElementById('isPostable');
-
-        const accParentDisplay =
-            document.getElementById('accParentDisplay');
-
-
-        // =====================================================
-        // تشخيص سريع
-        // =====================================================
-
-        console.log('[ChartOfAccounts] elements:', {
-            addAccountBtn: !!addAccountBtn,
-            accountModalElement: !!accountModalElement,
-            accountForm: !!accountForm,
-            accountsTreeBody: !!accountsTreeBody,
-            bootstrap: typeof bootstrap
-        });
+        const openParentAccountSearchBtn = document.getElementById('openParentAccountSearchBtn');
+        const parentAccountSearchModalElement = document.getElementById('parentAccountSearchModal');
+        const parentAccountSearchInput = document.getElementById('parentAccountSearchInput');
+        const parentAccountSearchList = document.getElementById('parentAccountSearchList');
 
 
-        if (!addAccountBtn) {
-            console.error('[ChartOfAccounts] زر الإضافة #addAccountBtn غير موجود');
-            return;
-        }
 
-        if (!accountModalElement) {
-            console.error('[ChartOfAccounts] مودال #addAccountModal غير موجود');
+        let analyticalParentSystemKey = '';
+        // =================================================
+        // التحقق الأساسي
+        // =================================================
+
+        if (!addAccountBtn || !accountForm || !accountModalElement) {
+            console.error('[ChartOfAccounts] عناصر الصفحة الأساسية غير موجودة.');
             return;
         }
 
         if (typeof bootstrap === 'undefined') {
-            console.error('[ChartOfAccounts] Bootstrap غير محمّل');
+            console.error('[ChartOfAccounts] Bootstrap غير محمل.');
             return;
         }
 
 
-        // =====================================================
-        // الحسابات التحليلية
-        // =====================================================
+        // =================================================
+        // التحقق من Templates الأساسية
+        // =================================================
 
-        const analyticalAccountsModalElement =
-            document.getElementById('analyticalAccountsModal');
+        const requiredTemplates = [
+            ['accountRowTemplate', accountRowTemplate],
+            ['accountsLoadingTemplate', accountsLoadingTemplate],
+            ['accountsEmptyTemplate', accountsEmptyTemplate],
+            ['accountsErrorTemplate', accountsErrorTemplate],
+            ['parentAccountItemTemplate', parentAccountItemTemplate],
+            ['parentRootAccountItemTemplate', parentRootAccountItemTemplate],
+            ['paginationPageTemplate', paginationPageTemplate],
+            ['paginationPreviousTemplate', paginationPreviousTemplate],
+            ['paginationNextTemplate', paginationNextTemplate],
+            ['paginationEllipsisTemplate', paginationEllipsisTemplate]
+        ];
 
-        let analyticalAccountsModal = null;
+        requiredTemplates.forEach(function ([name, template]) {
+            if (!template) {
+                console.error(`[ChartOfAccounts] Template غير موجود: ${name}`);
+            }
+        });
 
-        if (
-            analyticalAccountsModalElement &&
-            typeof bootstrap !== 'undefined'
-        ) {
-            analyticalAccountsModal =
-                bootstrap.Modal.getOrCreateInstance(
-                    analyticalAccountsModalElement
-                );
-        }
 
-        const analyticalAccountsParent =
-            document.getElementById('analyticalAccountsParent');
+        // =================================================
+        // Modals
+        // =================================================
 
-        const analyticalAccountsBody =
-            document.getElementById('analyticalAccountsBody');
+        const accountModal = bootstrap.Modal.getOrCreateInstance(accountModalElement);
 
-        const analyticalSearchCode =
-            document.getElementById('analyticalSearchCode');
+        const deleteConfirmModal = deleteConfirmModalElement
+            ? bootstrap.Modal.getOrCreateInstance(deleteConfirmModalElement)
+            : null;
 
-        const analyticalSearchName =
-            document.getElementById('analyticalSearchName');
+        const parentAccountSearchModal = parentAccountSearchModalElement
+            ? bootstrap.Modal.getOrCreateInstance(parentAccountSearchModalElement)
+            : null;
 
-        const analyticalSearchNature =
-            document.getElementById('analyticalSearchNature');
+        const analyticalAccountsModal = analyticalAccountsModalElement
+            ? bootstrap.Modal.getOrCreateInstance(analyticalAccountsModalElement)
+            : null;
 
-        const analyticalPaginationInfo =
-            document.getElementById('analyticalPaginationInfo');
 
-        const analyticalPaginationList =
-            document.getElementById('analyticalPaginationList');
+        // =================================================
+        // State
+        // =================================================
 
+        let formMode = 'add';
+        let editingAccountId = null;
+        let deletingAccountId = null;
+        let accounts = [];
+        let currentPage = 1;
+        const pageSize = 10;
+        let searchTimer = null;
+        let savedEditData = null;
 
         let selectedAnalyticalParentId = null;
-
         let analyticalCurrentPage = 1;
-
         const analyticalPageSize = 10;
-
         let analyticalSearchTimer = null;
 
 
-        // =====================================================
-        // الحذف
-        // =====================================================
-
-        const deleteConfirmModal =
-            document.getElementById('deleteConfirmModal');
-
-        const deleteConfirmBtn =
-            document.getElementById('deleteConfirmBtn');
-
-
-        // =====================================================
-        // الحساب الأب
-        // =====================================================
-
-        const parentAccountSearchModal =
-            document.getElementById('parentAccountSearchModal');
-
-        const parentAccountSearchInput =
-            document.getElementById('parentAccountSearchInput');
-
-        const parentAccountSearchList =
-            document.getElementById('parentAccountSearchList');
-
-
-        // =====================================================
-        // الحالة
-        // =====================================================
-
-        let formMode = 'add';
-
-        let editingAccountId = null;
-
-        let deletingAccountId = null;
-
-        let accounts = [];
-
-        let currentPage = 1;
-
-        const pageSize = 10;
-
-        let searchTimer = null;
-
-        let savedEditData = null;
-
-
-        // =====================================================
-        // Bootstrap Modal
-        // =====================================================
-
-        let accountModal = null;
-
-        try {
-
-            accountModal =
-                new bootstrap.Modal(accountModalElement);
-
-        } catch (error) {
-
-            console.error(
-                'خطأ أثناء تهيئة مودال الحساب:',
-                error
-            );
-
-        }
-
-
-        // =====================================================
+        // =================================================
         // CSRF
-        // =====================================================
+        // =================================================
 
         function getCsrfToken() {
+            const token = document.querySelector('meta[name="csrf-token"]');
+            return token ? token.getAttribute('content') : '';
+        }
 
-            const meta =
-                document.querySelector('meta[name="csrf-token"]');
-
-            return meta ? meta.getAttribute('content') : '';
-
+        function jsonHeaders() {
+            return {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': getCsrfToken(),
+            };
         }
 
 
-        // =====================================================
-        // الرسائل
-        // =====================================================
+        // =================================================
+        // رسالة النظام
+        // =================================================
 
         function showToast(message, type = 'success') {
 
+            const toastType = type === 'error' ? 'danger' : type;
+
             if (typeof showSystemToast === 'function') {
 
-                showSystemToast(message, type);
+                showSystemToast(message, toastType);
 
                 return;
             }
 
-            alert(message);
-
+            if (toastType === 'danger') {
+                console.error(message);
+            } else {
+                console.log(message);
+            }
         }
 
 
-        // =====================================================
-        // استخراج رسالة Backend
-        // =====================================================
+        // =================================================
+        // رسالة Backend
+        // =================================================
 
-        function getResponseMessage(data, fallback = 'حدث خطأ غير متوقع') {
-
-            if (data && data.errors) {
-
-                const firstError = Object.values(data.errors)[0];
-
-                if (Array.isArray(firstError) && firstError.length) {
-                    return firstError[0];
+        async function getResponseMessage(response, fallback) {
+            try {
+                const data = await response.json();
+                if (data?.message) {
+                    return data.message;
                 }
-
-                if (typeof firstError === 'string') {
-                    return firstError;
+                if (data?.errors && typeof data.errors === 'object') {
+                    const firstError = Object.values(data.errors)[0];
+                    if (Array.isArray(firstError) && firstError.length) {
+                        return firstError[0];
+                    }
                 }
+            } catch (error) {
+                // تجاهل
             }
-
-            if (data && data.message) {
-                return data.message;
-            }
-
             return fallback;
         }
 
 
-        // =====================================================
-        // إعداد Headers
-        // =====================================================
+        // =================================================
+        // Template Helpers
+        // =================================================
 
-        function jsonHeaders() {
+        function cloneTemplate(template) {
+            if (!template || !template.content) {
+                return null;
+            }
+            const element = template.content.firstElementChild;
+            return element ? element.cloneNode(true) : null;
+        }
 
-            return {
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': getCsrfToken()
-            };
-
+        function showTemplateState(container, template) {
+            if (!container || !template) {
+                return;
+            }
+            const element = cloneTemplate(template);
+            if (!element) {
+                console.error('[ChartOfAccounts] تعذر استنساخ Template.');
+                return;
+            }
+            container.replaceChildren(element);
         }
 
 
-        // =====================================================
+        // =================================================
+        // حالات الشجرة
+        // =================================================
+
+        function showTreeState(state) {
+            if (!accountsTreeBody) return;
+
+            let template = null;
+
+            switch (state) {
+                case 'loading':
+                    template = accountsLoadingTemplate;
+                    break;
+                case 'empty':
+                    template = accountsEmptyTemplate;
+                    break;
+                case 'error':
+                    template = accountsErrorTemplate;
+                    break;
+                default:
+                    console.error('[ChartOfAccounts] حالة شجرة غير معروفة:', state);
+                    return;
+            }
+
+            showTemplateState(accountsTreeBody, template);
+        }
+
+
+        // =================================================
+        // حالات الحسابات التحليلية
+        // =================================================
+
+        function showAnalyticalState(state) {
+            if (!analyticalAccountsBody) return;
+
+            let template = null;
+
+            switch (state) {
+                case 'loading':
+                    template = analyticalLoadingTemplate;
+                    break;
+                case 'empty':
+                    template = analyticalEmptyTemplate;
+                    break;
+                case 'error':
+                    template = analyticalErrorTemplate;
+                    break;
+                default:
+                    console.error('[ChartOfAccounts] حالة تحليلية غير معروفة:', state);
+                    return;
+            }
+
+            showTemplateState(analyticalAccountsBody, template);
+        }
+
+
+        // =================================================
         // تحديث مستوى الحساب
-        // =====================================================
+        // =================================================
 
         function updateAccountLevel() {
-
             if (!accLevel) {
                 return;
             }
 
-            if (!accParent || !accParent.value) {
+            const parentId = accParent?.value || '';
 
-                accLevel.value = 1;
-
+            if (!parentId) {
+                accLevel.value = '1';
+                accLevel.readOnly = true;
                 return;
             }
 
-            const option =
-                accParent.options[accParent.selectedIndex];
-
-            if (!option) {
-
-                accLevel.value = 1;
-
+            if (!accParent) {
+                accLevel.value = '1';
+                accLevel.readOnly = true;
                 return;
             }
 
-            const parentLevel =
-                Number(option.dataset.level || 1);
+            const parentOption = Array.from(accParent.options).find(
+                function (option) {
+                    return String(option.value) === String(parentId);
+                }
+            );
 
-            accLevel.value = parentLevel + 1;
+            let parentLevel = 1;
+            if (parentOption && parentOption.dataset && parentOption.dataset.level !== undefined) {
+                const parsed = Number(parentOption.dataset.level);
+                if (Number.isFinite(parsed)) {
+                    parentLevel = parsed;
+                }
+            }
 
+            accLevel.value = String(parentLevel + 1);
+            accLevel.readOnly = true;
         }
 
 
-        // =====================================================
-        // تحديد نوع الحساب تلقائياً
-        // =====================================================
+        // =================================================
+        // ✅ تحميل بيانات الحساب الأب الكاملة من السيرفر
+        // يجلب accTypeID و nature الحقيقيين
+        // =================================================
 
-        function updatePostableState() {
+      async function syncParentAccountData(parentId) {
 
-            if (!isPostable) {
-                return;
-            }
+    if (!parentId) {
+        return;
+    }
 
-            isPostable.value =
-                accParent && accParent.value ? '1' : '0';
+    try {
+        console.log('🔍 [Diagnostic] Fetching parent:', parentId);
 
+        const response = await fetch(
+            `/settings/accounting/chartOfAccounts/${parentId}`,
+            { method: 'GET', headers: jsonHeaders() }
+        );
+
+        console.log('🔍 [Diagnostic] Response status:', response.status);
+
+        if (!response.ok) {
+            console.error('❌ [Diagnostic] Response NOT OK');
+            return;
         }
 
+        const data = await response.json();
 
-        // =====================================================
-        // جلب رقم الحساب التالي
-        // =====================================================
+        // ✅ طباعة كل الاستجابة
+        console.log('🔍 [Diagnostic] Full response:', data);
+        console.log('🔍 [Diagnostic] account object:', data.account);
+
+        if (!data.success || !data.account) {
+            console.error('❌ [Diagnostic] No account in response');
+            return;
+        }
+
+        const parentAccount = data.account;
+
+        console.log('🔍 [Diagnostic] accTypeID:', parentAccount.accTypeID);
+        console.log('🔍 [Diagnostic] nature:', parentAccount.nature);
+        console.log('🔍 [Diagnostic] All keys:', Object.keys(parentAccount));
+
+        // ✅ مزامنة نوع الحساب
+        if (accTypeID && parentAccount.accTypeID !== undefined && parentAccount.accTypeID !== null) {
+            accTypeID.value = String(parentAccount.accTypeID);
+            console.log('✅ [Diagnostic] Type set to:', accTypeID.value);
+        }
+
+        // ✅ مزامنة طبيعة الحساب
+        if (nature && parentAccount.nature !== undefined && parentAccount.nature !== null) {
+            nature.value = String(parentAccount.nature);
+            console.log('✅ [Diagnostic] Nature set to:', nature.value);
+        }
+
+    } catch (error) {
+        console.error('❌ [Diagnostic] Error:', error);
+    }
+}
+
+
+        // =================================================
+        // تحميل الرقم التالي
+        // =================================================
 
         async function loadNextAccountCode(parentId) {
 
-            if (!accCode) {
-                return;
-            }
-
             if (!parentId) {
-
-                accCode.value = '';
-
                 return;
             }
 
             try {
-
                 const response = await fetch(
                     `/settings/accounting/chartOfAccounts/next-code/${parentId}`,
-                    {
-                        method: 'GET',
-                        headers: { 'Accept': 'application/json' }
-                    }
+                    { method: 'GET', headers: jsonHeaders() }
                 );
 
-                const data = await response.json();
-
-                if (!response.ok || !data.success) {
-
+                if (!response.ok) {
                     throw new Error(
-                        getResponseMessage(data, 'تعذر توليد رقم الحساب')
+                        await getResponseMessage(response, 'تعذر توليد رقم الحساب')
                     );
                 }
 
-                accCode.value = data.code || '';
+                const data = await response.json();
 
-            } catch (error) {
-
-                showToast(error.message, 'danger');
-
-            }
-
-        }
-
-
-        // =====================================================
-        // تغيير الحساب الأب
-        // =====================================================
-
-        if (accParent) {
-
-            accParent.addEventListener('change', async function () {
-
-                updateAccountLevel();
-
-                updatePostableState();
-
-                syncParentDisplay();
-
-                if (formMode === 'add' && accParent.value) {
-
-                    await loadNextAccountCode(accParent.value);
+                if (data.success && data.code && accCode) {
+                    accCode.value = String(data.code);
                 }
-
-            });
-
+            } catch (error) {
+                console.error(error);
+                showToast(error.message || 'تعذر توليد رقم الحساب', 'error');
+            }
         }
 
 
-        // =====================================================
-        // تحميل الحسابات التجميعية لاختيار الحساب الأب
-        // =====================================================
+        // =================================================
+        // مزامنة عرض الحساب الأب
+        // =================================================
 
-        async function loadParentAccounts() {
-
-            if (!parentAccountSearchList || !accParent) {
+        function syncParentDisplay() {
+            if (!accParent || !accParentDisplay) {
                 return;
             }
 
-            parentAccountSearchList.innerHTML = `
-                <li class="list-group-item text-center text-muted py-4">
-                    جاري تحميل الحسابات...
-                </li>
-            `;
+            const option = accParent.options[accParent.selectedIndex];
 
-            try {
-
-                const response = await fetch(
-                    '/settings/accounting/chartOfAccounts/tree',
-                    {
-                        method: 'GET',
-                        headers: { 'Accept': 'application/json' }
-                    }
-                );
-
-                const data = await response.json();
-
-                if (!response.ok || !data.success) {
-
-                    throw new Error(
-                        getResponseMessage(data, 'تعذر تحميل الحسابات الأب')
-                    );
-
-                }
-
-                const parentAccounts =
-                    Array.isArray(data.accounts) ? data.accounts : [];
-
-
-                // إعادة بناء select المخفي
-                accParent.innerHTML = `
-                    <option value="">لا يوجد (حساب رئيسي)</option>
-                `;
-
-
-                // إعادة بناء قائمة البحث
-                parentAccountSearchList.innerHTML = `
-                    <li
-                        class="list-group-item list-group-item-action parent-search-item"
-                        data-id=""
-                        data-code=""
-                        data-name="لا يوجد (حساب رئيسي)"
-                        data-level="0"
-                        style="cursor: pointer;"
-                    >
-                        <strong class="text-muted">لا يوجد (حساب رئيسي)</strong>
-                    </li>
-                `;
-
-
-                parentAccounts.forEach(function (parent) {
-
-                    const option = document.createElement('option');
-
-                    option.value = parent.accountID;
-
-                    option.dataset.code = parent.accCode ?? '';
-
-                    option.dataset.type = parent.accTypeID ?? '';
-
-                    option.dataset.nature = parent.nature ?? '';
-
-                    option.dataset.level = parent.accLevel ?? 1;
-
-                    option.dataset.postable = parent.isPostable ?? 0;
-
-                    option.dataset.name = parent.accName ?? '';
-
-                    option.textContent =
-                        `${parent.accCode ?? ''} - ${parent.accName ?? ''}`;
-
-                    accParent.appendChild(option);
-
-
-                    const item = document.createElement('li');
-
-                    item.className =
-                        'list-group-item list-group-item-action parent-search-item';
-
-                    item.dataset.id = parent.accountID;
-
-                    item.dataset.code = parent.accCode ?? '';
-
-                    item.dataset.name = parent.accName ?? '';
-
-                    item.dataset.level = parent.accLevel ?? 1;
-
-                    item.style.cursor = 'pointer';
-
-                    item.innerHTML = `
-                        <span class="badge bg-secondary me-2">
-                            ${escapeHtml(parent.accCode ?? '')}
-                        </span>
-                        ${escapeHtml(parent.accName ?? '')}
-                    `;
-
-                    parentAccountSearchList.appendChild(item);
-
-                });
-
-
-                // إعادة تحديد الحساب الحالي في وضع التعديل
-                if (formMode === 'edit' && editingAccountId) {
-
-                    disableInvalidParentOptions();
-
-                }
-
-            } catch (error) {
-
-                parentAccountSearchList.innerHTML = `
-                    <li class="list-group-item text-center text-danger py-4">
-                        ${escapeHtml(
-                            error.message || 'تعذر تحميل الحسابات الأب'
-                        )}
-                    </li>
-                `;
-
+            if (!option || !option.value) {
+                accParentDisplay.value = 'لا يوجد (حساب رئيسي)';
+                return;
             }
 
+            accParentDisplay.value = option.textContent;
         }
 
 
-        // =====================================================
-        // وضع الإضافة
-        // =====================================================
+        // =================================================
+        // تغيير الحساب الأب
+        // =================================================
 
-        function setAddMode() {
+        accParent?.addEventListener('change', async function () {
+            updateAccountLevel();
+            syncParentDisplay();
 
-            formMode = 'add';
+            if (!accParent.value) {
+                if (accTypeID) accTypeID.value = '0';
+                if (nature) nature.value = '0';
 
-            editingAccountId = null;
+                if (formMode === 'add' && accCode) {
+                    accCode.value = '';
+                }
 
-            savedEditData = null;
-
-            if (accountForm) {
-                accountForm.reset();
+                if (accCode) accCode.readOnly = false;
+                return;
             }
 
-            if (accountID) {
-                accountID.value = '';
+            const selectedOption = accParent.options[accParent.selectedIndex];
+            if (!selectedOption) return;
+
+            // مزامنة النوع من dataset (احتياطي)
+            const parentType = selectedOption.dataset.type ?? '0';
+            if (accTypeID) {
+                accTypeID.value = String(parentType || '0');
             }
 
-            if (accountModalTitle) {
-                accountModalTitle.textContent = 'إضافة حساب';
+            const parentNature = selectedOption.dataset.nature || '';
+            if (nature && parentNature !== '') {
+                nature.value = String(parentNature);
             }
 
-            if (saveAccountBtn) {
-                saveAccountBtn.textContent = 'حفظ';
-            }
+            // توليد الرقم
+            if (accCode) accCode.readOnly = true;
+            await loadNextAccountCode(accParent.value);
 
-            if (accLevel) {
-                accLevel.value = 1;
-            }
-
-            if (IsActive) {
-                IsActive.value = '1';
-            }
-
-            if (accParent) {
-                accParent.value = '';
-            }
-
-            if (accParentDisplay) {
-                accParentDisplay.value = '';
-            }
-
-            if (isPostable) {
-                isPostable.value = '0';
-            }
-
-            enableAllParentOptions();
-
-        }
-
-
-        // =====================================================
-// فتح نافذة الإضافة
-// ✅ DIAGNOSTIC VERSION
-// =====================================================
-
-addAccountBtn.addEventListener('click', function (event) {
-
-    event.preventDefault();
-    event.stopPropagation();
-
-    console.log('[ChartOfAccounts] add button clicked');
-
-    try {
-
-        setAddMode();
-        console.log('[ChartOfAccounts] setAddMode done');
-
-        const modal =
-            bootstrap.Modal.getOrCreateInstance(
-                accountModalElement
-            );
-
-        console.log('[ChartOfAccounts] modal instance:', modal);
-
-        modal.show();
-
-        console.log('[ChartOfAccounts] modal.show() called');
-
-        // فحص الحالة بعد اكتمال الأنيميشن
-        setTimeout(function () {
-
-            const cs = getComputedStyle(accountModalElement);
-
-            console.log('[ChartOfAccounts] === MODAL STATE ===', {
-                className: accountModalElement.className,
-                inlineDisplay: accountModalElement.style.display,
-                computedDisplay: cs.display,
-                computedVisibility: cs.visibility,
-                computedOpacity: cs.opacity,
-                computedZIndex: cs.zIndex,
-                ariaHidden: accountModalElement.getAttribute('aria-hidden'),
-                parentTag: accountModalElement.parentElement?.tagName,
-                parentDisplay: getComputedStyle(
-                    accountModalElement.parentElement
-                ).display,
-                bodyClass: document.body.className,
-                backdropCount: document.querySelectorAll('.modal-backdrop').length
-            });
-
-            // فحص ما إذا كان هناك عنصر يغطي المودال
-            const rect = accountModalElement.getBoundingClientRect();
-            console.log('[ChartOfAccounts] modal rect:', {
-                top: rect.top,
-                left: rect.left,
-                width: rect.width,
-                height: rect.height
-            });
-
-            if (rect.width > 0 && rect.height > 0) {
-                const centerX = rect.left + rect.width / 2;
-                const centerY = rect.top + rect.height / 2;
-                const topEl = document.elementFromPoint(centerX, centerY);
-                console.log('[ChartOfAccounts] element at modal center:', topEl);
-            }
-
-        }, 400);
-
-        loadParentAccounts().catch(function (error) {
-
-            console.error(
-                '[ChartOfAccounts] loadParentAccounts failed:',
-                error
-            );
-
+            // ✅ جلب البيانات الكاملة (لضمان النوع والطبيعة الصحيحين)
+            await syncParentAccountData(accParent.value);
         });
 
-    } catch (error) {
 
-        console.error(
-            '[ChartOfAccounts] فتح مودال الإضافة فشل:',
-            error
-        );
+        // =================================================
+        // تحميل الحسابات الأب
+        // =================================================
 
-        alert('تعذر فتح نافذة الإضافة: ' + error.message);
-    }
-
-});
-
-        // =====================================================
-        // تعطيل الحساب الحالي كأب
-        // =====================================================
-
-        function disableCurrentAccountAsParent() {
-
-            enableAllParentOptions();
-
-            if (!accParent || !editingAccountId) {
-                return;
-            }
-
-            Array.from(accParent.options).forEach(function (option) {
-
-                if (
-                    String(option.value) === String(editingAccountId)
-                ) {
-
-                    option.disabled = true;
-
-                }
-
-            });
-
-        }
-
-
-        // =====================================================
-        // تعطيل الحساب الحالي وأبنائه
-        // =====================================================
-
-        function disableInvalidParentOptions() {
-
-            disableCurrentAccountAsParent();
-
-            if (
-                !accParent ||
-                !editingAccountId ||
-                !accounts.length
-            ) {
-                return;
-            }
-
-            const invalidIds = new Set([
-                Number(editingAccountId)
-            ]);
-
-            let changed = true;
-
-            while (changed) {
-
-                changed = false;
-
-                accounts.forEach(function (account) {
-
-                    const id = Number(account.accountID);
-
-                    const parentId = Number(account.accParent);
-
-                    if (
-                        invalidIds.has(parentId) &&
-                        !invalidIds.has(id)
-                    ) {
-
-                        invalidIds.add(id);
-
-                        changed = true;
-
-                    }
-
-                });
-
-            }
-
-            Array.from(accParent.options).forEach(function (option) {
-
-                const optionId = Number(option.value);
-
-                if (invalidIds.has(optionId)) {
-
-                    option.disabled = true;
-
-                }
-
-            });
-
-        }
-
-
-        // =====================================================
-        // إعادة تفعيل خيارات الأب
-        // =====================================================
-
-        function enableAllParentOptions() {
+        async function loadParentAccounts() {
 
             if (!accParent) {
                 return;
             }
 
-            Array.from(accParent.options).forEach(function (option) {
+            const currentParentId =
+                String(accParent.value || '');
 
-                option.disabled = false;
+            try {
 
-            });
+                const response =
+                    await fetch(
+                        '/settings/accounting/chartOfAccounts/tree',
+                        {
+                            method: 'GET',
+                            headers: jsonHeaders()
+                        }
+                    );
 
+                if (!response.ok) {
+
+                    throw new Error(
+                        await getResponseMessage(
+                            response,
+                            'تعذر تحميل الحسابات الأب'
+                        )
+                    );
+                }
+
+                const data =
+                    await response.json();
+
+                if (!data.success) {
+
+                    throw new Error(
+                        data.message ||
+                        'تعذر تحميل الحسابات الأب'
+                    );
+                }
+
+                const parentAccounts =
+                    Array.isArray(data.accounts)
+                        ? data.accounts
+                        : [];
+
+
+                const availableParentAccounts =
+                    parentAccounts.filter(
+                        function (account) {
+
+                            if (
+                                formMode === 'edit' &&
+                                editingAccountId !== null &&
+                                String(
+                                    account.accountID
+                                ) ===
+                                String(
+                                    editingAccountId
+                                )
+                            ) {
+                                return false;
+                            }
+
+                            return true;
+                        }
+                    );
+
+
+                accParent.replaceChildren();
+
+
+                const rootOption =
+                    document.createElement(
+                        'option'
+                    );
+
+                rootOption.value = '';
+
+                rootOption.textContent =
+                    'لا يوجد (حساب رئيسي)';
+
+                rootOption.dataset.type =
+                    '0';
+
+                rootOption.dataset.level =
+                    '0';
+
+                rootOption.dataset.nature =
+                    '';
+
+                rootOption.dataset.postable =
+                    '0';
+
+                rootOption.dataset.systemKey =
+                    '';
+
+                accParent.appendChild(
+                    rootOption
+                );
+
+
+                if (parentAccountSearchList) {
+
+                    parentAccountSearchList.replaceChildren();
+
+
+                    const rootItem =
+                        cloneTemplate(
+                            parentRootAccountItemTemplate
+                        );
+
+                    if (rootItem) {
+
+                        rootItem.dataset.id =
+                            '';
+
+                        rootItem.dataset.code =
+                            '';
+
+                        rootItem.dataset.name =
+                            'لا يوجد (حساب رئيسي)';
+
+                        rootItem.dataset.level =
+                            '0';
+
+                        rootItem.dataset.type =
+                            '0';
+
+                        rootItem.dataset.nature =
+                            '';
+
+                        rootItem.dataset.postable =
+                            '0';
+
+                        rootItem.dataset.systemKey =
+                            '';
+
+                        parentAccountSearchList.appendChild(
+                            rootItem
+                        );
+                    }
+
+
+                    availableParentAccounts.forEach(
+                        function (account) {
+
+                            const item =
+                                cloneTemplate(
+                                    parentAccountItemTemplate
+                                );
+
+                            if (!item) {
+                                return;
+                            }
+
+
+                            item.dataset.id =
+                                String(
+                                    account.accountID
+                                );
+
+                            item.dataset.code =
+                                String(
+                                    account.accCode ?? ''
+                                );
+
+                            item.dataset.name =
+                                String(
+                                    account.accName ?? ''
+                                );
+
+                            item.dataset.level =
+                                String(
+                                    account.accLevel ?? 1
+                                );
+
+                            item.dataset.type =
+                                String(
+                                    account.accTypeID ?? ''
+                                );
+
+                            item.dataset.nature =
+                                String(
+                                    account.nature ?? ''
+                                );
+
+                            item.dataset.postable =
+                                String(
+                                    account.isPostable ?? 0
+                                );
+
+                            item.dataset.systemKey =
+                                String(
+                                    account.system_key ?? ''
+                                );
+
+
+                            const nameElement =
+                                item.querySelector(
+                                    '.parent-account-name'
+                                );
+
+                            if (nameElement) {
+
+                                nameElement.textContent =
+                                    account.accName ?? '';
+                            }
+
+
+                            const codeElement =
+                                item.querySelector(
+                                    '.parent-account-code'
+                                );
+
+                            if (codeElement) {
+
+                                codeElement.textContent =
+                                    account.accCode ?? '';
+                            }
+
+
+                            const levelElement =
+                                item.querySelector(
+                                    '.parent-account-level'
+                                );
+
+                            if (levelElement) {
+
+                                levelElement.textContent =
+                                    `المستوى ${
+                                        account.accLevel ?? 1
+                                    }`;
+                            }
+
+
+                            parentAccountSearchList.appendChild(
+                                item
+                            );
+                        }
+                    );
+                }
+
+
+                availableParentAccounts.forEach(
+                    function (account) {
+
+                        const option =
+                            document.createElement(
+                                'option'
+                            );
+
+                        option.value =
+                            String(
+                                account.accountID
+                            );
+
+                        option.textContent =
+                            `${
+                                account.accCode ?? ''
+                            } - ${
+                                account.accName ?? ''
+                            }`;
+
+                        option.dataset.code =
+                            String(
+                                account.accCode ?? ''
+                            );
+
+                        option.dataset.name =
+                            String(
+                                account.accName ?? ''
+                            );
+
+                        option.dataset.level =
+                            String(
+                                account.accLevel ?? 1
+                            );
+
+                        option.dataset.type =
+                            String(
+                                account.accTypeID ?? ''
+                            );
+
+                        option.dataset.nature =
+                            String(
+                                account.nature ?? ''
+                            );
+
+                        option.dataset.postable =
+                            String(
+                                account.isPostable ?? 0
+                            );
+
+                        option.dataset.systemKey =
+                            String(
+                                account.system_key ?? ''
+                            );
+
+                        accParent.appendChild(
+                            option
+                        );
+                    }
+                );
+
+
+                if (currentParentId !== '') {
+
+                    const restoredOption =
+                        Array.from(
+                            accParent.options
+                        ).find(
+                            function (option) {
+
+                                return String(
+                                    option.value
+                                ) ===
+                                currentParentId;
+                            }
+                        );
+
+                    if (restoredOption) {
+
+                        restoredOption.selected =
+                            true;
+
+                        if (accTypeID) {
+
+                            const parentType =
+                                restoredOption.dataset.type ||
+                                '';
+
+                            if (parentType !== '') {
+
+                                accTypeID.value =
+                                    String(
+                                        parentType
+                                    );
+                            }
+                        }
+
+
+                        if (nature) {
+
+                            const parentNature =
+                                restoredOption.dataset.nature ||
+                                '';
+
+                            if (parentNature !== '') {
+
+                                nature.value =
+                                    String(
+                                        parentNature
+                                    );
+                            }
+                        }
+
+
+                        updateAccountLevel();
+
+                        syncParentDisplay();
+
+                    } else {
+
+                        accParent.selectedIndex = 0;
+
+                        syncParentDisplay();
+                    }
+
+                } else {
+
+                    accParent.selectedIndex = 0;
+
+                    syncParentDisplay();
+                }
+
+
+            } catch (error) {
+
+                console.error(error);
+
+                showToast(
+                    error.message ||
+                    'تعذر تحميل الحسابات الأب',
+                    'error'
+                );
+            }
         }
 
 
-        // =====================================================
-        // تنظيف قيمة
-        // =====================================================
+        // =================================================
+        // تعطيل الحساب الحالي كأب
+        // =================================================
+
+        function disableCurrentAccountAsParent() {
+            if (formMode !== 'edit' || !editingAccountId || !accParent) {
+                return;
+            }
+
+            const option = accParent.querySelector(
+                `option[value="${CSS.escape(String(editingAccountId))}"]`
+            );
+
+            if (option) {
+                option.disabled = true;
+            }
+        }
+
+
+        // =================================================
+        // تعطيل الحسابات الفرعية
+        // =================================================
+
+        function disableInvalidParentOptions() {
+            if (formMode !== 'edit' || !editingAccountId || !accParent) {
+                return;
+            }
+
+            const descendants = new Set();
+
+            function collectChildren(parentId) {
+                accounts
+                    .filter(function (account) {
+                        return String(account.accParent ?? '') === String(parentId);
+                    })
+                    .forEach(function (child) {
+                        descendants.add(String(child.accountID));
+                        collectChildren(child.accountID);
+                    });
+            }
+
+            collectChildren(editingAccountId);
+
+            Array.from(accParent.options).forEach(function (option) {
+                if (descendants.has(String(option.value))) {
+                    option.disabled = true;
+                }
+            });
+
+            disableCurrentAccountAsParent();
+        }
+
+        function enableAllParentOptions() {
+            if (!accParent) return;
+            Array.from(accParent.options).forEach(function (option) {
+                option.disabled = false;
+            });
+        }
+
+
+        // =================================================
+        // وضع الإضافة مع إعادة ضبط كاملة
+        // =================================================
+
+        function setAddMode() {
+            formMode = 'add';
+            editingAccountId = null;
+            savedEditData = null;
+
+            accountForm.reset();
+
+            if (accountID) accountID.value = '';
+            if (accParent) accParent.value = '';
+            if (accParentDisplay) accParentDisplay.value = 'لا يوجد (حساب رئيسي)';
+            if (accLevel) {
+                accLevel.value = '1';
+                accLevel.readOnly = true;
+            }
+            if (IsActive) IsActive.value = '1';
+            if (isPostable) isPostable.value = '0';
+
+            if (accCode) {
+                accCode.value = '';
+                accCode.readOnly = false;
+            }
+
+            if (accTypeID) accTypeID.value = '0';
+            if (nature) nature.value = '0';
+
+            enableAllParentOptions();
+
+            if (accountModalTitle) {
+                accountModalTitle.textContent = 'إضافة حساب جديد';
+            }
+
+            if (saveAccountBtn) {
+                saveAccountBtn.innerHTML =
+                    '<i class="bi bi-check-lg me-1"></i> حفظ الحساب';
+            }
+        }
+
+
+        // =================================================
+        // فتح الإضافة
+        // =================================================
+
+        addAccountBtn.addEventListener('click', async function () {
+            setAddMode();
+            await loadParentAccounts();
+            syncParentDisplay();
+            accountModal.show();
+        });
+
+
+        // =================================================
+        // البحث عن الحساب الأب
+        // =================================================
+
+        async function openParentSearch() {
+            if (!parentAccountSearchModal) return;
+
+            await loadParentAccounts();
+
+            if (parentAccountSearchInput) {
+                parentAccountSearchInput.value = '';
+            }
+
+            filterParentSearchList();
+            parentAccountSearchModal.show();
+        }
+
+        accParentDisplay?.addEventListener('click', openParentSearch);
+        openParentAccountSearchBtn?.addEventListener('click', openParentSearch);
+
+
+        // =================================================
+        // فلترة الحسابات الأب
+        // =================================================
+
+        function filterParentSearchList() {
+            if (!parentAccountSearchList) return;
+
+            const keyword = (parentAccountSearchInput?.value || '').trim().toLowerCase();
+
+            parentAccountSearchList
+                .querySelectorAll('.parent-search-item')
+                .forEach(function (item) {
+                    const code = (item.dataset.code || '').toLowerCase();
+                    const name = (item.dataset.name || '').toLowerCase();
+
+                    const visible =
+                        keyword === '' ||
+                        code.includes(keyword) ||
+                        name.includes(keyword);
+
+                    item.classList.toggle('d-none', !visible);
+                });
+        }
+
+        parentAccountSearchInput?.addEventListener('input', filterParentSearchList);
+
+
+        // =================================================
+        // اختيار الحساب الأب
+        // =================================================
+
+        parentAccountSearchList?.addEventListener('click', async function (event) {
+            const item = event.target.closest('.parent-search-item');
+            if (!item) return;
+
+            const selectedId = item.dataset.id || '';
+
+            // =========================================
+            // بدون أب
+            // =========================================
+
+            if (!selectedId) {
+                if (accParent) {
+                    accParent.selectedIndex = 0;
+                    accParent.value = '';
+                }
+
+                syncParentDisplay();
+
+                if (accLevel) {
+                    accLevel.value = '1';
+                    accLevel.readOnly = true;
+                }
+
+                if (accTypeID) accTypeID.value = '0';
+                if (nature) nature.value = '0';
+
+                if (formMode === 'add' && accCode) {
+                    accCode.value = '';
+                }
+
+                if (accCode) accCode.readOnly = false;
+
+                if (parentAccountSearchModal) {
+                    parentAccountSearchModal.hide();
+                }
+                return;
+            }
+
+            // منع الحساب من أن يكون أباً لنفسه
+            if (
+                formMode === 'edit' &&
+                String(selectedId) === String(editingAccountId)
+            ) {
+                showToast('لا يمكن أن يكون الحساب أباً لنفسه', 'error');
+                return;
+            }
+
+            const selectedOption = Array.from(accParent.options).find(
+                function (option) {
+                    return String(option.value) === String(selectedId);
+                }
+            );
+
+            if (!selectedOption) {
+                showToast('تعذر تحديد الحساب الأب', 'error');
+                return;
+            }
+
+            if (selectedOption.disabled) {
+                showToast('لا يمكن اختيار هذا الحساب كحساب أب', 'error');
+                return;
+            }
+
+            const systemKey =
+                item.dataset.systemKey ||
+                selectedOption.dataset.systemKey ||
+                '';
+
+            const isPostableValue = Number(
+                item.dataset.postable ||
+                selectedOption.dataset.postable ||
+                0
+            );
+
+            if (isPostableValue === 1) {
+                showToast('لا يمكن اختيار حساب تحليلي كحساب أب', 'error');
+                return;
+            }
+
+            const specialSystemKeys = [
+                'cash',
+                'banks',
+                'customers',
+                'inventory',
+                'suppliers'
+            ];
+
+            const normalizedSystemKey = String(systemKey).trim().toLowerCase();
+
+            if (specialSystemKeys.includes(normalizedSystemKey)) {
+                let message = 'لا يمكن إنشاء حساب فرعي تحت هذا الحساب من دليل الحسابات.';
+
+                switch (normalizedSystemKey) {
+                    case 'cash':
+                        message = 'لا يمكن إنشاء حساب فرعي تحت حساب الصندوق من دليل الحسابات. استخدم شاشة الصندوق.';
+                        break;
+                    case 'banks':
+                        message = 'لا يمكن إنشاء حساب فرعي تحت حساب البنوك من دليل الحسابات. استخدم شاشة البنوك.';
+                        break;
+                    case 'customers':
+                        message = 'لا يمكن إنشاء حساب فرعي تحت حساب العملاء من دليل الحسابات. استخدم شاشة العملاء.';
+                        break;
+                    case 'inventory':
+                        message = 'لا يمكن إنشاء حساب فرعي تحت حساب المخزون من دليل الحسابات. استخدم شاشة الأصناف والمخزون.';
+                        break;
+                    case 'suppliers':
+                        message = 'لا يمكن إنشاء حساب فرعي تحت حساب الموردين من دليل الحسابات. استخدم شاشة الموردين.';
+                        break;
+                }
+
+                showToast(message, 'error');
+                return;
+            }
+
+            const parentIndex = Array.from(accParent.options).findIndex(
+                function (option) {
+                    return String(option.value) === String(selectedId);
+                }
+            );
+
+            if (parentIndex === -1) {
+                showToast('تعذر تحديد الحساب الأب', 'error');
+                return;
+            }
+
+            accParent.selectedIndex = parentIndex;
+            accParent.value = String(selectedId);
+
+            syncParentDisplay();
+
+            // مزامنة النوع من dataset (احتياطي)
+            const parentType =
+                selectedOption.dataset.type ??
+                item.dataset.type ??
+                '0';
+
+            if (accTypeID) {
+                accTypeID.value = String(parentType || '0');
+            }
+
+            const parentNature =
+                selectedOption.dataset.nature ||
+                item.dataset.nature ||
+                '';
+
+            if (nature && parentNature !== '') {
+                nature.value = String(parentNature);
+            }
+
+            updateAccountLevel();
+
+            // توليد الرقم
+            if (accCode) accCode.readOnly = true;
+            await loadNextAccountCode(selectedId);
+
+            // ✅ جلب البيانات الكاملة (لضمان النوع والطبيعة الصحيحين)
+            await syncParentAccountData(selectedId);
+
+            if (parentAccountSearchModal) {
+                parentAccountSearchModal.hide();
+            }
+        });
+
+
+        // =================================================
+        // تطبيع القيمة
+        // =================================================
 
         function normalizeValue(value) {
-
             if (value === null || value === undefined) {
                 return '';
             }
-
             return String(value).trim();
-
         }
 
 
-        // =====================================================
-        // بيانات النموذج الحالية
-        // =====================================================
+        // =================================================
+        // بيانات النموذج للمقارنة
+        // =================================================
 
         function getFormDataForComparison() {
-
             return {
-
                 accTypeID: normalizeValue(accTypeID?.value),
-
                 accCode: normalizeValue(accCode?.value),
-
                 accParent: normalizeValue(accParent?.value),
-
                 accName: normalizeValue(accName?.value),
-
                 nature: normalizeValue(nature?.value),
-
                 accLevel: normalizeValue(accLevel?.value),
-
                 IsActive: normalizeValue(IsActive?.value),
-
                 isPostable: normalizeValue(isPostable?.value)
-
             };
-
         }
 
-
-        // =====================================================
-        // مقارنة البيانات
-        // =====================================================
-
         function hasFormChanges() {
-
             if (!savedEditData) {
                 return true;
             }
 
             const currentData = getFormDataForComparison();
 
-            const fields = Object.keys(savedEditData);
-
-            return fields.some(function (field) {
-
-                return normalizeValue(savedEditData[field]) !==
-                    normalizeValue(currentData[field]);
-
+            return Object.keys(currentData).some(function (key) {
+                return currentData[key] !== savedEditData[key];
             });
-
         }
 
 
-        // =====================================================
-        // جلب الحساب للتعديل
-        // =====================================================
+        // =================================================
+        // تعديل الحساب
+        // =================================================
 
         async function editAccount(id) {
-
             try {
+                formMode = 'edit';
+                editingAccountId = id;
 
                 const response = await fetch(
                     `/settings/accounting/chartOfAccounts/${id}`,
-                    {
-                        method: 'GET',
-                        headers: { 'Accept': 'application/json' }
-                    }
+                    { method: 'GET', headers: jsonHeaders() }
                 );
+
+                if (!response.ok) {
+                    throw new Error(
+                        await getResponseMessage(response, 'تعذر جلب بيانات الحساب')
+                    );
+                }
 
                 const data = await response.json();
 
-                if (!response.ok || !data.success) {
-
-                    throw new Error(
-                        getResponseMessage(data, 'تعذر جلب بيانات الحساب')
-                    );
-
+                if (!data.success || !data.account) {
+                    throw new Error(data.message || 'تعذر جلب بيانات الحساب');
                 }
 
                 const account = data.account;
 
-                formMode = 'edit';
-
-                editingAccountId = account.accountID;
-
-                if (accountID) {
-                    accountID.value = account.accountID ?? '';
-                }
-
-                if (accTypeID) {
-                    accTypeID.value = account.accTypeID ?? '';
-                }
-
-                if (accCode) {
-                    accCode.value = account.accCode ?? '';
-                }
-
-                if (accName) {
-                    accName.value = account.accName ?? '';
-                }
-
-                if (nature) {
-                    nature.value = account.nature ?? '';
-                }
-
-                if (accLevel) {
-                    accLevel.value = account.accLevel ?? 1;
-                }
-
-                if (IsActive) {
-                    IsActive.value = account.IsActive ?? 1;
-                }
-
-                if (isPostable) {
-                    isPostable.value = account.isPostable ?? 0;
-                }
-
                 await loadParentAccounts();
 
+                if (accountID) accountID.value = account.accountID ?? '';
+                if (accTypeID) accTypeID.value = account.accTypeID ?? '';
+                if (accCode) accCode.value = account.accCode ?? '';
+
                 if (accParent) {
-                    accParent.value = account.accParent ?? '';
+                    const parentValue = String(account.accParent ?? '');
+                    const parentIndex = Array.from(accParent.options).findIndex(
+                        function (option) {
+                            return String(option.value) === parentValue;
+                        }
+                    );
+
+                    if (parentIndex !== -1) {
+                        accParent.selectedIndex = parentIndex;
+                    } else {
+                        accParent.selectedIndex = 0;
+                    }
                 }
+
+                if (accName) accName.value = account.accName ?? '';
+                if (nature) nature.value = account.nature ?? '';
+                if (accLevel) accLevel.value = account.accLevel ?? '1';
+                if (IsActive) IsActive.value = account.IsActive ?? '1';
+                if (isPostable) isPostable.value = account.isPostable ?? '0';
 
                 syncParentDisplay();
 
@@ -960,1549 +1344,1097 @@ addAccountBtn.addEventListener('click', function (event) {
                 }
 
                 if (saveAccountBtn) {
-                    saveAccountBtn.textContent = 'حفظ التعديل';
+                    saveAccountBtn.innerHTML =
+                        '<i class="bi bi-check-lg me-1"></i> حفظ التعديل';
                 }
 
-                if (accountModal) {
-                    accountModal.show();
-                }
+                accountModal.show();
 
             } catch (error) {
+                console.error(error);
 
-                showToast(error.message, 'danger');
+                formMode = 'add';
+                editingAccountId = null;
+                savedEditData = null;
 
+                showToast(error.message || 'تعذر تحميل الحساب', 'error');
             }
-
         }
 
 
-        // =====================================================
-        // التحقق من بيانات النموذج
-        // =====================================================
+        // =================================================
+        // التحقق من النموذج
+        // =================================================
 
         function validateAccountForm() {
-
+            const code = normalizeValue(accCode?.value);
             const name = normalizeValue(accName?.value);
 
-            const code = normalizeValue(accCode?.value);
-
             if (!code) {
-
-                showToast('رقم الحساب مطلوب', 'danger');
-
+                showToast('رقم الحساب مطلوب', 'error');
                 accCode?.focus();
-
                 return false;
-
             }
 
             if (!/^\d+$/.test(code)) {
-
-                showToast(
-                    'رقم الحساب يجب أن يكون رقماً صحيحاً',
-                    'danger'
-                );
-
+                showToast('رقم الحساب يجب أن يحتوي على أرقام فقط', 'error');
                 accCode?.focus();
-
                 return false;
-
             }
 
             if (!name) {
-
-                showToast('اسم الحساب مطلوب', 'danger');
-
+                showToast('اسم الحساب مطلوب', 'error');
                 accName?.focus();
-
                 return false;
-
             }
 
             return true;
-
         }
 
 
-        // =====================================================
+        // =================================================
         // حفظ الحساب
-        // =====================================================
+        // =================================================
 
-        if (accountForm) {
+        accountForm.addEventListener('submit', async function (event) {
+            event.preventDefault();
 
-            accountForm.addEventListener('submit', async function (event) {
+            if (!validateAccountForm()) return;
 
-                event.preventDefault();
-
-                if (!validateAccountForm()) {
-                    return;
-                }
-
-                if (formMode === 'edit' && !hasFormChanges()) {
-
-                    showToast(
-                        'لم يتم إجراء أي تعديل على بيانات الحساب',
-                        'danger'
-                    );
-
-                    return;
-
-                }
-
-                updateAccountLevel();
-
-                updatePostableState();
-
-                const isEdit =
-                    formMode === 'edit' && editingAccountId;
-
-                const url = isEdit
-                    ? `/settings/accounting/chartOfAccounts/${editingAccountId}`
-                    : `/settings/accounting/chartOfAccounts`;
-
-                const formData = new FormData(accountForm);
-
-                if (isEdit) {
-
-                    formData.set('_method', 'PUT');
-
-                } else {
-
-                    formData.delete('_method');
-
-                }
-
-                formData.set(
-                    'isPostable',
-                    isPostable?.value ?? '0'
-                );
-
-                if (saveAccountBtn) {
-                    saveAccountBtn.disabled = true;
-                }
-
-                try {
-
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: jsonHeaders(),
-                        body: formData
-                    });
-
-                    const data = await response.json();
-
-                    if (!response.ok || !data.success) {
-
-                        throw new Error(
-                            getResponseMessage(
-                                data,
-                                isEdit
-                                    ? 'تعذر تعديل الحساب'
-                                    : 'تعذر إضافة الحساب'
-                            )
-                        );
-
-                    }
-
-                    showToast(
-                        data.message ||
-                        (isEdit
-                            ? 'تم تعديل الحساب بنجاح'
-                            : 'تمت إضافة الحساب بنجاح'),
-                        'success'
-                    );
-
-                    if (accountModal) {
-                        accountModal.hide();
-                    }
-
-                    await reloadAccountsTable();
-
-                } catch (error) {
-
-                    showToast(error.message, 'danger');
-
-                } finally {
-
-                    if (saveAccountBtn) {
-                        saveAccountBtn.disabled = false;
-                    }
-
-                }
-
-            });
-
-        }
-
-
-        // =====================================================
-        // تأكيد الحذف
-        // =====================================================
-
-        function openDeleteModal(id) {
-
-            deletingAccountId = id;
-
-            if (!deleteConfirmModal) {
+            if (formMode === 'edit' && !hasFormChanges()) {
+                showToast('لم يتم إجراء أي تعديل على بيانات الحساب', 'error');
                 return;
             }
 
-            deleteConfirmModal.classList.add('show');
+            updateAccountLevel();
 
-            deleteConfirmModal.style.display = 'flex';
+            const formData = new FormData(accountForm);
 
-            document.body.classList.add('modal-open');
+            let url = '/settings/accounting/chartOfAccounts';
+            const method = 'POST';
 
-        }
-
-
-        // =====================================================
-        // إغلاق نافذة الحذف
-        // =====================================================
-
-        function closeDeleteModal() {
-
-            if (!deleteConfirmModal) {
-                return;
+            if (formMode === 'edit' && editingAccountId) {
+                url = `/settings/accounting/chartOfAccounts/${editingAccountId}`;
+                formData.append('_method', 'PUT');
             }
 
-            deleteConfirmModal.classList.remove('show');
-
-            deleteConfirmModal.style.display = 'none';
-
-            document.body.classList.remove('modal-open');
-
-            deletingAccountId = null;
-
-        }
-
-
-        // =====================================================
-        // تنفيذ الحذف
-        // =====================================================
-
-        async function performDeleteAccount() {
-
-            if (!deletingAccountId) {
-                return;
-            }
-
-            const id = deletingAccountId;
-
-            if (deleteConfirmBtn) {
-                deleteConfirmBtn.disabled = true;
-            }
+            const originalText = saveAccountBtn?.innerHTML;
 
             try {
+                if (saveAccountBtn) {
+                    saveAccountBtn.disabled = true;
+                    saveAccountBtn.innerHTML =
+                        '<span class="spinner-border spinner-border-sm me-1"></span> جاري الحفظ...';
+                }
 
-                const response = await fetch(
-                    `/settings/accounting/chartOfAccounts/${id}`,
-                    {
-                        method: 'DELETE',
-                        headers: jsonHeaders()
-                    }
-                );
+                const response = await fetch(url, {
+                    method,
+                    headers: jsonHeaders(),
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(
+                        await getResponseMessage(response, 'تعذر حفظ الحساب')
+                    );
+                }
 
                 const data = await response.json();
 
-                if (!response.ok || !data.success) {
-
-                    throw new Error(
-                        data.message || 'تعذر حذف الحساب'
-                    );
-
+                if (!data.success) {
+                    throw new Error(data.message || 'تعذر حفظ الحساب');
                 }
 
-                closeDeleteModal();
-
-                showToast(
-                    data.message || 'تم حذف الحساب بنجاح',
-                    'success'
-                );
+                showToast(data.message || 'تم حفظ الحساب بنجاح');
+                accountModal.hide();
 
                 await reloadAccountsTable();
 
             } catch (error) {
-
-                closeDeleteModal();
-
+                console.error(error);
                 showToast(
-                    error.message || 'تعذر حذف الحساب',
-                    'danger'
+                    error.message || 'حدث خطأ أثناء حفظ الحساب',
+                    'error'
                 );
-
             } finally {
-
-                if (deleteConfirmBtn) {
-                    deleteConfirmBtn.disabled = false;
+                if (saveAccountBtn) {
+                    saveAccountBtn.disabled = false;
+                    saveAccountBtn.innerHTML =
+                        originalText ||
+                        '<i class="bi bi-check-lg me-1"></i> حفظ الحساب';
                 }
-
             }
-
-        }
-
-
-        // =====================================================
-        // زر تأكيد الحذف
-        // =====================================================
-
-        if (deleteConfirmBtn) {
-
-            deleteConfirmBtn.addEventListener(
-                'click',
-                performDeleteAccount
-            );
-
-        }
-
-
-        // =====================================================
-        // إغلاق نافذة الحذف
-        // =====================================================
-
-        const deleteCancelBtn =
-            document.getElementById('deleteCancelBtn');
-
-        if (deleteCancelBtn) {
-
-            deleteCancelBtn.addEventListener(
-                'click',
-                closeDeleteModal
-            );
-
-        }
-
-
-        // =====================================================
-        // جعل الدوال متاحة للـHTML
-        // =====================================================
-
-        window.deleteAccount = function (id) {
-
-            openDeleteModal(id);
-
-        };
-
-
-        // =====================================================
-        // الحساب الأب
-        // =====================================================
-
-        function syncParentDisplay() {
-
-            if (!accParentDisplay || !accParent) {
-                return;
-            }
-
-            const option =
-                accParent.options[accParent.selectedIndex];
-
-            if (option && accParent.value) {
-
-                accParentDisplay.value =
-                    option.textContent.trim();
-
-            } else {
-
-                accParentDisplay.value = '';
-
-            }
-
-        }
-
-
-        // =====================================================
-        // فتح نافذة اختيار الحساب الأب
-        // =====================================================
-
-        if (accParentDisplay) {
-
-            accParentDisplay.addEventListener('click', async function () {
-
-                await loadParentAccounts();
-
-                if (parentAccountSearchInput) {
-                    parentAccountSearchInput.value = '';
-                }
-
-                if (
-                    parentAccountSearchModal &&
-                    typeof bootstrap !== 'undefined'
-                ) {
-
-                    const modal =
-                        bootstrap.Modal.getOrCreateInstance(
-                            parentAccountSearchModal
-                        );
-
-                    modal.show();
-
-                }
-
-            });
-
-        }
-
-
-        // =====================================================
-        // البحث داخل نافذة الحساب الأب
-        // =====================================================
-
-        if (parentAccountSearchInput) {
-
-            parentAccountSearchInput.addEventListener('input', function () {
-
-                const value = normalizeValue(
-                    parentAccountSearchInput.value
-                ).toLowerCase();
-
-                document
-                    .querySelectorAll('.parent-search-item')
-                    .forEach(function (item) {
-
-                        const text =
-                            item.textContent.toLowerCase();
-
-                        item.style.display =
-                            text.includes(value) ? '' : 'none';
-
-                    });
-
-            });
-
-        }
-
-
-        // =====================================================
-        // اختيار الحساب الأب
-        // =====================================================
-
-        document.addEventListener('click', function (event) {
-
-            const item =
-                event.target.closest('.parent-search-item');
-
-            if (!item) {
-                return;
-            }
-
-            const parentId = item.dataset.id || '';
-
-            if (accParent) {
-
-                accParent.value = parentId;
-
-                accParent.dispatchEvent(new Event('change'));
-
-            }
-
-            if (
-                parentAccountSearchModal &&
-                typeof bootstrap !== 'undefined'
-            ) {
-
-                const modal =
-                    bootstrap.Modal.getInstance(parentAccountSearchModal);
-
-                if (modal) {
-                    modal.hide();
-                }
-
-            }
-
         });
 
 
-        // =====================================================
-        // تحميل الحسابات التحليلية
-        // =====================================================
+        // =================================================
+        // فتح مودال الحذف
+        // =================================================
 
-        async function loadAnalyticalAccounts(parentId, page = 1) {
+        function openDeleteModal(id) {
+            if (!id) return;
 
-            if (
-                !analyticalAccountsModalElement ||
-                !analyticalAccountsBody
-            ) {
-                return;
+            deletingAccountId = id;
+
+            if (deleteConfirmModal) {
+                deleteConfirmModal.show();
+            } else {
+                performDeleteAccount();
             }
+        }
 
-            selectedAnalyticalParentId = Number(parentId);
 
-            analyticalCurrentPage = page;
+        // =================================================
+        // إغلاق مودال الحذف
+        // =================================================
 
-            if (analyticalAccountsModal) {
-                analyticalAccountsModal.show();
+        function closeDeleteModal() {
+            deletingAccountId = null;
+            if (deleteConfirmModal) {
+                deleteConfirmModal.hide();
             }
+        }
 
-            analyticalAccountsBody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="text-center py-4 text-muted">
-                        <div class="d-flex justify-content-center align-items-center gap-2">
-                            <div class="spinner-border spinner-border-sm" role="status"></div>
-                            <span>جاري تحميل الحسابات التحليلية...</span>
-                        </div>
-                    </td>
-                </tr>
-            `;
+
+        // =================================================
+        // تنفيذ الحذف
+        // =================================================
+
+        async function performDeleteAccount() {
+            if (!deletingAccountId) return;
+
+            const id = deletingAccountId;
+            const originalText = deleteConfirmBtn?.innerHTML;
 
             try {
-
-                const params = new URLSearchParams();
-
-                params.set('page', analyticalCurrentPage);
-
-                params.set('per_page', analyticalPageSize);
-
-                if (
-                    analyticalSearchCode &&
-                    normalizeValue(analyticalSearchCode.value)
-                ) {
-
-                    params.set(
-                        'search_code',
-                        normalizeValue(analyticalSearchCode.value)
-                    );
-                }
-
-                if (
-                    analyticalSearchName &&
-                    normalizeValue(analyticalSearchName.value)
-                ) {
-
-                    params.set(
-                        'search_name',
-                        normalizeValue(analyticalSearchName.value)
-                    );
+                if (deleteConfirmBtn) {
+                    deleteConfirmBtn.disabled = true;
+                    deleteConfirmBtn.innerHTML =
+                        '<span class="spinner-border spinner-border-sm me-1"></span> جاري الحذف...';
                 }
 
                 const response = await fetch(
-                    `/settings/accounting/chartOfAccounts/${parentId}/analytical?${params.toString()}`,
-                    {
-                        method: 'GET',
-                        headers: { 'Accept': 'application/json' }
-                    }
+                    `/settings/accounting/chartOfAccounts/${id}`,
+                    { method: 'DELETE', headers: jsonHeaders() }
                 );
+
+                if (!response.ok) {
+                    throw new Error(
+                        await getResponseMessage(response, 'تعذر حذف الحساب')
+                    );
+                }
 
                 const data = await response.json();
 
-                if (!response.ok || !data.success) {
+                if (!data.success) {
+                    throw new Error(data.message || 'تعذر حذف الحساب');
+                }
 
-                    throw new Error(
-                        getResponseMessage(
-                            data,
-                            'تعذر تحميل الحسابات التحليلية'
-                        )
+                showToast(data.message || 'تم حذف الحساب بنجاح');
+
+                closeDeleteModal();
+
+                await reloadAccountsTable();
+
+                if (selectedAnalyticalParentId) {
+                    await loadAnalyticalAccounts(
+                        selectedAnalyticalParentId,
+                        analyticalCurrentPage
                     );
                 }
-
-
-                // عرض الحساب الأب
-                if (analyticalAccountsParent && data.parent) {
-
-                    analyticalAccountsParent.textContent =
-                        `${data.parent.accCode} - ${data.parent.accName}`;
-                }
-
-
-                const paginator = data.accounts || {};
-
-                const rows =
-                    Array.isArray(paginator.data) ? paginator.data : [];
-
-
-                analyticalAccountsBody.innerHTML = '';
-
-
-                if (!rows.length) {
-
-                    analyticalAccountsBody.innerHTML = `
-                        <tr>
-                            <td colspan="7" class="text-center py-4 text-muted">
-                                لا توجد حسابات تحليلية لهذا الحساب.
-                            </td>
-                        </tr>
-                    `;
-
-                    renderAnalyticalPagination(paginator);
-
-                    return;
-                }
-
-
-                rows.forEach(function (account, index) {
-
-                    const row = document.createElement('tr');
-
-
-                    // الرقم التسلسلي
-                    const numberCell = document.createElement('td');
-
-                    numberCell.textContent =
-                        ((Number(paginator.current_page) - 1) *
-                            Number(paginator.per_page)) +
-                        index + 1;
-
-                    row.appendChild(numberCell);
-
-
-                    // رقم الحساب
-                    const codeCell = document.createElement('td');
-
-                    codeCell.textContent = account.accCode ?? '';
-
-                    row.appendChild(codeCell);
-
-
-                    // اسم الحساب
-                    const nameCell = document.createElement('td');
-
-                    nameCell.textContent = account.accName ?? '';
-
-                    row.appendChild(nameCell);
-
-
-                    // الطبيعة
-                    const natureCell = document.createElement('td');
-
-                    if (Number(account.nature) === 0) {
-
-                        natureCell.innerHTML =
-                            '<span class="badge bg-primary-subtle text-primary">مدين</span>';
-
-                    } else {
-
-                        natureCell.innerHTML =
-                            '<span class="badge bg-info-subtle text-info">دائن</span>';
-                    }
-
-                    row.appendChild(natureCell);
-
-
-                    // الحساب الأب
-                    const parentCell = document.createElement('td');
-
-                    if (data.parent) {
-
-                        parentCell.textContent =
-                            data.parent.accName ?? '';
-
-                    } else {
-
-                        parentCell.textContent = '';
-                    }
-
-                    row.appendChild(parentCell);
-
-
-                    // الحالة
-                    const statusCell = document.createElement('td');
-
-                    if (Number(account.IsActive) === 1) {
-
-                        statusCell.innerHTML =
-                            '<span class="badge bg-success-subtle text-success">نشط</span>';
-
-                    } else {
-
-                        statusCell.innerHTML =
-                            '<span class="badge bg-secondary-subtle text-secondary">غير نشط</span>';
-                    }
-
-                    row.appendChild(statusCell);
-
-
-                    // الإجراءات
-                    const actionsCell = document.createElement('td');
-
-                    const actionsWrapper = document.createElement('div');
-
-                    actionsWrapper.className = 'd-flex gap-1';
-
-
-                    const editButton = document.createElement('button');
-
-                    editButton.type = 'button';
-
-                    editButton.className =
-                        'btn btn-sm btn-outline-primary edit-account';
-
-                    editButton.dataset.id = account.accountID;
-
-                    editButton.title = 'تعديل';
-
-                    editButton.innerHTML =
-                        '<i class="bi bi-pencil"></i>';
-
-                    actionsWrapper.appendChild(editButton);
-
-
-                    const deleteButton = document.createElement('button');
-
-                    deleteButton.type = 'button';
-
-                    deleteButton.className =
-                        'btn btn-sm btn-outline-danger delete-account';
-
-                    deleteButton.dataset.id = account.accountID;
-
-                    deleteButton.title = 'حذف';
-
-                    deleteButton.innerHTML =
-                        '<i class="bi bi-trash"></i>';
-
-                    actionsWrapper.appendChild(deleteButton);
-
-
-                    actionsCell.appendChild(actionsWrapper);
-
-                    row.appendChild(actionsCell);
-
-                    analyticalAccountsBody.appendChild(row);
-
-                });
-
-
-                renderAnalyticalPagination(paginator);
-
 
             } catch (error) {
-
-                analyticalAccountsBody.innerHTML = `
-                    <tr>
-                        <td colspan="7" class="text-center py-4 text-danger">
-                            ${escapeHtml(
-                                error.message ||
-                                'تعذر تحميل الحسابات التحليلية'
-                            )}
-                        </td>
-                    </tr>
-                `;
-
-                renderAnalyticalPagination({
-                    total: 0,
-                    current_page: 1,
-                    per_page: analyticalPageSize,
-                    last_page: 1
-                });
+                console.error(error);
+                showToast(error.message || 'تعذر حذف الحساب', 'error');
+            } finally {
+                if (deleteConfirmBtn) {
+                    deleteConfirmBtn.disabled = false;
+                    deleteConfirmBtn.innerHTML =
+                        originalText ||
+                        '<i class="bi bi-trash me-1"></i> نعم، حذف الحساب';
+                }
             }
-
         }
 
-
-        // =====================================================
-        // Pagination للحسابات التحليلية
-        // =====================================================
-
-        function renderAnalyticalPagination(paginator) {
-
-            if (
-                !analyticalPaginationInfo ||
-                !analyticalPaginationList
-            ) {
-                return;
-            }
-
-            analyticalPaginationList.innerHTML = '';
+        deleteConfirmBtn?.addEventListener('click', performDeleteAccount);
+        deleteCancelBtn?.addEventListener('click', closeDeleteModal);
+        deleteCancelBtnFooter?.addEventListener('click', closeDeleteModal);
 
 
-            const total = Number(paginator.total || 0);
+        // =================================================
+        // خصائص الشجرة
+        // =================================================
 
-            const currentPage =
-                Number(paginator.current_page || 1);
+        function hasChildren(accountId) {
+            return accounts.some(function (account) {
+                return String(account.accParent ?? '') === String(accountId);
+            });
+        }// =================================================
+// ✅ هل الحساب مرتبط بشاشة خارجية؟
+// (عملاء / بنوك / موردون / صناديق / مخازن)
+// =================================================
 
-            const perPage =
-                Number(paginator.per_page || analyticalPageSize);
-
-            const lastPage =
-                Number(paginator.last_page || 1);
-
-
-            if (!total) {
-
-                analyticalPaginationInfo.textContent =
-                    'عرض 0-0 من 0 حساب';
-
-                return;
-            }
-
-
-            const start =
-                ((currentPage - 1) * perPage) + 1;
-
-            const end =
-                Math.min(currentPage * perPage, total);
+const EXTERNAL_SYSTEM_KEYS = [
+    'cash',
+    'banks',
+    'customers',
+    'suppliers',
+    'inventory'
+];
 
 
-            analyticalPaginationInfo.textContent =
-                `عرض ${start}-${end} من ${total} حساب`;
+function isExternalAccount(account) {
+
+    // ✅ حساب نظامي
+    if (Number(account.is_system) === 1) {
+        return true;
+    }
+
+    // ✅ حساب مرتبط بشاشة خارجية
+    const systemKey = String(
+        account.system_key ?? ''
+    ).trim().toLowerCase();
+
+    if (systemKey === '') {
+        return false;
+    }
+
+    return EXTERNAL_SYSTEM_KEYS.includes(systemKey);
+}
 
 
-            // السابق
-            const previous = document.createElement('li');
 
-            previous.className =
-                `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+        // =================================================
+        // إنشاء صف الحساب
+        // =================================================
 
-            previous.innerHTML = `
-                <button type="button" class="page-link">السابق</button>
-            `;
+   function createAccountRow(account) {
+    const row = cloneTemplate(accountRowTemplate);
+    if (!row) return null;
 
-            if (currentPage > 1) {
+    row.dataset.id = String(account.accountID);
+    row.dataset.parentId = String(account.accParent ?? '');
+    row.dataset.level = String(account.accLevel ?? 1);
 
-                previous
-                    .querySelector('button')
-                    .addEventListener('click', function () {
+    const numberElement = row.querySelector('.account-row-number');
+    const toggle = row.querySelector('.account-tree-toggle');
+    const codeElement = row.querySelector('.account-code');
+    const nameElement = row.querySelector('.account-name');
+    const natureElement = row.querySelector('.account-nature');
+    const parentElement = row.querySelector('.account-parent');
+    const statusElement = row.querySelector('.account-status');
+    const analyticalButton = row.querySelector('.show-analytical');
+    const editButton = row.querySelector('.edit-account');
+    const deleteButton = row.querySelector('.delete-account');
+    const systemBadge = row.querySelector('.account-system-badge');
 
-                        loadAnalyticalAccounts(
-                            selectedAnalyticalParentId,
-                            currentPage - 1
-                        );
-                    });
-            }
+    if (codeElement) {
+        codeElement.textContent = account.accCode ?? '';
+    }
 
-            analyticalPaginationList.appendChild(previous);
+    if (nameElement) {
+        nameElement.textContent = account.accName ?? '';
+    }
 
+    if (natureElement) {
+        natureElement.textContent =
+            Number(account.nature) === 1 ? 'دائن' : 'مدين';
+    }
 
-            // أرقام الصفحات
-            for (let page = 1; page <= lastPage; page++) {
+    if (parentElement) {
+        const parent = accounts.find(function (item) {
+            return String(item.accountID) === String(account.accParent);
+        });
 
-                const item = document.createElement('li');
+        parentElement.textContent = parent ? parent.accName : '—';
+    }
 
-                item.className =
-                    `page-item ${page === currentPage ? 'active' : ''}`;
+    if (statusElement) {
+        const active = Number(account.IsActive) === 1;
 
-                const button = document.createElement('button');
+        statusElement.textContent = active ? 'نشط' : 'غير نشط';
 
-                button.type = 'button';
+        statusElement.classList.toggle('bg-success', active);
+        statusElement.classList.toggle('bg-danger', !active);
+        statusElement.classList.toggle('text-white', true);
+    }
 
-                button.className = 'page-link';
+    const level = Math.max(0, Number(account.accLevel || 1) - 1);
 
-                button.textContent = page;
+    const accountCodeContainer = codeElement ? codeElement.parentElement : null;
 
-                button.addEventListener('click', function () {
+    if (accountCodeContainer) {
+        accountCodeContainer.style.marginRight = `${level * 30}px`;
+    }
 
-                    loadAnalyticalAccounts(
-                        selectedAnalyticalParentId,
-                        page
-                    );
-                });
+    if (toggle && hasChildren(account.accountID)) {
+        toggle.classList.remove('d-none');
+        toggle.dataset.id = String(account.accountID);
+        toggle.setAttribute(
+            'aria-expanded',
+            account.__open === true ? 'true' : 'false'
+        );
+    } else if (toggle) {
+        toggle.classList.add('d-none');
+    }
 
-                item.appendChild(button);
-
-                analyticalPaginationList.appendChild(item);
-            }
-
-
-            // التالي
-            const next = document.createElement('li');
-
-            next.className =
-                `page-item ${currentPage === lastPage ? 'disabled' : ''}`;
-
-            next.innerHTML = `
-                <button type="button" class="page-link">التالي</button>
-            `;
-
-            if (currentPage < lastPage) {
-
-                next
-                    .querySelector('button')
-                    .addEventListener('click', function () {
-
-                        loadAnalyticalAccounts(
-                            selectedAnalyticalParentId,
-                            currentPage + 1
-                        );
-                    });
-            }
-
-            analyticalPaginationList.appendChild(next);
-        }
+    if (analyticalButton && Number(account.hasAnalytical) === 1) {
+        analyticalButton.classList.remove('d-none');
+        analyticalButton.dataset.id = String(account.accountID);
+    } else if (analyticalButton) {
+        analyticalButton.classList.add('d-none');
+    }
 
 
-        // =====================================================
-        // بناء صف الحساب
-        // =====================================================
+    // =================================================
+    // ✅ الحسابات النظامية والخارجية
+    // =================================================
 
-        function createAccountRow(account) {
+    if (isExternalAccount(account)) {
 
-            const row = document.createElement('tr');
+        editButton?.classList.add('d-none');
+        deleteButton?.classList.add('d-none');
 
-            const id = Number(account.accountID);
+        // ✅ إعداد الـ Badge حسب نوع الحساب
+        if (systemBadge) {
 
-            const parentId =
-                account.accParent ? Number(account.accParent) : null;
+            const systemKey = String(
+                account.system_key ?? ''
+            ).trim().toLowerCase();
 
-            const level = Number(account.accLevel || 1);
+            // ✅ قائمة التسميات
+            const badgeLabels = {
+                'cash':      'صندوق',
+                'banks':     'بنك',
+                'customers': 'عميل',
+                'suppliers': 'مورد',
+                'inventory': 'مخزون'
+            };
 
-            const hasChildren = accounts.some(function (child) {
-                return Number(child.accParent) === id;
+            // ✅ قائمة الألوان
+            const badgeColors = {
+                'cash':      'bg-success-subtle text-success-emphasis',
+                'banks':     'bg-primary-subtle text-primary-emphasis',
+                'customers': 'bg-info-subtle text-info-emphasis',
+                'suppliers': 'bg-warning-subtle text-warning-emphasis',
+                'inventory': 'bg-secondary-subtle text-secondary-emphasis'
+            };
+
+
+            // ✅ إعادة تعيين الكلاسات القديمة
+            systemBadge.classList.remove(
+                'bg-success',
+                'bg-danger',
+                'bg-primary',
+                'bg-secondary',
+                'bg-info',
+                'bg-warning',
+                'bg-success-subtle',
+                'bg-primary-subtle',
+                'bg-secondary-subtle',
+                'bg-info-subtle',
+                'bg-warning-subtle',
+                'text-success-emphasis',
+                'text-primary-emphasis',
+                'text-secondary-emphasis',
+                'text-info-emphasis',
+                'text-warning-emphasis',
+                'text-white'
+            );
+
+
+            // ✅ تحديد النص
+            systemBadge.textContent =
+                badgeLabels[systemKey] || 'نظامي';
+
+
+            // ✅ تحديد اللون
+            const colorClass =
+                badgeColors[systemKey] ||
+                'bg-secondary-subtle text-secondary-emphasis';
+
+            colorClass.split(' ').forEach(function (cls) {
+                systemBadge.classList.add(cls);
             });
 
-            row.dataset.id = id;
-            row.dataset.parentId = parentId || '';
-            row.dataset.level = level;
 
-
-            // #
-            const numberCell = document.createElement('td');
-
-            row.appendChild(numberCell);
-
-
-            // رقم الحساب
-            const codeCell = document.createElement('td');
-
-            codeCell.style.paddingRight =
-                `${20 + ((level - 1) * 25)}px`;
-
-            if (hasChildren) {
-
-                const wrapper = document.createElement('div');
-
-                wrapper.className = 'd-flex align-items-center gap-2';
-
-                const toggleButton = document.createElement('button');
-
-                toggleButton.type = 'button';
-
-                toggleButton.className =
-                    'btn btn-sm btn-link p-0 account-tree-toggle';
-
-                toggleButton.dataset.id = account.accountID;
-
-                toggleButton.innerHTML =
-                    '<i class="bi bi-chevron-left"></i>';
-
-                wrapper.appendChild(toggleButton);
-
-                const codeText = document.createElement('span');
-
-                codeText.textContent = account.accCode;
-
-                wrapper.appendChild(codeText);
-
-                codeCell.appendChild(wrapper);
-
-            } else {
-
-                codeCell.textContent = account.accCode;
-            }
-
-            row.appendChild(codeCell);
-
-
-            // اسم الحساب
-            const nameCell = document.createElement('td');
-
-            nameCell.className = 'account-name-cell';
-
-            nameCell.textContent = account.accName ?? '';
-
-            row.appendChild(nameCell);
-
-
-            // طبيعة الحساب
-            const natureCell = document.createElement('td');
-
-            const natureValue = Number(account.nature);
-
-            if (natureValue === 0) {
-
-                natureCell.innerHTML =
-                    '<span class="badge bg-primary-subtle text-primary">مدين</span>';
-
-            } else {
-
-                natureCell.innerHTML =
-                    '<span class="badge bg-info-subtle text-info">دائن</span>';
-            }
-
-            row.appendChild(natureCell);
-
-
-            // الحساب الأب
-            const parentCell = document.createElement('td');
-
-            if (parentId) {
-
-                const parent = accounts.find(function (item) {
-
-                    return Number(item.accountID) === parentId;
-
-                });
-
-                parentCell.textContent = parent ? parent.accName : '';
-
-            } else {
-
-                parentCell.textContent = 'رئيسي';
-
-            }
-
-            row.appendChild(parentCell);
-
-
-            // الحالة
-            const statusCell = document.createElement('td');
-
-            if (Number(account.IsActive) === 1) {
-
-                statusCell.innerHTML =
-                    '<span class="badge bg-success-subtle text-success">نشط</span>';
-
-            } else {
-
-                statusCell.innerHTML =
-                    '<span class="badge bg-secondary-subtle text-secondary">غير نشط</span>';
-            }
-
-            row.appendChild(statusCell);
-
-
-            // الإجراءات
-            const actionsCell = document.createElement('td');
-
-            const actionsWrapper = document.createElement('div');
-
-            actionsWrapper.className = 'd-flex gap-1';
-
-
-            // عرض الحسابات التحليلية
-            if (account.hasAnalytical) {
-
-                const analyticalButton = document.createElement('button');
-
-                analyticalButton.type = 'button';
-
-                analyticalButton.className =
-                    'btn btn-sm btn-outline-success show-analytical';
-
-                analyticalButton.dataset.id = id;
-
-                analyticalButton.title = 'عرض الحسابات التحليلية';
-
-                analyticalButton.innerHTML =
-                    '<i class="bi bi-list-ul"></i>';
-
-                actionsWrapper.appendChild(analyticalButton);
-            }
-
-
-            if (Number(account.is_system) === 1) {
-
-                const systemBadge = document.createElement('span');
-
-                systemBadge.className =
-                    'badge bg-warning-subtle text-warning';
-
-                systemBadge.textContent = 'نظامي';
-
-                actionsWrapper.appendChild(systemBadge);
-
-            } else {
-
-                // تعديل
-                const editButton = document.createElement('button');
-
-                editButton.type = 'button';
-
-                editButton.className =
-                    'btn btn-sm btn-outline-primary edit-account';
-
-                editButton.dataset.id = id;
-
-                editButton.title = 'تعديل';
-
-                editButton.innerHTML =
-                    '<i class="bi bi-pencil"></i>';
-
-                actionsWrapper.appendChild(editButton);
-
-
-                // حذف
-                const deleteButton = document.createElement('button');
-
-                deleteButton.type = 'button';
-
-                deleteButton.className =
-                    'btn btn-sm btn-outline-danger delete-account';
-
-                deleteButton.dataset.id = id;
-
-                deleteButton.title = 'حذف';
-
-                deleteButton.innerHTML =
-                    '<i class="bi bi-trash"></i>';
-
-                actionsWrapper.appendChild(deleteButton);
-
-            }
-
-            actionsCell.appendChild(actionsWrapper);
-
-            row.appendChild(actionsCell);
-
-            return row;
+            // ✅ إظهار الـ Badge
+            systemBadge.classList.remove('d-none');
         }
 
+    } else {
 
-        // =====================================================
-        // هل الصف يجب أن يظهر؟
-        // =====================================================
+        if (editButton) {
+            editButton.dataset.id = String(account.accountID);
+        }
+        if (deleteButton) {
+            deleteButton.dataset.id = String(account.accountID);
+        }
+    }
+
+    return row;
+}
+
+
+        // =================================================
+        // هل الصف ظاهر؟
+        // =================================================
 
         function isRowVisible(account) {
-
-            let parentId =
-                account.accParent ? Number(account.accParent) : null;
+            let parentId = account.accParent;
 
             while (parentId) {
-
                 const parent = accounts.find(function (item) {
-
-                    return Number(item.accountID) === parentId;
-
+                    return String(item.accountID) === String(parentId);
                 });
 
-                if (!parent) {
-                    break;
-                }
+                if (!parent) break;
 
                 if (parent.__open !== true) {
-
                     return false;
-
                 }
 
-                parentId =
-                    parent.accParent ? Number(parent.accParent) : null;
-
+                parentId = parent.accParent;
             }
 
             return true;
-
         }
 
 
-        // =====================================================
-        // الحسابات المرئية
-        // =====================================================
+        // =================================================
+        // الحسابات الظاهرة
+        // =================================================
 
         function getVisibleAccounts() {
-
             return accounts.filter(isRowVisible);
-
         }
 
 
-        // =====================================================
-        // عرض الشجرة
-        // =====================================================
-
-        function renderTree() {
-
-            if (!accountsTreeBody) {
-                return;
-            }
-
-            accountsTreeBody.innerHTML = '';
-
-            const visibleAccounts = getVisibleAccounts();
-
-            if (!visibleAccounts.length) {
-
-                renderEmptyTreeMessage();
-
-                renderPagination(0);
-
-                return;
-
-            }
-
-            const total = visibleAccounts.length;
-
-            const totalPages =
-                Math.max(1, Math.ceil(total / pageSize));
-
-            if (currentPage > totalPages) {
-                currentPage = totalPages;
-            }
-
-            const start = (currentPage - 1) * pageSize;
-
-            const pageAccounts =
-                visibleAccounts.slice(start, start + pageSize);
-
-            pageAccounts.forEach(function (account, index) {
-
-                const row = createAccountRow(account);
-
-                const numberCell = row.children[0];
-
-                numberCell.textContent = start + index + 1;
-
-                accountsTreeBody.appendChild(row);
-
-            });
-
-            renderPagination(total);
-
-            updateTreeIcons();
-
-        }
-
-
-        // =====================================================
-        // رسالة عدم وجود بيانات
-        // =====================================================
-
-        function renderEmptyTreeMessage() {
-
-            accountsTreeBody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="text-center py-4 text-muted">
-                        لا توجد حسابات
-                    </td>
-                </tr>
-            `;
-
-        }
-
-
-        // =====================================================
-        // Pagination
-        // =====================================================
-
-        function renderPagination(total) {
-
-            const info =
-                document.getElementById('accountsPaginationInfo');
-
-            const list =
-                document.getElementById('accountsPaginationList');
-
-            if (!info || !list) {
-                return;
-            }
-
-            list.innerHTML = '';
-
-            if (!total) {
-
-                info.textContent = 'عرض 0-0 من 0 حساب';
-
-                return;
-
-            }
-
-            const totalPages = Math.ceil(total / pageSize);
-
-            const start = ((currentPage - 1) * pageSize) + 1;
-
-            const end = Math.min(currentPage * pageSize, total);
-
-            info.textContent =
-                `عرض ${start}-${end} من ${total} حساب`;
-
-
-            // السابق
-            const previous = document.createElement('li');
-
-            previous.className =
-                `page-item ${currentPage === 1 ? 'disabled' : ''}`;
-
-            previous.innerHTML = `
-                <button class="page-link" type="button">السابق</button>
-            `;
-
-            if (currentPage > 1) {
-
-                previous
-                    .querySelector('button')
-                    .addEventListener('click', function () {
-
-                        currentPage--;
-
-                        renderTree();
-
-                    });
-
-            }
-
-            list.appendChild(previous);
-
-
-            // أرقام الصفحات
-            for (let page = 1; page <= totalPages; page++) {
-
-                const item = document.createElement('li');
-
-                item.className =
-                    `page-item ${page === currentPage ? 'active' : ''}`;
-
-                const button = document.createElement('button');
-
-                button.type = 'button';
-
-                button.className = 'page-link';
-
-                button.textContent = page;
-
-                button.addEventListener('click', function () {
-
-                    currentPage = page;
-
-                    renderTree();
-
-                });
-
-                item.appendChild(button);
-
-                list.appendChild(item);
-
-            }
-
-
-            // التالي
-            const next = document.createElement('li');
-
-            next.className =
-                `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
-
-            next.innerHTML = `
-                <button class="page-link" type="button">التالي</button>
-            `;
-
-            if (currentPage < totalPages) {
-
-                next
-                    .querySelector('button')
-                    .addEventListener('click', function () {
-
-                        currentPage++;
-
-                        renderTree();
-
-                    });
-
-            }
-
-            list.appendChild(next);
-
-        }
-
-
-        // =====================================================
-        // تحديث أيقونات فتح وإغلاق الشجرة
-        // =====================================================
+        // =================================================
+        // تحديث أيقونات الشجرة
+        // =================================================
 
         function updateTreeIcons() {
+            if (!accountsTreeBody) return;
 
-            document
+            accountsTreeBody
                 .querySelectorAll('.account-tree-toggle')
                 .forEach(function (button) {
-
-                    const id = Number(button.dataset.id);
+                    const id = button.dataset.id;
 
                     const account = accounts.find(function (item) {
-
-                        return Number(item.accountID) === id;
-
+                        return String(item.accountID) === String(id);
                     });
 
-                    if (!account) {
-                        return;
-                    }
+                    if (!account) return;
 
                     const icon = button.querySelector('i');
+                    if (!icon) return;
 
-                    if (!icon) {
-                        return;
-                    }
+                    icon.className = account.__open
+                        ? 'bi bi-chevron-down'
+                        : 'bi bi-chevron-left';
 
-                    if (account.__open === true) {
-
-                        icon.className = 'bi bi-chevron-down';
-
-                    } else {
-
-                        icon.className = 'bi bi-chevron-left';
-
-                    }
-
+                    button.setAttribute(
+                        'aria-expanded',
+                        account.__open === true ? 'true' : 'false'
+                    );
                 });
-
         }
 
 
-        // =====================================================
-        // فتح / إغلاق حساب
-        // =====================================================
+        // =================================================
+        // فتح / إغلاق الحساب
+        // =================================================
 
         function toggleAccountTree(id) {
-
             const account = accounts.find(function (item) {
-
-                return Number(item.accountID) === Number(id);
-
+                return String(item.accountID) === String(id);
             });
 
-            if (!account) {
-                return;
-            }
+            if (!account) return;
 
             account.__open = account.__open !== true;
 
             currentPage = 1;
 
             renderTree();
-
         }
 
 
-        // =====================================================
-        // أحداث الشجرة
-        // =====================================================
+        // =================================================
+        // رسالة فارغة
+        // =================================================
 
-        if (accountsTreeBody) {
-
-            accountsTreeBody.addEventListener('click', function (event) {
-
-                // فتح / إغلاق الشجرة
-                const toggle =
-                    event.target.closest('.account-tree-toggle');
-
-                if (toggle) {
-
-                    toggleAccountTree(toggle.dataset.id);
-
-                    return;
-                }
-
-
-                // عرض الحسابات التحليلية
-                const analyticalButton =
-                    event.target.closest('.show-analytical');
-
-                if (analyticalButton) {
-
-                    loadAnalyticalAccounts(
-                        analyticalButton.dataset.id,
-                        1
-                    );
-
-                    return;
-                }
-
-
-                // تعديل
-                const editButton =
-                    event.target.closest('.edit-account');
-
-                if (editButton) {
-
-                    editAccount(editButton.dataset.id);
-
-                    return;
-                }
-
-
-                // حذف
-                const deleteButton =
-                    event.target.closest('.delete-account');
-
-                if (deleteButton) {
-
-                    openDeleteModal(deleteButton.dataset.id);
-
-                }
-
-            });
-
+        function renderEmptyTreeMessage() {
+            showTreeState('empty');
         }
 
 
-        // =====================================================
-        // أحداث المودال التحليلي (تعديل/حذف من داخل المودال)
-        // =====================================================
+        // =================================================
+        // Pagination Helpers
+        // =================================================
 
-        if (analyticalAccountsBody) {
+        function appendPaginationEllipsis(container) {
+            if (!container || !paginationEllipsisTemplate) return;
 
-            analyticalAccountsBody.addEventListener('click', function (event) {
-
-                const editButton =
-                    event.target.closest('.edit-account');
-
-                if (editButton) {
-
-                    if (analyticalAccountsModal) {
-                        analyticalAccountsModal.hide();
-                    }
-
-                    editAccount(editButton.dataset.id);
-
-                    return;
-                }
-
-
-                const deleteButton =
-                    event.target.closest('.delete-account');
-
-                if (deleteButton) {
-
-                    if (analyticalAccountsModal) {
-                        analyticalAccountsModal.hide();
-                    }
-
-                    openDeleteModal(deleteButton.dataset.id);
-
-                }
-
-            });
-
+            const element = cloneTemplate(paginationEllipsisTemplate);
+            if (element) container.appendChild(element);
         }
 
+        function appendPaginationPage(container, page, active, onClick) {
+            if (!container || !paginationPageTemplate) return;
 
-        // =====================================================
-        // البحث
-        // =====================================================
+            const element = cloneTemplate(paginationPageTemplate);
+            if (!element) return;
 
-        function getSearchParams() {
+            const button = element.querySelector('.pagination-page');
+            if (!button) return;
 
-            const params = new URLSearchParams();
+            button.textContent = String(page);
 
-            if (searchCode && normalizeValue(searchCode.value)) {
-
-                params.set('search_code', normalizeValue(searchCode.value));
-
+            if (active) {
+                element.classList.add('active');
+                button.setAttribute('aria-current', 'page');
             }
 
-            if (searchName && normalizeValue(searchName.value)) {
+            button.addEventListener('click', onClick);
+            container.appendChild(element);
+        }
 
-                params.set('search_name', normalizeValue(searchName.value));
+        function appendPaginationPrevious(container, disabled, onClick) {
+            if (!container || !paginationPreviousTemplate) return;
 
+            const element = cloneTemplate(paginationPreviousTemplate);
+            if (!element) return;
+
+            const button = element.querySelector('.pagination-previous');
+            if (!button) return;
+
+            if (disabled) {
+                element.classList.add('disabled');
+                button.disabled = true;
+            } else {
+                button.addEventListener('click', onClick);
             }
 
-            if (searchNature && normalizeValue(searchNature.value)) {
+            container.appendChild(element);
+        }
 
-                params.set('search_nature', normalizeValue(searchNature.value));
+        function appendPaginationNext(container, disabled, onClick) {
+            if (!container || !paginationNextTemplate) return;
 
+            const element = cloneTemplate(paginationNextTemplate);
+            if (!element) return;
+
+            const button = element.querySelector('.pagination-next');
+            if (!button) return;
+
+            if (disabled) {
+                element.classList.add('disabled');
+                button.disabled = true;
+            } else {
+                button.addEventListener('click', onClick);
             }
 
-            return params;
+            container.appendChild(element);
+        }
 
+        function buildPaginationPages(current, total) {
+            if (total <= 7) {
+                return Array.from({ length: total }, function (_, index) {
+                    return index + 1;
+                });
+            }
+
+            const pages = [1];
+
+            if (current > 4) pages.push('...');
+
+            const start = Math.max(2, current - 1);
+            const end = Math.min(total - 1, current + 1);
+
+            for (let page = start; page <= end; page++) {
+                pages.push(page);
+            }
+
+            if (current < total - 3) pages.push('...');
+
+            pages.push(total);
+
+            return pages;
         }
 
 
-        // =====================================================
-        // تحميل الشجرة من Backend
-        // =====================================================
+        // =================================================
+        // Pagination الشجرة
+        // =================================================
 
-        async function reloadAccountsTable() {
+        function renderPagination(total) {
+            if (!accountsPaginationInfo || !accountsPaginationList) return;
 
-            if (!accountsTreeBody) {
+            if (!total || total <= 0) {
+                accountsPaginationInfo.textContent = 'عرض 0-0 من 0 حساب';
+                accountsPaginationList.replaceChildren();
                 return;
             }
+
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+            if (currentPage > totalPages) {
+                currentPage = totalPages;
+            }
+
+            if (currentPage < 1) {
+                currentPage = 1;
+            }
+
+            const start = ((currentPage - 1) * pageSize) + 1;
+            const end = Math.min(currentPage * pageSize, total);
+
+            accountsPaginationInfo.textContent =
+                `عرض ${start}-${end} من ${total} حساب`;
+
+            accountsPaginationList.replaceChildren();
+
+            appendPaginationPrevious(
+                accountsPaginationList,
+                currentPage === 1,
+                function () {
+                    currentPage--;
+                    renderTree();
+                }
+            );
+
+            buildPaginationPages(currentPage, totalPages).forEach(function (page) {
+                if (page === '...') {
+                    appendPaginationEllipsis(accountsPaginationList);
+                } else {
+                    appendPaginationPage(
+                        accountsPaginationList,
+                        page,
+                        page === currentPage,
+                        function () {
+                            currentPage = page;
+                            renderTree();
+                        }
+                    );
+                }
+            });
+
+            appendPaginationNext(
+                accountsPaginationList,
+                currentPage === totalPages,
+                function () {
+                    currentPage++;
+                    renderTree();
+                }
+            );
+        }
+
+
+        // =================================================
+        // Render Tree
+        // =================================================
+
+        function renderTree() {
+            if (!accountsTreeBody) return;
+
+            const visibleAccounts = getVisibleAccounts();
+
+            if (!visibleAccounts.length) {
+                renderEmptyTreeMessage();
+                renderPagination(0);
+                return;
+            }
+
+            const total = visibleAccounts.length;
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+            if (currentPage > totalPages) currentPage = totalPages;
+            if (currentPage < 1) currentPage = 1;
+
+            const start = (currentPage - 1) * pageSize;
+
+            const pageAccounts = visibleAccounts.slice(start, start + pageSize);
+
+            const fragment = document.createDocumentFragment();
+
+            pageAccounts.forEach(function (account, index) {
+                const row = createAccountRow(account);
+                if (!row) return;
+
+                const numberElement = row.querySelector('.account-row-number');
+                if (numberElement) {
+                    numberElement.textContent = String(start + index + 1);
+                }
+
+                fragment.appendChild(row);
+            });
+
+            accountsTreeBody.replaceChildren(fragment);
+
+            updateTreeIcons();
+            renderPagination(total);
+        }
+
+
+        // =================================================
+        // أحداث الشجرة
+        // =================================================
+
+        accountsTreeBody?.addEventListener('click', function (event) {
+            const toggle = event.target.closest('.account-tree-toggle');
+            if (toggle) {
+                toggleAccountTree(toggle.dataset.id);
+                return;
+            }
+
+            const analyticalButton = event.target.closest('.show-analytical');
+            if (analyticalButton) {
+                loadAnalyticalAccounts(analyticalButton.dataset.id, 1);
+                return;
+            }
+
+            const editButton = event.target.closest('.edit-account');
+            if (editButton) {
+                editAccount(editButton.dataset.id);
+                return;
+            }
+
+            const deleteButton = event.target.closest('.delete-account');
+            if (deleteButton) {
+                openDeleteModal(deleteButton.dataset.id);
+            }
+        });
+
+
+        // =================================================
+        // تحميل الحسابات التحليلية
+        // =================================================
+
+        async function loadAnalyticalAccounts(parentId, page = 1) {
+            if (!analyticalAccountsModal || !analyticalAccountsBody) return;
+
+            selectedAnalyticalParentId = parentId;
+            analyticalCurrentPage = page;
+
+            analyticalAccountsModal.show();
+            showAnalyticalState('loading');
+
+            if (analyticalPaginationList) {
+                analyticalPaginationList.replaceChildren();
+            }
+
+            if (analyticalPaginationInfo) {
+                analyticalPaginationInfo.textContent = '';
+            }
+
+            try {
+                const params = new URLSearchParams();
+                params.set('page', String(page));
+                params.set('per_page', String(analyticalPageSize));
+
+                if (analyticalSearchCode?.value.trim()) {
+                    params.set('search_code', analyticalSearchCode.value.trim());
+                }
+
+                if (analyticalSearchName?.value.trim()) {
+                    params.set('search_name', analyticalSearchName.value.trim());
+                }
+
+                const response = await fetch(
+                    `/settings/accounting/chartOfAccounts/${parentId}/analytical?${params.toString()}`,
+                    { method: 'GET', headers: jsonHeaders() }
+                );
+
+                if (!response.ok) {
+                    throw new Error(
+                        await getResponseMessage(response, 'تعذر تحميل الحسابات التحليلية')
+                    );
+                }
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.message || 'تعذر تحميل الحسابات التحليلية');
+                }
+
+                if (data.parent && analyticalAccountsParent) {
+
+                    analyticalAccountsParent.textContent =
+                        `${data.parent.accCode} - ${data.parent.accName}`;
+
+                    //  خزّن system_key الخاص بالأب
+                    analyticalParentSystemKey = String(
+                        data.parent.system_key ?? ''
+                    ).trim().toLowerCase();
+                }
+
+                const paginator = data.accounts;
+                const items = Array.isArray(paginator?.data) ? paginator.data : [];
+
+                if (!items.length) {
+                    showAnalyticalState('empty');
+                    renderAnalyticalPagination(paginator);
+                    return;
+                }
+
+                const fragment = document.createDocumentFragment();
+
+                const paginatorCurrentPage = Number(
+                    paginator.current_page || page
+                );
+
+                const paginatorPerPage = Number(
+                    paginator.per_page || analyticalPageSize
+                );
+
+                items.forEach(function (account, index) {
+                    const row = cloneTemplate(analyticalAccountRowTemplate);
+                    if (!row) return;
+
+                    const numberElement = row.querySelector('.analytical-row-number');
+                    const codeElement = row.querySelector('.analytical-account-code');
+                    const nameElement = row.querySelector('.analytical-account-name');
+                    const natureElement = row.querySelector('.analytical-account-nature');
+                    const statusElement = row.querySelector('.analytical-account-status');
+                    const editButton = row.querySelector('.edit-analytical-account');
+                    const deleteButton = row.querySelector('.delete-analytical-account');
+
+                    if (numberElement) {
+                        numberElement.textContent = String(
+                            ((paginatorCurrentPage - 1) * paginatorPerPage) + index + 1
+                        );
+                    }
+
+                    if (codeElement) {
+                        codeElement.textContent = account.accCode ?? '';
+                    }
+
+                    if (nameElement) {
+                        nameElement.textContent = account.accName ?? '';
+                    }
+
+                    if (natureElement) {
+                        natureElement.textContent =
+                            Number(account.nature) === 1 ? 'دائن' : 'مدين';
+                    }
+
+                    if (statusElement) {
+                        const active = Number(account.IsActive) === 1;
+
+                        statusElement.textContent = active ? 'نشط' : 'غير نشط';
+
+                        statusElement.classList.remove(
+                            'bg-success',
+                            'bg-danger'
+                        );
+
+                        statusElement.classList.add(
+                            active ? 'bg-success' : 'bg-danger',
+                            'text-white'
+                        );
+                    }
+
+                    if (editButton) {
+                        editButton.dataset.id = String(account.accountID);
+                    }
+
+                    if (deleteButton) {
+                        deleteButton.dataset.id = String(account.accountID);
+                    }
+
+                   //  إخفاء الأزرار للحسابات النظامية والخارجية
+                    const isSystemAccount =
+                        Number(account.is_system) === 1;
+
+                    const isExternalChild =
+                        EXTERNAL_SYSTEM_KEYS.includes(
+                            analyticalParentSystemKey
+                        );
+
+                    if (isSystemAccount || isExternalChild) {
+                        editButton?.classList.add('d-none');
+                        deleteButton?.classList.add('d-none');
+                    }
+                    fragment.appendChild(row);
+                });
+
+                analyticalAccountsBody.replaceChildren(fragment);
+
+                renderAnalyticalPagination(paginator);
+
+            } catch (error) {
+                console.error(error);
+
+                showAnalyticalState('error');
+
+                if (analyticalPaginationList) {
+                    analyticalPaginationList.replaceChildren();
+                }
+
+                if (analyticalPaginationInfo) {
+                    analyticalPaginationInfo.textContent = 'تعذر تحميل البيانات';
+                }
+
+                showToast(
+                    error.message || 'تعذر تحميل الحسابات التحليلية',
+                    'error'
+                );
+            }
+        }
+
+
+        // =================================================
+        // Pagination الحسابات التحليلية
+        // =================================================
+
+        function renderAnalyticalPagination(paginator) {
+            if (!analyticalPaginationList || !analyticalPaginationInfo) return;
+
+            const total = Number(paginator?.total || 0);
+
+            const current = Number(
+                paginator?.current_page || analyticalCurrentPage || 1
+            );
+
+            const perPage = Number(
+                paginator?.per_page || analyticalPageSize
+            );
+
+            const lastPage = Math.max(
+                1,
+                Number(
+                    paginator?.last_page || Math.ceil(total / perPage)
+                )
+            );
+
+            analyticalCurrentPage = current;
+
+            if (!total) {
+                analyticalPaginationInfo.textContent = 'عرض 0-0 من 0 حساب';
+                analyticalPaginationList.replaceChildren();
+                return;
+            }
+
+            const start = ((current - 1) * perPage) + 1;
+            const end = Math.min(current * perPage, total);
+
+            analyticalPaginationInfo.textContent =
+                `عرض ${start}-${end} من ${total} حساب`;
+
+            analyticalPaginationList.replaceChildren();
+
+            appendPaginationPrevious(
+                analyticalPaginationList,
+                current === 1,
+                function () {
+                    loadAnalyticalAccounts(
+                        selectedAnalyticalParentId,
+                        current - 1
+                    );
+                }
+            );
+
+            buildPaginationPages(current, lastPage).forEach(function (page) {
+                if (page === '...') {
+                    appendPaginationEllipsis(analyticalPaginationList);
+                } else {
+                    appendPaginationPage(
+                        analyticalPaginationList,
+                        page,
+                        page === current,
+                        function () {
+                            loadAnalyticalAccounts(
+                                selectedAnalyticalParentId,
+                                page
+                            );
+                        }
+                    );
+                }
+            });
+
+            appendPaginationNext(
+                analyticalPaginationList,
+                current === lastPage,
+                function () {
+                    loadAnalyticalAccounts(
+                        selectedAnalyticalParentId,
+                        current + 1
+                    );
+                }
+            );
+        }
+
+
+        // =================================================
+        // أحداث الحسابات التحليلية
+        // =================================================
+
+        analyticalAccountsBody?.addEventListener('click', function (event) {
+            const editButton = event.target.closest('.edit-analytical-account');
+
+            if (editButton) {
+                if (analyticalAccountsModal) {
+                    analyticalAccountsModal.hide();
+                }
+                editAccount(editButton.dataset.id);
+                return;
+            }
+
+            const deleteButton = event.target.closest('.delete-analytical-account');
+
+            if (deleteButton) {
+                if (analyticalAccountsModal) {
+                    analyticalAccountsModal.hide();
+                }
+                openDeleteModal(deleteButton.dataset.id);
+            }
+        });
+
+
+        // =================================================
+        // البحث في الحسابات التحليلية
+        // =================================================
+
+        function scheduleAnalyticalSearch() {
+            clearTimeout(analyticalSearchTimer);
+
+            analyticalSearchTimer = setTimeout(function () {
+                if (selectedAnalyticalParentId) {
+                    loadAnalyticalAccounts(selectedAnalyticalParentId, 1);
+                }
+            }, 350);
+        }
+
+        analyticalSearchCode?.addEventListener('input', scheduleAnalyticalSearch);
+        analyticalSearchName?.addEventListener('input', scheduleAnalyticalSearch);
+
+
+        // =================================================
+        // البحث الرئيسي
+        // =================================================
+
+        function scheduleMainSearch() {
+            clearTimeout(searchTimer);
+
+            searchTimer = setTimeout(function () {
+                currentPage = 1;
+                reloadAccountsTable();
+            }, 350);
+        }
+
+        searchCode?.addEventListener('input', scheduleMainSearch);
+        searchName?.addEventListener('input', scheduleMainSearch);
+
+
+        // =================================================
+        // إعادة تحميل الشجرة
+        // =================================================
+
+        async function reloadAccountsTable() {
+            if (!accountsTreeBody) return;
 
             const openIds = new Set(
                 accounts
@@ -2510,227 +2442,177 @@ addAccountBtn.addEventListener('click', function (event) {
                         return account.__open === true;
                     })
                     .map(function (account) {
-                        return Number(account.accountID);
+                        return String(account.accountID);
                     })
             );
 
-
-            accountsTreeBody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="text-center py-4 text-muted">
-                        جاري تحميل الحسابات...
-                    </td>
-                </tr>
-            `;
-
+            showTreeState('loading');
 
             try {
+                const params = new URLSearchParams();
 
-                const params = getSearchParams();
+                if (searchCode?.value.trim()) {
+                    params.set('search_code', searchCode.value.trim());
+                }
 
-                const queryString =
-                    params.toString() ? `?${params.toString()}` : '';
+                if (searchName?.value.trim()) {
+                    params.set('search_name', searchName.value.trim());
+                }
 
+                const query = params.toString();
 
-                const response = await fetch(
-                    `/settings/accounting/chartOfAccounts/tree${queryString}`,
-                    {
-                        method: 'GET',
-                        headers: { 'Accept': 'application/json' }
-                    }
-                );
+                const url = query
+                    ? `/settings/accounting/chartOfAccounts/tree?${query}`
+                    : '/settings/accounting/chartOfAccounts/tree';
 
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: jsonHeaders()
+                });
+
+                if (!response.ok) {
+                    throw new Error(
+                        await getResponseMessage(response, 'تعذر تحميل الحسابات')
+                    );
+                }
 
                 const data = await response.json();
 
-
-                if (!response.ok || !data.success) {
-
-                    throw new Error(
-                        getResponseMessage(
-                            data,
-                            'تعذر تحميل شجرة الحسابات'
-                        )
-                    );
-
+                if (!data.success) {
+                    throw new Error(data.message || 'تعذر تحميل الحسابات');
                 }
 
-
-                accounts =
-                    Array.isArray(data.accounts) ? data.accounts : [];
-
+                accounts = Array.isArray(data.accounts) ? data.accounts : [];
 
                 accounts.forEach(function (account) {
-
-                    account.__open =
-                        openIds.has(Number(account.accountID));
-
+                    account.__open = openIds.has(String(account.accountID));
                 });
-
 
                 currentPage = 1;
 
-                renderTree();
-
-
-            } catch (error) {
-
-                accounts = [];
-
-                accountsTreeBody.innerHTML = `
-                    <tr>
-                        <td colspan="7" class="text-center py-4 text-danger">
-                            ${escapeHtml(
-                                error.message || 'تعذر تحميل الحسابات'
-                            )}
-                        </td>
-                    </tr>
-                `;
-
-                renderPagination(0);
-
-            }
-
-        }
-
-
-        // =====================================================
-        // البحث في الحسابات التحليلية
-        // =====================================================
-
-        function handleAnalyticalSearch() {
-
-            clearTimeout(analyticalSearchTimer);
-
-            analyticalSearchTimer = setTimeout(function () {
-
-                if (!selectedAnalyticalParentId) {
+                if (!accounts.length) {
+                    renderEmptyTreeMessage();
+                    renderPagination(0);
                     return;
                 }
 
-                loadAnalyticalAccounts(
-                    selectedAnalyticalParentId,
-                    1
+                renderTree();
+
+            } catch (error) {
+                console.error(error);
+
+                accounts = [];
+
+                showTreeState('error');
+                renderPagination(0);
+
+                showToast(
+                    error.message || 'تعذر تحميل الحسابات',
+                    'error'
                 );
-
-            }, 350);
-
+            }
         }
 
 
-        if (analyticalSearchCode) {
+        // =================================================
+        // إعادة ضبط مودال الحساب
+        // =================================================
 
-            analyticalSearchCode.addEventListener(
-                'input',
-                handleAnalyticalSearch
-            );
-        }
+        accountModalElement.addEventListener('hidden.bs.modal', function (event) {
 
-        if (analyticalSearchName) {
+            if (event.target !== accountModalElement) {
+                return;
+            }
 
-            analyticalSearchName.addEventListener(
-                'input',
-                handleAnalyticalSearch
-            );
-        }
+            accountForm.reset();
 
-        if (analyticalSearchNature) {
+            formMode = 'add';
+            editingAccountId = null;
+            savedEditData = null;
 
-            analyticalSearchNature.addEventListener(
-                'change',
-                handleAnalyticalSearch
-            );
-        }
+            if (accountID) accountID.value = '';
+            if (accLevel) {
+                accLevel.value = '1';
+                accLevel.readOnly = true;
+            }
+            if (accParent) accParent.value = '';
+            if (accParentDisplay) {
+                accParentDisplay.value = 'لا يوجد (حساب رئيسي)';
+            }
+            if (IsActive) IsActive.value = '1';
+            if (isPostable) isPostable.value = '0';
+            if (accCode) {
+                accCode.value = '';
+                accCode.readOnly = false;
+            }
+            if (accTypeID) accTypeID.value = '0';
+            if (nature) nature.value = '0';
 
+            enableAllParentOptions();
 
-        // =====================================================
-        // البحث مع Debounce
-        // =====================================================
+            if (accountModalTitle) {
+                accountModalTitle.textContent = 'إضافة حساب جديد';
+            }
 
-        function handleSearch() {
-
-            clearTimeout(searchTimer);
-
-            searchTimer = setTimeout(function () {
-
-                currentPage = 1;
-
-                reloadAccountsTable();
-
-            }, 350);
-
-        }
-
-
-        if (searchCode) {
-            searchCode.addEventListener('input', handleSearch);
-        }
-
-        if (searchName) {
-            searchName.addEventListener('input', handleSearch);
-        }
-
-        if (searchNature) {
-            searchNature.addEventListener('change', handleSearch);
-        }
+            if (saveAccountBtn) {
+                saveAccountBtn.innerHTML =
+                    '<i class="bi bi-check-lg me-1"></i> حفظ الحساب';
+            }
+        });
 
 
-        // =====================================================
-        // Reset عند إغلاق نافذة الحساب
-        // =====================================================
+        // =================================================
+        // تنظيف بحث الحسابات التحليلية بالكامل عند الإغلاق
+        // =================================================
 
-        if (accountModalElement) {
-
-            accountModalElement.addEventListener(
+        analyticalAccountsModalElement?.addEventListener(
                 'hidden.bs.modal',
-                function () {
+                function (event) {
 
-                    if (accountForm) {
-                        accountForm.reset();
+                    if (event.target !== analyticalAccountsModalElement) {
+                        return;
                     }
 
-                    formMode = 'add';
+                    selectedAnalyticalParentId = null;
+                    analyticalCurrentPage = 1;
+                    analyticalParentSystemKey = '';  // ✅ تصفير
 
-                    editingAccountId = null;
+                clearTimeout(analyticalSearchTimer);
 
-                    savedEditData = null;
+                if (analyticalSearchCode) analyticalSearchCode.value = '';
+                if (analyticalSearchName) analyticalSearchName.value = '';
 
-                    enableAllParentOptions();
-
+                if (analyticalPaginationInfo) {
+                    analyticalPaginationInfo.textContent = '';
                 }
-            );
 
-        }
+                if (analyticalPaginationList) {
+                    analyticalPaginationList.replaceChildren();
+                }
 
-
-        // =====================================================
-        // Escape HTML
-        // =====================================================
-
-        function escapeHtml(value) {
-
-            const div = document.createElement('div');
-
-            div.textContent = value ?? '';
-
-            return div.innerHTML;
-
-        }
+                if (analyticalAccountsParent) {
+                    analyticalAccountsParent.textContent = '';
+                }
+            }
+        );
 
 
-        // =====================================================
-        // إتاحة إعادة التحميل خارجياً
-        // =====================================================
+        // =================================================
+        // API خارجي
+        // =================================================
 
+        window.loadAnalyticalAccounts = loadAnalyticalAccounts;
+        window.editAccount = editAccount;
+        window.deleteAccount = openDeleteModal;
         window.reloadAccountsTable = reloadAccountsTable;
 
 
-        // =====================================================
-        // التحميل الأول
-        // =====================================================
+        // =================================================
+        // التشغيل الأول
+        // =================================================
 
         reloadAccountsTable();
 
-    } // نهاية init
+    }
 
-})(); // نهاية IIFE
+})();

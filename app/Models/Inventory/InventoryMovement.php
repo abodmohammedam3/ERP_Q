@@ -40,6 +40,13 @@ class InventoryMovement extends Model
     const TYPE_SALE_RETURN     = 'sale_return';
 
     // ============================================
+    // ✅ ثوابت المصدر (جديد)
+    // ============================================
+    const SOURCE_PURCHASE_INVOICE = 'purchase_invoice';
+    const SOURCE_SALES_INVOICE    = 'sales_invoice';
+    const SOURCE_MANUAL           = null;
+
+    // ============================================
     // ثوابت الاتجاه
     // ============================================
     const DIRECTION_IN  = 'in';

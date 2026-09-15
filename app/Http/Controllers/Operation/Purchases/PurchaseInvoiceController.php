@@ -4,13 +4,27 @@ namespace App\Http\Controllers\Operation\Purchases;
 
 use App\Http\Controllers\Controller;
 use App\Models\Purchases\PurchaseInvoice;
-use App\Models\Purchases\PurchaseInvoiceDetail;
+use App\Services\Purchases\PurchaseInvoiceService;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 class PurchaseInvoiceController extends Controller
 {
+    /**
+     * @var PurchaseInvoiceService
+     */
+    protected PurchaseInvoiceService $service;
+
+    /**
+     * Constructor Injection
+     */
+    public function __construct(PurchaseInvoiceService $service)
+    {
+        $this->service = $service;
+    }
+
     /**
      * عرض شاشة فواتير الشراء
      */
@@ -146,26 +160,7 @@ class PurchaseInvoiceController extends Controller
         }
 
         try {
-            DB::beginTransaction();
-
-            // توليد رقم الفاتورة على الخادم بشكل آمن (مع Lock)
-            $last = PurchaseInvoice::lockForUpdate()
-                ->orderBy('purchase_invoice_id', 'desc')
-                ->first();
-
-            $nextNumber = $last ? ((int) $last->invoice_number + 1) : 1;
-
-            $data = $this->headerData($request);
-            $data['invoice_number'] = (string) $nextNumber;
-
-            $invoice = PurchaseInvoice::create($data);
-
-            $this->saveDetails($invoice, $request->input('details', []));
-
-            // إعادة حساب الإجماليات على الخادم
-            $this->recalculateTotals($invoice);
-
-            DB::commit();
+            $invoice = $this->service->create($request);
 
             return response()->json([
                 'message'             => 'تم حفظ الفاتورة بنجاح',
@@ -174,10 +169,15 @@ class PurchaseInvoiceController extends Controller
             ], 201);
 
         } catch (\Throwable $e) {
-            DB::rollBack();
+            Log::error('Purchase invoice store failed', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+            ]);
+
             return response()->json([
                 'message' => 'فشل حفظ الفاتورة',
-                'error'   => $e->getMessage(),
+                'error'   => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
     }
@@ -187,11 +187,6 @@ class PurchaseInvoiceController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $invoice = PurchaseInvoice::find($id);
-        if (!$invoice) {
-            return response()->json(['message' => 'الفاتورة غير موجودة'], 404);
-        }
-
         $validator = $this->validateInvoice($request);
 
         if ($validator->fails()) {
@@ -202,30 +197,27 @@ class PurchaseInvoiceController extends Controller
         }
 
         try {
-            DB::beginTransaction();
-
-            $data = $this->headerData($request);
-            unset($data['invoice_number']); // لا نسمح بتغيير رقم الفاتورة
-
-            $invoice->update($data);
-
-            // حذف التفاصيل القديمة وإعادة إضافتها
-            $invoice->details()->delete();
-            $this->saveDetails($invoice, $request->input('details', []));
-
-            $this->recalculateTotals($invoice);
-
-            DB::commit();
+            $this->service->update((int) $id, $request);
 
             return response()->json([
                 'message' => 'تم تحديث الفاتورة بنجاح',
             ]);
 
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'message' => 'الفاتورة غير موجودة',
+            ], 404);
+
         } catch (\Throwable $e) {
-            DB::rollBack();
+            Log::error('Purchase invoice update failed', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+            ]);
+
             return response()->json([
                 'message' => 'فشل تحديث الفاتورة',
-                'error'   => $e->getMessage(),
+                'error'   => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
     }
@@ -235,30 +227,32 @@ class PurchaseInvoiceController extends Controller
      */
     public function destroy($id)
     {
-        $invoice = PurchaseInvoice::find($id);
-        if (!$invoice) {
-            return response()->json(['message' => 'الفاتورة غير موجودة'], 404);
-        }
-
         try {
-            DB::beginTransaction();
-            $invoice->details()->delete();
-            $invoice->delete();
-            DB::commit();
+            $this->service->delete((int) $id);
 
-            return response()->json(['message' => 'تم حذف الفاتورة بنجاح']);
+            return response()->json([
+                'message' => 'تم حذف الفاتورة بنجاح',
+            ]);
+
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'message' => 'الفاتورة غير موجودة',
+            ], 404);
 
         } catch (\Throwable $e) {
-            DB::rollBack();
+            Log::error('Purchase invoice destroy failed', [
+                'message' => $e->getMessage(),
+            ]);
+
             return response()->json([
                 'message' => 'فشل حذف الفاتورة',
-                'error'   => $e->getMessage(),
+                'error'   => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
     }
 
     // =====================================================
-    // دوال مساعدة داخلية
+    // التحقق من البيانات (يبقى في Controller — طبقة HTTP)
     // =====================================================
 
     /**
@@ -309,12 +303,10 @@ class PurchaseInvoiceController extends Controller
             'details.*.price.gt'       => 'سعر الوحدة يجب أن يكون أكبر من صفر',
         ]);
 
-        // تحقق منطقي إضافي
         $validator->after(function ($v) use ($request) {
             $method    = (int) $request->input('payment_method');
             $accountId = $request->input('payment_account_id');
 
-            // طريقة الدفع الفوري تتطلب حساب دفع
             if ($method === 1 && !empty($accountId)) {
                 $v->errors()->add(
                     'payment_account_id',
@@ -329,13 +321,11 @@ class PurchaseInvoiceController extends Controller
                 );
             }
 
-            // التحقق من الخصم + إجمالي كل صف
             foreach ($request->input('details', []) as $i => $row) {
                 $qty      = (float) ($row['quantity'] ?? 0);
                 $price    = (float) ($row['price'] ?? 0);
                 $discount = (float) ($row['discount'] ?? 0);
 
-                // منع خصم يتجاوز قيمة الصف
                 if ($discount > $qty * $price) {
                     $v->errors()->add(
                         "details.{$i}.discount",
@@ -343,7 +333,6 @@ class PurchaseInvoiceController extends Controller
                     );
                 }
 
-                // منع صف بإجمالي صفر
                 if (max(0, $qty * $price - $discount) <= 0) {
                     $v->errors()->add(
                         "details.{$i}.price",
@@ -354,74 +343,5 @@ class PurchaseInvoiceController extends Controller
         });
 
         return $validator;
-    }
-
-    /**
-     * تجهيز بيانات الرأس
-     */
-    private function headerData(Request $request): array
-    {
-        return [
-            'invoice_number'      => $request->input('invoice_number'),
-            'invoice_date'        => $request->input('invoice_date'),
-            'account_id'          => $request->input('account_id'),
-            'payment_account_id'  => $request->input('payment_account_id'),
-            'coin_id'             => $request->input('coin_id'),
-            'warehouse_id'        => $request->input('warehouse_id'),
-            'exchange_rate'       => $request->input('exchange_rate', 1),
-            'payment_method'      => $request->input('payment_method'),
-            'expenses'            => $request->input('expenses', 0),
-            'tax_cost'            => $request->input('tax_cost', 0),
-            'transportation'      => $request->input('transportation', 0),
-            'other_cost'          => $request->input('other_cost', 0),
-            'other_cost_description' => $request->input('other_cost_description'),
-            'statement'           => $request->input('statement'),
-            'reference'           => $request->input('reference'),
-        ];
-    }
-
-    /**
-     * حفظ التفاصيل
-     */
-    private function saveDetails(PurchaseInvoice $invoice, array $details): void
-    {
-        foreach ($details as $row) {
-            $quantity = (float) ($row['quantity'] ?? 0);
-            $price    = (float) ($row['price'] ?? 0);
-            $discount = (float) ($row['discount'] ?? 0);
-            $total    = max(0, ($quantity * $price) - $discount);
-
-            PurchaseInvoiceDetail::create([
-                'purchase_invoice_id' => $invoice->purchase_invoice_id,
-                'item_id'             => $row['item_id'],
-                'type_id'             => $row['type_id'] ?? null,
-                'unit_id'             => $row['unit_id'] ?? null,
-                'code'                => $row['code'] ?? null,
-                'quantity'            => $quantity,
-                'price'               => $price,
-                'discount'            => $discount,
-                'total'               => $total,
-            ]);
-        }
-    }
-
-    /**
-     * إعادة حساب الإجماليات من التفاصيل
-     */
-    private function recalculateTotals(PurchaseInvoice $invoice): void
-    {
-        $details = $invoice->details()->get();
-
-        $itemsTotal    = 0;
-        $discountTotal = 0;
-
-        foreach ($details as $d) {
-            $itemsTotal    += (float) $d->quantity * (float) $d->price;
-            $discountTotal += (float) $d->discount;
-        }
-
-        $invoice->items_total    = $itemsTotal;
-        $invoice->discount_total = $discountTotal;
-        $invoice->save();
     }
 }

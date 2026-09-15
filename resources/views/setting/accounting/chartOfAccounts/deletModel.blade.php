@@ -1,8 +1,6 @@
-{{-- =====================================================
-     مودال تأكيد الحذف
-===================================================== --}}
-
-@push('modals')
+{{-- ========================================================= --}}
+{{-- مودال تأكيد حذف الحساب --}}
+{{-- ========================================================= --}}
 
 <div
     class="modal fade"
@@ -13,59 +11,64 @@
     data-bs-backdrop="static"
     data-bs-keyboard="false"
 >
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
 
-        <div class="modal-content border-0 shadow-lg">
+        <div class="modal-content">
 
             {{-- رأس المودال --}}
-            <div class="modal-header border-0 pb-0">
+            <div class="modal-header position-relative">
 
                 <h5
-                    class="modal-title fw-bold"
+                    class="modal-title fw-bold text-danger"
                     id="deleteConfirmModalLabel"
                 >
-                    تأكيد الحذف
+                    تأكيد حذف الحساب
                 </h5>
 
                 <button
                     type="button"
-                    class="btn-close"
-                    data-bs-dismiss="modal"
+                    class="btn-close position-absolute top-0 start-0 m-3"
+                    id="deleteCancelBtn"
                     aria-label="إغلاق"
                 ></button>
 
             </div>
 
 
-            {{-- جسم المودال --}}
-            <div class="modal-body text-center py-4">
+            {{-- محتوى التأكيد --}}
+            <div class="modal-body text-center">
 
-                <div
-                    class="d-inline-flex align-items-center justify-content-center rounded-circle bg-danger-subtle mb-3"
-                    style="width: 80px; height: 80px;"
-                >
-                    <i class="bi bi-exclamation-triangle-fill text-danger fs-1"></i>
+                <div class="mb-3">
+
+                    <div
+                        class="d-inline-flex align-items-center justify-content-center rounded-circle bg-danger-subtle text-danger"
+                        style="width: 64px; height: 64px;"
+                    >
+                        <i class="bi bi-trash fs-3"></i>
+                    </div>
+
                 </div>
 
-                <h5 class="fw-bold mb-2">
-                    هل أنت متأكد من الحذف؟
-                </h5>
 
-                <p class="text-muted mb-0">
-                    لا يمكن التراجع عن هذا الإجراء بعد تنفيذه.
+                <h6 class="fw-bold mb-2">
+                    هل أنت متأكد من حذف هذا الحساب؟
+                </h6>
+
+
+                <p class="text-body-secondary mb-0">
+                    لا يمكن التراجع عن عملية الحذف بعد تنفيذها.
                 </p>
 
             </div>
 
 
             {{-- أزرار المودال --}}
-            <div class="modal-footer border-0 pt-0 justify-content-center gap-2">
+            <div class="modal-footer justify-content-center">
 
                 <button
                     type="button"
-                    class="btn btn-light px-4"
-                    id="deleteCancelBtn"
-                    data-bs-dismiss="modal"
+                    class="btn btn-secondary"
+                    id="deleteCancelBtnFooter"
                 >
                     <i class="bi bi-x-lg me-1"></i>
                     إلغاء
@@ -73,11 +76,11 @@
 
                 <button
                     type="button"
-                    class="btn btn-danger px-4"
+                    class="btn btn-danger"
                     id="deleteConfirmBtn"
                 >
                     <i class="bi bi-trash me-1"></i>
-                    نعم، احذف
+                    نعم، حذف الحساب
                 </button>
 
             </div>
@@ -86,5 +89,3 @@
 
     </div>
 </div>
-
-@endpush

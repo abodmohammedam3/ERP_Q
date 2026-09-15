@@ -49,192 +49,283 @@ class CharAccountController extends Controller
     }
 
 
+public function store(Request $request)
+{
+    $request->validate(
+        [
+            'accTypeID'  => 'required|integer',
+            'accParent'  => 'nullable|integer',
+            'accCode'    => 'nullable|string',
+            'accName'    => 'required|string',
+            'nature'     => 'required|integer',
+            'IsActive'   => 'required|integer|in:0,1',
+            'isPostable' => 'required|integer|in:0,1',
+        ],
+        [
+            'accName.required' =>
+                'اسم الحساب مطلوب',
+        ]
+    );
+
+
     // =====================================================
-    // إضافة حساب
+    // الحساب التحليلي يجب أن يكون له حساب أب
     // =====================================================
 
-    public function store(Request $request)
-    {
-        $request->validate(
-            [
-                'accTypeID'  => 'required|integer',
-                'accParent'  => 'nullable|integer',
-                'accCode'    => 'nullable|string',
-                'accName'    => 'required|string',
-                'nature'     => 'required|integer',
-                'IsActive'   => 'required|integer|in:0,1',
-                'isPostable' => 'required|integer|in:0,1',
-            ],
-            [
-                'accName.required' =>
-                    'اسم الحساب مطلوب',
-            ]
+    if (
+        (int) $request->isPostable === 1 &&
+        !$request->filled('accParent')
+    ) {
+        return response()->json([
+            'success' => false,
+            'message' =>
+                'الحساب التحليلي يجب أن يكون له حساب أب',
+        ], 422);
+    }
+
+
+    // =====================================================
+    // تحديد الحساب الأب
+    // =====================================================
+
+    $parent = null;
+
+    if ($request->filled('accParent')) {
+
+        $parent = CharAccount::find(
+            (int) $request->accParent
         );
-
-
-        // =================================================
-        // تحديد الحساب الأب
-        // =================================================
-
-        $parent = null;
-
-        if ($request->filled('accParent')) {
-
-            $parent = CharAccount::find(
-                (int) $request->accParent
-            );
-
-            if (!$parent) {
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'الحساب الأب غير موجود',
-                ], 422);
-            }
-        }
-
-
-        // =================================================
-        // تحديد مستوى الحساب
-        // =================================================
-
-        $accLevel = $parent
-            ? ((int) $parent->accLevel + 1)
-            : 1;
-
-
-        // =================================================
-        // تحديد رقم الحساب
-        // =================================================
 
         if (!$parent) {
 
-            // الحساب الرئيسي
-
-            if (!$request->filled('accCode')) {
-
-                return response()->json([
-                    'success' => false,
-                    'message' =>
-                        'رقم الحساب مطلوب للحساب الرئيسي',
-                ], 422);
-            }
-
-            $accCode = trim(
-                (string) $request->accCode
-            );
+            return response()->json([
+                'success' => false,
+                'message' =>
+                    'الحساب الأب غير موجود',
+            ], 422);
+        }
+    }
 
 
-            if (!ctype_digit($accCode)) {
+    // =====================================================
+    // التحقق من الحساب الأب
+    // =====================================================
 
-                return response()->json([
-                    'success' => false,
-                    'message' =>
-                        'رقم الحساب يجب أن يكون رقماً صحيحاً',
-                ], 422);
-            }
+    if ($parent) {
+
+        // -------------------------------------------------
+        // الحسابات النظامية الخاصة
+        // لا يسمح بإنشاء أي حساب تحتها
+        // -------------------------------------------------
+
+        $specialSystemKeys = [
+            'cash',
+            'banks',
+            'customers',
+            'inventory',
+            'suppliers',
+        ];
 
 
-            if (strlen($accCode) !== 1) {
+        $systemKey = strtolower(
+            trim((string) $parent->system_key)
+        );
 
-                return response()->json([
-                    'success' => false,
-                    'message' =>
-                        'رقم الحساب الرئيسي يجب أن يتكون من خانة واحدة مثل 1 أو 2 أو 3',
-                ], 422);
-            }
 
-        } else {
+        if (
+            in_array(
+                $systemKey,
+                $specialSystemKeys,
+                true
+            )
+        ) {
 
-            // الحساب الفرعي
+            $messages = [
 
-            try {
+                'cash' =>
+                    'لا يمكن إنشاء حساب تحت حساب الصندوق من دليل الحسابات. استخدم شاشة الصندوق.',
 
-                $accCode =
-                    $this->generateChildCode(
-                        $parent
-                    );
+                'banks' =>
+                    'لا يمكن إنشاء حساب تحت حساب البنوك من دليل الحسابات. استخدم شاشة البنوك.',
 
-            } catch (\Throwable $e) {
+                'customers' =>
+                    'لا يمكن إنشاء حساب تحت حساب العملاء من دليل الحسابات. استخدم شاشة العملاء.',
 
-                return response()->json([
-                    'success' => false,
-                    'message' => $e->getMessage(),
-                ], 422);
-            }
+                'inventory' =>
+                    'لا يمكن إنشاء حساب تحت حساب المخازن من دليل الحسابات. استخدم شاشة المخازن والأصناف.',
+
+                'suppliers' =>
+                    'لا يمكن إنشاء حساب تحت حساب الموردين من دليل الحسابات. استخدم شاشة الموردين.',
+            ];
+
+
+            return response()->json([
+                'success' => false,
+                'message' =>
+                    $messages[$systemKey],
+            ], 422);
         }
 
 
-        // =================================================
-        // منع تكرار رقم الحساب
-        // =================================================
+        // -------------------------------------------------
+        // الحساب التحليلي لا يمكن أن يكون أباً
+        // -------------------------------------------------
 
         if (
-            CharAccount::where(
-                'accCode',
-                $accCode
-            )->exists()
+            (int) $parent->isPostable === 1
         ) {
 
             return response()->json([
                 'success' => false,
                 'message' =>
-                    'رقم الحساب موجود مسبقاً',
+                    'لا يمكن إنشاء حساب فرعي تحت حساب تحليلي',
+            ], 422);
+        }
+    }
+
+
+    // =====================================================
+    // تحديد مستوى الحساب
+    // =====================================================
+
+    $accLevel = $parent
+        ? ((int) $parent->accLevel + 1)
+        : 1;
+
+
+    // =====================================================
+    // تحديد رقم الحساب
+    // =====================================================
+
+    if (!$parent) {
+
+        // الحساب الرئيسي
+
+        if (!$request->filled('accCode')) {
+
+            return response()->json([
+                'success' => false,
+                'message' =>
+                    'رقم الحساب مطلوب للحساب الرئيسي',
             ], 422);
         }
 
 
-        // =================================================
-        // إنشاء الحساب
-        // =================================================
-
-        $account = CharAccount::create([
-
-            'accTypeID' =>
-                (int) $request->accTypeID,
-
-            'accCode' =>
-                $accCode,
-
-            'accParent' =>
-                $parent?->accountID,
-
-            'accName' =>
-                trim($request->accName),
-
-            'nature' =>
-                (int) $request->nature,
-
-            'accLevel' =>
-                $accLevel,
-
-            'IsActive' =>
-                (int) $request->IsActive,
-
-            'isPostable' =>
-                (int) $request->isPostable,
-
-            'is_system' =>
-                0,
-
-            'system_key' =>
-                null,
-        ]);
+        $accCode = trim(
+            (string) $request->accCode
+        );
 
 
-        return response()->json([
+        if (!ctype_digit($accCode)) {
 
-            'success' => true,
+            return response()->json([
+                'success' => false,
+                'message' =>
+                    'رقم الحساب يجب أن يكون رقماً صحيحاً',
+            ], 422);
+        }
 
-            'message' =>
-                'تمت إضافة الحساب بنجاح',
 
-            'account' =>
-                $account->fresh(),
+        if (strlen($accCode) !== 1) {
 
-        ]);
+            return response()->json([
+                'success' => false,
+                'message' =>
+                    'رقم الحساب الرئيسي يجب أن يتكون من خانة واحدة مثل 1 أو 2 أو 3',
+            ], 422);
+        }
+
+    } else {
+
+        // الحساب الفرعي
+
+        try {
+
+            $accCode =
+                $this->generateChildCode(
+                    $parent
+                );
+
+        } catch (\Throwable $e) {
+
+            return response()->json([
+                'success' => false,
+                'message' =>
+                    $e->getMessage(),
+            ], 422);
+        }
     }
 
+
+    // =====================================================
+    // منع تكرار رقم الحساب
+    // =====================================================
+
+    if (
+        CharAccount::where(
+            'accCode',
+            $accCode
+        )->exists()
+    ) {
+
+        return response()->json([
+            'success' => false,
+            'message' =>
+                'رقم الحساب موجود مسبقاً',
+        ], 422);
+    }
+
+
+    // =====================================================
+    // إنشاء الحساب
+    // =====================================================
+
+    $account = CharAccount::create([
+
+        'accTypeID' =>
+            (int) $request->accTypeID,
+
+        'accCode' =>
+            $accCode,
+
+        'accParent' =>
+            $parent?->accountID,
+
+        'accName' =>
+            trim($request->accName),
+
+        'nature' =>
+            (int) $request->nature,
+
+        'accLevel' =>
+            $accLevel,
+
+        'IsActive' =>
+            (int) $request->IsActive,
+
+        'isPostable' =>
+            (int) $request->isPostable,
+
+        'is_system' =>
+            0,
+
+        'system_key' =>
+            null,
+    ]);
+
+
+    // =====================================================
+    // النتيجة
+    // =====================================================
+
+    return response()->json([
+        'success' => true,
+        'message' =>
+            'تمت إضافة الحساب بنجاح',
+        'account' =>
+            $account->fresh(),
+    ]);
+}
 
     // =====================================================
     // توليد رقم الحساب الفرعي التالي
@@ -998,18 +1089,7 @@ public function tree(Request $request)
         );
     }
 
-    // =================================================
-    // البحث حسب الطبيعة
-    // =================================================
-
-    if ($request->filled('search_nature')) {
-
-        $query->where(
-            'nature',
-            (int) $request->search_nature
-        );
-    }
-
+    
     // =================================================
     // جلب الحسابات
     // =================================================
@@ -1124,17 +1204,7 @@ public function analyticalAccounts(
         );
     }
 
-    // =================================================
-    // البحث حسب الطبيعة
-    // =================================================
-
-    if ($request->filled('search_nature')) {
-
-        $query->where(
-            'nature',
-            (int) $request->search_nature
-        );
-    }
+   
 
     // =================================================
     // Pagination
@@ -1148,26 +1218,17 @@ public function analyticalAccounts(
             $request->integer('per_page', 10)
         );
 
-    return response()->json([
-
-        'success' => true,
-
-        'parent' => [
-
-            'accountID' =>
-                $account->accountID,
-
-            'accCode' =>
-                $account->accCode,
-
-            'accName' =>
-                $account->accName,
-
-        ],
-
-        'accounts' => $accounts,
-
-    ]);
+   return response()->json([
+    'success' => true,
+    'parent' => [
+        'accountID'  => $account->accountID,
+        'accCode'    => $account->accCode,
+        'accName'    => $account->accName,
+        'system_key' => $account->system_key,   
+        'is_system'  => $account->is_system,    
+    ],
+    'accounts' => $accounts,
+]);
 }
 
 

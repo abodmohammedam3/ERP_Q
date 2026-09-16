@@ -1,107 +1,50 @@
-<div class="card shadow-sm">
-    <div class="card-header bg-white">
-        <ul class="nav nav-tabs card-header-tabs">
-            <li class="nav-item">
-                <button
-                    class="nav-link active"
-                    data-bs-toggle="tab"
-                    data-bs-target="#accounts"
-                    type="button"
-                >
-                    الحسابات
-                </button>
-            </li>
-            <li class="nav-item">
-                <button
-                    class="nav-link"
-                    data-bs-toggle="tab"
-                    data-bs-target="#customers"
-                    type="button"
-                >
-                    العملاء
-                </button>
-            </li>
-            <li class="nav-item">
-                <button
-                    class="nav-link"
-                    data-bs-toggle="tab"
-                    data-bs-target="#suppliers"
-                    type="button"
-                >
-                    الموردين
-                </button>
-            </li>
-            <li class="nav-item">
-                <button
-                    class="nav-link"
-                    data-bs-toggle="tab"
-                    data-bs-target="#cashboxes"
-                    type="button"
-                >
-                    الصناديق
-                </button>
-            </li>
-            <li class="nav-item">
-                <button
-                    class="nav-link"
-                    data-bs-toggle="tab"
-                    data-bs-target="#banks"
-                    type="button"
-                >
-                    البنوك
-                </button>
-            </li>
-            {{-- <li class="nav-item">
-                <button
-                    class="nav-link"
-                    data-bs-toggle="tab"
-                    data-bs-target="#inventory"
-                    type="button"
-                >
-                    المخزون
-                </button>
-            </li> --}}
-        </ul>
-    </div>
-    <div class="card-body">
-        <div class="tab-content">
-            <div
-                class="tab-pane fade show active"
-                id="accounts"
-            >
-                @include('setting.accounting.openingBalances.partAccounts')
-            </div>
-            <div
-                class="tab-pane fade"
-                id="customers"
-            >
-                @include('setting.accounting.openingBalances.partCustomer')
-            </div>
-            <div
-                class="tab-pane fade"
-                id="suppliers"
-            >
-                @include('setting.accounting.openingBalances.partSuppliers')
-            </div>
-            <div
-                class="tab-pane fade"
-                id="cashboxes"
-            >
-                @include('setting.accounting.openingBalances.partCashbox')
-            </div>
-            <div
-                class="tab-pane fade"
-                id="banks"
-            >
-                @include('setting.accounting.openingBalances.partBank')
-            </div>
+<ul class="nav nav-tabs mb-3" id="obTabs" role="tablist">
 
-            {{-- <div
-                class="tab-pane fade"
-                id="inventory"
-            >
-                @include('setting.accounting.openingBalances.partInventory')
-            </div> --}}
-        </div>
-    </div>
-</div>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active"
+                type="button"
+                data-bs-toggle="tab"
+                data-bs-target="#tab-cash"
+                data-type="CASH"
+                role="tab">
+            <i class="fas fa-money-bill"></i> الصناديق
+        </button>
+    </li>
+
+    <li class="nav-item" role="presentation">
+        <button class="nav-link"
+                type="button"
+                data-bs-toggle="tab"
+                data-bs-target="#tab-bank"
+                data-type="BANK"
+                role="tab">
+            <i class="fas fa-university"></i> البنوك
+        </button>
+    </li>
+
+    <li class="nav-item" role="presentation">
+        <button class="nav-link"
+                type="button"
+                data-bs-toggle="tab"
+                data-bs-target="#tab-customer"
+                data-type="CUSTOMER"
+                role="tab">
+            <i class="fas fa-users"></i> العملاء
+        </button>
+    </li>
+
+    <li class="nav-item" role="presentation">
+        <button class="nav-link"
+                type="button"
+                data-bs-toggle="tab"
+                data-bs-target="#tab-supplier"
+                data-type="SUPPLIER"
+                role="tab">
+            <i class="fas fa-truck"></i> الموردين
+        </button>
+    </li>
+
+</ul>
+
+{{-- النوع الحالي (يُحدّث من الجافاسكربت) --}}
+<input type="hidden" id="currentType" value="CASH">

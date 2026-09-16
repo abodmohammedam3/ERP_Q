@@ -1,57 +1,55 @@
 @extends('layouts.app')
 
-@section('title', 'الارصدة الافتتاحية | نظام ')
+@section('title', 'الأرصدة الافتتاحية')
 
 @section('content')
-
 <div class="container-fluid py-3">
-<div class="d-flex justify-content-between align-items-center mb-4">
 
-    <div>
-        <h4 class="mb-1">الأرصدة الافتتاحية</h4>
+    {{-- عنوان الشاشة --}}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="mb-1">
+                <i class="bi bi-journal-bookmark"></i>
+                الأرصدة الافتتاحية
+            </h4>
+            <small class="text-muted">إدارة الأرصدة الافتتاحية للصناديق والبنوك والعملاء والموردين</small>
+        </div>
 
-        <p class="text-muted mb-0">
-            إدخال وإدارة أرصدة بداية الفترة المالية
-        </p>
+        <div class="d-flex gap-2">
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    id="btnPrintOpeningBalances">
+                <i class="bi bi-printer"></i> طباعة
+            </button>
+
+            <button type="button"
+                    class="btn btn-primary"
+                    id="btnAddOpeningBalance">
+                <i class="bi bi-plus-lg"></i> إضافة رصيد افتتاحي
+            </button>
+        </div>
     </div>
 
-    <div class="d-flex gap-2">
-
-        <button type="button" class="btn btn-outline-secondary">
-            إلغاء
-        </button>
-
-        <button type="button" class="btn btn-primary">
-            حفظ
-        </button>
-
-    </div>
-
-</div>
-
-    {{-- @include('setting.accounting.openingBalances.periodInfo') --}}
-
+    {{-- التابات: صناديق / بنوك / عملاء / موردين --}}
     @include('setting.accounting.openingBalances.tabs')
 
+    {{-- شريط البحث --}}
+    @include('setting.accounting.openingBalances.search')
 
-<div class="d-flex justify-content-end align-items-center mt-4">
+    {{-- جدول العرض --}}
+    @include('setting.accounting.openingBalances.table')
 
-    <div class="d-flex gap-2">
-
-        <button class="btn btn-outline-secondary">
-            حفظ كمسودة
-        </button>
-
-        <button class="btn btn-primary">
-            اعتماد الأرصدة
-        </button>
-
-    </div>
+    {{-- الإجماليات أسفل الجدول --}}
+    @include('setting.accounting.openingBalances.footer')
 
 </div>
-     @include('setting.accounting.openingBalances.summary')
 
-
-</div>
+{{-- المودلات --}}
+@include('setting.accounting.openingBalances.addUpdate')
+@include('setting.accounting.openingBalances.deletModel')
 
 @endsection
+
+@push('scripts')
+<script src="{{ asset('js/accounting/openingBalances.js') }}"></script>
+@endpush

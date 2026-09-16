@@ -1,5 +1,5 @@
 /* =========================================================
-   فاتورة الشراء — بدون HTML + Cache + Focus Flow + Toast
+   فاتورة الشراء — يعتمد على النظام الموحّد للنوافذ
    ========================================================= */
 
 /* =========================================================
@@ -15,20 +15,8 @@ const PAYMENT_METHOD_TO_STR = { 1: 'credit', 2: 'cash', 3: 'bank', 4: 'network' 
 
 let invoiceMode = 'view';
 let currentInvoiceId = null;
-
-let supplierModal, currencyModal, invoiceSearchModal,
-    warehouseModal, accountModal, purchaseItemModal, typeModal;
-
-let activePurchaseRow = null;
-let currentTypeInput = null;
-let accountSearchType = '';
 let isSavingInvoice = false;
 let editSnapshot = null;
-
-const cache = {
-    units: [], coins: [], warehouses: [], items: [],
-    types: [], boxes: [], banks: [],
-};
 
 const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
@@ -54,33 +42,18 @@ async function apiSend(url, method, body) {
     });
     const json = await r.json().catch(() => ({}));
     if (!r.ok) {
-        const e = new Error(json.message || 'فشل الطلب');
+        let message = json.message || 'فشل الطلب';
+        if (json.errors) message = Object.values(json.errors).flat().join(' | ');
+        else if (json.error) message = json.error;
+
+        const e = new Error(message);
         e.errors = json.errors;
+        e.raw = json;
+        console.error('API Error:', json);
         throw e;
     }
     return json;
 }
-
-function debounce(fn, ms = 50) {
-    let t;
-    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
-}
-
-function cloneTemplate(templateId) {
-    const tpl = document.getElementById(templateId);
-    if (!tpl) throw new Error(`Template not found: ${templateId}`);
-    return tpl.content.firstElementChild.cloneNode(true);
-}
-
-function unwrap(data) {
-    if (Array.isArray(data)) return data;
-    if (data && Array.isArray(data.data)) return data.data;
-    return [];
-}
-
-/* =========================================================
-   إشعار موحّد — يستخدم showSystemToast إن وُجد
-   ========================================================= */
 
 function notify(message, type = 'info') {
     if (typeof window.showSystemToast === 'function') {
@@ -92,94 +65,65 @@ function notify(message, type = 'info') {
 }
 
 /* =========================================================
-   Snapshot — لكشف عدم وجود تعديلات
+   خطافات النظام الموحّد (LookupConfigs)
    ========================================================= */
 
-function takeSnapshot() {
-    const data = {
-        invoice_date: document.getElementById('PurchaseInvoicesDate2')?.value || '',
-        account_id: document.getElementById('suplierID')?.value || '',
-        coin_id: document.getElementById('coinsID')?.value || '',
-        exchange_rate: document.getElementById('PuInExchangeRate2')?.value || '',
-        warehouse_id: document.getElementById('warehouseID')?.value || '',
-        payment_method: document.getElementById('PuInPaymentMethod2')?.value || '',
-        payment_account_id: document.getElementById('paymentAccountId')?.value || '',
-        statement: document.getElementById('PuInStatement2')?.value || '',
-        reference: document.getElementById('invoiceReference')?.value || '',
-        expenses: document.getElementById('PuInExpenses')?.value || '',
-        tax_cost: document.getElementById('PuInTaxCost')?.value || '',
-        transportation: document.getElementById('PuInTransportation')?.value || '',
-        other_cost: document.getElementById('PuInOtherCost')?.value || '',
-        other_cost_desc: document.getElementById('otherCostDescription')?.value || '',
+/**
+ * عند اختيار مورد — لا حاجة لأي شيء إضافي (data-lookup تكفل بملء suplierID)
+ */
 
-        details: Array.from(
-            document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row')
-        ).map(r => ({
-            item: r.querySelector('.row-item')?.dataset.itemId || '',
-            type: r.querySelector('.row-type')?.dataset.typeId || '',
-            code: r.querySelector('.row-code')?.value || '',
-            unit: r.querySelector('.row-unit')?.value || '',
-            qty: r.querySelector('.row-weight')?.value || '',
-            price: r.querySelector('.row-price')?.value || '',
-            discount: r.querySelector('.row-discount')?.value || '',
-        })),
+/**
+ * عند اختيار عملة — تحديث سعر الصرف وإعادة الحساب
+ */
+function registerCurrencyLookupHook() {
+    if (typeof LookupConfigs === 'undefined') return;
+    LookupConfigs.currency.onSelect = (row) => {
+        const rateEl = document.getElementById('PuInExchangeRate2');
+        if (rateEl) rateEl.value = row.coinsExchangeRate ?? 1;
+        calculateTotals();
     };
+}
 
-    return JSON.stringify(data);
+/**
+ * عند اختيار صنف داخل صف — تخزين الـ itemID والانتقال للنوع
+ */
+function registerItemLookupHook() {
+    if (typeof LookupConfigs === 'undefined') return;
+    LookupConfigs.item.onSelect = (row, target) => {
+        const tr = target.closest('tr');
+        if (!tr || !tr.classList.contains('purchase-detail-row')) return;
+
+        target.dataset.itemId = row.itemID ?? '';
+        setTimeout(() => tr.querySelector('.row-type')?.focus(), 200);
+    };
+}
+
+/**
+ * عند اختيار نوع داخل صف — تخزين الـ typeID والانتقال للرمز
+ */
+function registerTypeLookupHook() {
+    if (typeof LookupConfigs === 'undefined') return;
+    LookupConfigs.type.onSelect = (row, target) => {
+        const tr = target.closest('tr');
+        if (!tr || !tr.classList.contains('purchase-detail-row')) return;
+
+        target.dataset.typeId = row.id ?? '';
+        setTimeout(() => tr.querySelector('.row-code')?.focus(), 200);
+    };
 }
 
 /* =========================================================
    تهيئة
    ========================================================= */
 
-document.addEventListener('DOMContentLoaded', async () => {
-
-    const init = (id) => {
-        const el = document.getElementById(id);
-        if (!el) { console.warn(`⚠️ Modal غير موجود: #${id}`); return null; }
-        return new bootstrap.Modal(el);
-    };
-
-    supplierModal = init('supplierModal');
-    currencyModal = init('currencyModal');
-    invoiceSearchModal = init('invoiceSearchModal');
-    warehouseModal = init('warehouseModal');
-    accountModal = init('accountModal');
-    purchaseItemModal = init('purchaseItemModal');
-    typeModal = init('typeModal');
-
-    await preloadAll();
+document.addEventListener('DOMContentLoaded', () => {
+    registerCurrencyLookupHook();
+    registerItemLookupHook();
+    registerTypeLookupHook();
 
     setInvoiceMode('view');
     clearInvoiceForm();
 });
-
-async function preloadAll() {
-    try {
-        const [units, coins, warehouses, items, types, boxes, banks] = await Promise.all([
-            apiGet('/setting/inventory/units/list'),
-            apiGet('/setting/accounting/coins/list'),
-            apiGet('/setting/inventory/warehouses/list'),
-            apiGet('/setting/inventory/items/list'),
-            apiGet('/setting/inventory/types/list'),
-            apiGet('/setting/accounting/boxes/list'),
-            apiGet('/setting/accounting/banks/list'),
-        ]);
-
-        cache.units = unwrap(units);
-        cache.coins = unwrap(coins);
-        cache.warehouses = unwrap(warehouses);
-        cache.items = unwrap(items);
-        cache.types = unwrap(types);
-        cache.boxes = unwrap(boxes);
-        cache.banks = unwrap(banks);
-
-        console.log('✅ تم تحميل البيانات المرجعية');
-    } catch (e) {
-        console.error('فشل تحميل البيانات المرجعية', e);
-        notify('تعذّر تحميل البيانات المرجعية', 'danger');
-    }
-}
 
 /* =========================================================
    أوضاع الشاشة
@@ -239,7 +183,7 @@ async function resetInvoice() {
 
     const numberEl = document.getElementById('PurchaseInvoicesON2');
     if (!numberEl) {
-        notify('حقل رقم الفاتورة غير موجود — تحقق من تضمين رأس الفاتورة', 'danger');
+        notify('حقل رقم الفاتورة غير موجود', 'danger');
         return;
     }
 
@@ -281,9 +225,6 @@ function clearInvoiceForm() {
     const totalEl = document.getElementById('invoiceTotalDisplay');
     if (totalEl) totalEl.textContent = '0.00';
 
-    const amountEl = document.getElementById('AmountWords');
-    if (amountEl) amountEl.value = '';
-
     hidePaymentAccounts();
 
     const otherCostDesc = document.getElementById('otherCostDescriptionContainer');
@@ -310,7 +251,7 @@ function setEmptyDetailsMessage() {
 }
 
 /* =========================================================
-   Row Template
+   صفوف التفاصيل
    ========================================================= */
 
 function addInvoiceRow() {
@@ -322,19 +263,30 @@ function addInvoiceRow() {
     const emptyTd = tbody.querySelector('td[colspan="10"]');
     if (emptyTd) while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
 
-    const row = cloneTemplate('invoiceRowTemplate');
+    const tpl = document.getElementById('invoiceRowTemplate');
+    if (!tpl) {
+        notify('قالب الصف غير موجود', 'danger');
+        return;
+    }
+
+    const row = tpl.content.firstElementChild.cloneNode(true);
+
+    // تعبئة الوحدات من Cache الموحّد
     const unitSelect = row.querySelector('.row-unit');
-    cache.units.forEach(u => {
-        const opt = document.createElement('option');
-        opt.value = u.UnitID;
-        opt.textContent = u.UnitName;
-        unitSelect.appendChild(opt);
-    });
+    if (unitSelect && typeof lookupCache !== 'undefined') {
+        (lookupCache.units || []).forEach(u => {
+            const opt = document.createElement('option');
+            opt.value = u.UnitID;
+            opt.textContent = u.UnitName;
+            unitSelect.appendChild(opt);
+        });
+    }
 
     tbody.appendChild(row);
     enableRow(row);
     renumberRows();
     calculateTotals();
+
     return row;
 }
 
@@ -369,12 +321,13 @@ function renumberRows() {
 }
 
 /* =========================================================
-   حساب الإجماليات + المبلغ كتابة
+   الحسابات
    ========================================================= */
 
 function calculateRow(input) {
     const row = input.closest('tr');
     if (!row) return;
+
     const qty = parseFloat(row.querySelector('.row-weight')?.value) || 0;
     const price = parseFloat(row.querySelector('.row-price')?.value) || 0;
     const disc = parseFloat(row.querySelector('.row-discount')?.value) || 0;
@@ -387,14 +340,14 @@ function calculateRow(input) {
 
 function calculateTotals() {
     let itemsTotal = 0, discountTotal = 0;
-    document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row')
-        .forEach(row => {
-            const q = parseFloat(row.querySelector('.row-weight')?.value) || 0;
-            const p = parseFloat(row.querySelector('.row-price')?.value) || 0;
-            const d = parseFloat(row.querySelector('.row-discount')?.value) || 0;
-            itemsTotal += q * p;
-            discountTotal += d;
-        });
+
+    document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row').forEach(row => {
+        const q = parseFloat(row.querySelector('.row-weight')?.value) || 0;
+        const p = parseFloat(row.querySelector('.row-price')?.value) || 0;
+        const d = parseFloat(row.querySelector('.row-discount')?.value) || 0;
+        itemsTotal += q * p;
+        discountTotal += d;
+    });
 
     const expenses = parseFloat(document.getElementById('PuInExpenses')?.value) || 0;
     const tax = parseFloat(document.getElementById('PuInTaxCost')?.value) || 0;
@@ -431,7 +384,7 @@ function updateAmountWords(total) {
 function exchangeRateChanged() { calculateTotals(); }
 
 /* =========================================================
-   Payment method
+   Payment method — يغيّر نوع Lookup للحساب
    ========================================================= */
 
 function paymentMethodChanged(clearPrevious = false) {
@@ -464,6 +417,16 @@ function paymentMethodChanged(clearPrevious = false) {
     container.classList.remove('d-none');
     input.disabled = (invoiceMode === 'view');
 
+    // تحديد نوع Lookup حسب طريقة الدفع
+    if (method === 'bank') {
+        input.dataset.lookup = 'bank';
+        input.dataset.lookupDisplayField = 'bankName';
+    } else {
+        // cash أو network → نستخدم الصناديق
+        input.dataset.lookup = 'box';
+        input.dataset.lookupDisplayField = 'boxName';
+    }
+
     const labels = { cash: 'الصندوق', bank: 'الحساب البنكي', network: 'حساب المحفظة' };
     const lbl = container.querySelector('label');
     if (lbl) lbl.textContent = labels[method] || 'الحساب';
@@ -475,365 +438,6 @@ function hidePaymentAccounts() {
 }
 
 /* =========================================================
-   Input handlers
-   ========================================================= */
-
-function supplierKeyDown(e) {
-    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
-        e.preventDefault(); openSupplierModal();
-    }
-}
-function currencyKeyDown(e) {
-    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
-        e.preventDefault(); openCurrencyModal();
-    }
-}
-function warehouseKeyDown(e) {
-    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
-        e.preventDefault(); openWarehouseModal();
-    }
-}
-function accountKeyDown(e) {
-    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
-        e.preventDefault(); openAccountModal();
-    }
-}
-
-function supplierInput(e) { debounce(() => { if (e.target.value.trim()) openSupplierModal(); })(); }
-function currencyInput(e) { debounce(() => { if (e.target.value.trim()) openCurrencyModal(); })(); }
-function warehouseInput(e) { debounce(() => { if (e.target.value.trim()) openWarehouseModal(); })(); }
-function accountInput(e) { debounce(() => { if (e.target.value.trim()) openAccountModal(); })(); }
-function purchaseItemInput(e) { debounce(() => { if (e.target.value.trim()) { activePurchaseRow = e.target.closest('tr'); openPurchaseItemModal(); } })(); }
-function typeInput(e) { debounce(() => { if (e.target.value.trim()) { currentTypeInput = e.target; openTypeModal(); } })(); }
-
-function supplierBlur() { }
-function currencyBlur() { }
-function warehouseBlur() { }
-function accountBlur() { }
-
-/* =========================================================
-   Supplier Modal
-   ========================================================= */
-
-function openSupplierModal() {
-    if (invoiceMode === 'view' || !supplierModal) return;
-    document.getElementById('supplierSearchInput').value =
-        document.getElementById('supplierName').value;
-    supplierModal.show();
-    setTimeout(() => {
-        document.getElementById('supplierSearchInput').focus();
-        searchSuppliers();
-    }, 200);
-}
-
-async function searchSuppliers() {
-    const search = document.getElementById('supplierSearchInput').value.trim();
-    const tbody = document.getElementById('supplierResults');
-    tbody.replaceChildren();
-
-    try {
-        const res = await apiGet(`/setting/suppliers/search?search=${encodeURIComponent(search)}`);
-        const rows = unwrap(res);
-
-        rows.forEach(s => {
-            const tr = cloneTemplate('supplierRowTemplate');
-            tr.querySelector('.c-id').textContent = s.suplierID;
-            tr.querySelector('.c-name').textContent = s.supName ?? '';
-            tr.querySelector('.c-code').textContent = s.accountCode ?? '';
-            tr.querySelector('.select-btn').addEventListener('click', () => {
-                selectSupplier(s.accountID ?? '', s.supName ?? '');
-            });
-            tbody.appendChild(tr);
-        });
-    } catch (e) { console.error(e); }
-}
-
-function selectSupplier(accountId, name) {
-    document.getElementById('suplierID').value = accountId;
-    document.getElementById('supplierName').value = name;
-    if (supplierModal) supplierModal.hide();
-    setTimeout(() => document.getElementById('currencyName').focus(), 250);
-}
-
-/* =========================================================
-   Currency Modal
-   ========================================================= */
-
-function openCurrencyModal() {
-    if (invoiceMode === 'view' || !currencyModal) return;
-    document.getElementById('currencySearchInput').value =
-        document.getElementById('currencyName').value;
-    currencyModal.show();
-    setTimeout(() => {
-        document.getElementById('currencySearchInput').focus();
-        searchCurrencies();
-    }, 200);
-}
-
-async function searchCurrencies() {
-    const search = document.getElementById('currencySearchInput').value.trim();
-    const tbody = document.getElementById('currencyResults');
-    tbody.replaceChildren();
-
-    const filtered = cache.coins.filter(c =>
-        !search ||
-        (c.coinsName || '').includes(search) ||
-        (c.coinsCode || '').includes(search)
-    );
-
-    filtered.forEach(c => {
-        const tr = cloneTemplate('currencyRowTemplate');
-        tr.querySelector('.c-id').textContent = c.coinsID;
-        tr.querySelector('.c-name').textContent = c.coinsName ?? '';
-        tr.querySelector('.c-code').textContent = c.coinsCode ?? '';
-        tr.querySelector('.c-rate').textContent = c.coinsExchangeRate ?? '';
-        tr.querySelector('.select-btn').addEventListener('click', () => {
-            selectCurrency(c.coinsID, c.coinsName, c.coinsExchangeRate);
-        });
-        tbody.appendChild(tr);
-    });
-}
-
-function selectCurrency(id, name, rate) {
-    document.getElementById('coinsID').value = id;
-    document.getElementById('currencyName').value = name;
-    document.getElementById('PuInExchangeRate2').value = rate;
-    if (currencyModal) currencyModal.hide();
-    calculateTotals();
-    setTimeout(() => document.getElementById('warehouseName').focus(), 250);
-}
-
-/* =========================================================
-   Warehouse Modal
-   ========================================================= */
-
-function openWarehouseModal() {
-    if (invoiceMode === 'view' || !warehouseModal) return;
-    document.getElementById('warehouseSearchInput').value =
-        document.getElementById('warehouseName').value;
-    warehouseModal.show();
-    setTimeout(() => {
-        document.getElementById('warehouseSearchInput').focus();
-        searchWarehouses();
-    }, 200);
-}
-
-async function searchWarehouses() {
-    const search = document.getElementById('warehouseSearchInput').value.trim();
-    const tbody = document.getElementById('warehouseResults');
-    tbody.replaceChildren();
-
-    const filtered = cache.warehouses.filter(w =>
-        !search || (w.StockName || '').includes(search)
-    );
-
-    filtered.forEach(w => {
-        const tr = cloneTemplate('warehouseRowTemplate');
-        tr.querySelector('.c-id').textContent = w.StockID;
-        tr.querySelector('.c-name').textContent = w.StockName ?? '';
-        tr.querySelector('.select-btn').addEventListener('click', () => {
-            selectWarehouse(w.StockID, w.StockName);
-        });
-        tbody.appendChild(tr);
-    });
-}
-
-function selectWarehouse(id, name) {
-    document.getElementById('warehouseID').value = id;
-    document.getElementById('warehouseName').value = name;
-    if (warehouseModal) warehouseModal.hide();
-
-    setTimeout(() => {
-        const first = document.querySelector('#purchaseInvoiceDetails .purchase-detail-row');
-        if (first) {
-            first.querySelector('.row-item')?.focus();
-        } else {
-            addInvoiceRow();
-            setTimeout(() => {
-                document.querySelector('#purchaseInvoiceDetails .purchase-detail-row .row-item')?.focus();
-            }, 100);
-        }
-    }, 250);
-}
-
-/* =========================================================
-   Account Modal
-   ========================================================= */
-
-function openAccountModal() {
-    if (invoiceMode === 'view' || !accountModal) return;
-
-    const method = document.getElementById('PuInPaymentMethod2').value;
-    if (!method || method === 'credit') {
-        notify('يرجى اختيار طريقة دفع أولًا', 'warning');
-        return;
-    }
-    accountSearchType = method;
-
-    document.getElementById('accountSearchInput').value =
-        document.getElementById('paymentAccount').value;
-
-    const titles = { cash: 'اختيار الصندوق', bank: 'اختيار البنك', network: 'اختيار المحفظة' };
-    document.getElementById('accountModalTitle').textContent =
-        titles[method] || 'اختيار الحساب';
-
-    accountModal.show();
-    setTimeout(() => {
-        document.getElementById('accountSearchInput').focus();
-        searchAccounts();
-    }, 200);
-}
-
-async function searchAccounts() {
-    const search = document.getElementById('accountSearchInput').value.trim();
-    const tbody = document.getElementById('accountResults');
-    tbody.replaceChildren();
-
-    let source = [];
-    if (accountSearchType === 'cash') source = cache.boxes;
-    else if (accountSearchType === 'bank') source = cache.banks;
-    else if (accountSearchType === 'network') source = cache.boxes;
-    else return;
-
-    const filtered = source.filter(r => {
-        const n = r.boxName || r.bankName || '';
-        return !search || n.includes(search);
-    });
-
-    filtered.forEach(r => {
-        const id = r.accountID;
-        const name = r.boxName || r.bankName || '';
-        const tr = cloneTemplate('accountRowTemplate');
-        tr.querySelector('.c-id').textContent = id;
-        tr.querySelector('.c-name').textContent = name;
-        tr.querySelector('.select-btn').addEventListener('click', () => {
-            selectAccount(id, name);
-        });
-        tbody.appendChild(tr);
-    });
-}
-
-function selectAccount(id, name) {
-    document.getElementById('paymentAccountId').value = id;
-    document.getElementById('paymentAccount').value = name;
-    if (accountModal) accountModal.hide();
-    setTimeout(() => document.getElementById('supplierName').focus(), 250);
-}
-
-/* =========================================================
-   Item Modal
-   ========================================================= */
-
-function purchaseItemKeyDown(e) {
-    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
-        e.preventDefault();
-        activePurchaseRow = e.target.closest('tr');
-        openPurchaseItemModal();
-    }
-}
-
-function openPurchaseItemModal(input) {
-    if (invoiceMode === 'view' || !purchaseItemModal) return;
-    if (input) activePurchaseRow = input.closest('tr');
-    if (!activePurchaseRow) return;
-
-    document.getElementById('purchaseItemSearchInput').value =
-        activePurchaseRow.querySelector('.row-item')?.value || '';
-    purchaseItemModal.show();
-    setTimeout(() => {
-        document.getElementById('purchaseItemSearchInput').focus();
-        searchPurchaseItems();
-    }, 200);
-}
-
-async function searchPurchaseItems() {
-    const search = document.getElementById('purchaseItemSearchInput').value.trim();
-    const tbody = document.getElementById('purchaseItemResults');
-    tbody.replaceChildren();
-
-    const filtered = cache.items.filter(i =>
-        !search || (i.itemName2 || '').includes(search)
-    );
-
-    filtered.forEach(item => {
-        const tr = cloneTemplate('itemRowTemplate');
-        tr.querySelector('.c-id').textContent = item.itemID;
-        tr.querySelector('.c-name').textContent = item.itemName2 ?? '';
-        tr.querySelector('.select-btn').addEventListener('click', () => {
-            selectPurchaseItem(item.itemID, item.itemName2);
-        });
-        tbody.appendChild(tr);
-    });
-}
-
-function selectPurchaseItem(id, name) {
-    if (!activePurchaseRow) return;
-    const inp = activePurchaseRow.querySelector('.row-item');
-    inp.value = name;
-    inp.dataset.itemId = id;
-    if (purchaseItemModal) purchaseItemModal.hide();
-    setTimeout(() => activePurchaseRow.querySelector('.row-type')?.focus(), 250);
-}
-
-/* =========================================================
-   Type Modal
-   ========================================================= */
-
-function typeKeyDown(e) {
-    if (e.key === 'Enter' || (e.key === 'Tab' && e.target.value.trim())) {
-        e.preventDefault();
-        currentTypeInput = e.target;
-        openTypeModal();
-    }
-}
-
-function openTypeModal(input) {
-    if (invoiceMode === 'view' || !typeModal) return;
-
-    currentTypeInput = input || currentTypeInput || document.activeElement;
-    if (!currentTypeInput?.classList.contains('row-type')) return;
-
-    document.getElementById('typeSearchInput').value = currentTypeInput.value || '';
-    typeModal.show();
-    setTimeout(() => {
-        document.getElementById('typeSearchInput').focus();
-        searchTypes();
-    }, 200);
-}
-
-async function searchTypes() {
-    const search = document.getElementById('typeSearchInput').value.trim();
-    const tbody = document.getElementById('typeResults');
-    tbody.replaceChildren();
-
-    const filtered = cache.types.filter(t =>
-        !search || (t.name || '').includes(search)
-    );
-
-    filtered.forEach(t => {
-        const tr = cloneTemplate('typeRowTemplate');
-        tr.querySelector('.c-id').textContent = t.id;
-        tr.querySelector('.c-name').textContent = t.name ?? '';
-        tr.querySelector('.select-btn').addEventListener('click', () => {
-            selectType(t.id, t.name);
-        });
-        tbody.appendChild(tr);
-    });
-}
-
-function selectType(id, name) {
-    if (currentTypeInput) {
-        currentTypeInput.value = name;
-        currentTypeInput.dataset.typeId = id;
-        const row = currentTypeInput.closest('tr');
-        if (typeModal) typeModal.hide();
-        setTimeout(() => row.querySelector('.row-weight')?.focus(), 250);
-    } else if (typeModal) {
-        typeModal.hide();
-    }
-}
-
-/* =========================================================
    Other cost
    ========================================================= */
 
@@ -841,17 +445,24 @@ function otherCostChanged() {
     const v = parseFloat(document.getElementById('PuInOtherCost').value) || 0;
     const c = document.getElementById('otherCostDescriptionContainer');
     const d = document.getElementById('otherCostDescription');
-    if (v > 0) { c.classList.remove('d-none'); d.disabled = (invoiceMode === 'view'); }
-    else { c.classList.add('d-none'); d.value = ''; }
+
+    if (v > 0) {
+        if (c) c.classList.remove('d-none');
+        if (d) d.disabled = (invoiceMode === 'view');
+    } else {
+        if (c) c.classList.add('d-none');
+        if (d) d.value = '';
+    }
     calculateTotals();
 }
 
 /* =========================================================
-   Search Invoice
+   البحث عن فاتورة
    ========================================================= */
 
 function searchInvoice() {
-    if (!invoiceSearchModal) return;
+    const modalEl = document.getElementById('invoiceSearchModal');
+    if (!modalEl) return;
 
     document.getElementById('invoiceSearchInput').value = '';
     const tb = document.getElementById('invoiceSearchResults');
@@ -865,7 +476,7 @@ function searchInvoice() {
     tr.appendChild(td);
     tb.appendChild(tr);
 
-    invoiceSearchModal.show();
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
     setTimeout(() => document.getElementById('invoiceSearchInput').focus(), 200);
 }
 
@@ -876,7 +487,7 @@ async function performInvoiceSearch() {
 
     try {
         const raw = await apiGet(`/operation/purchases/invoicesPurch/list?search=${encodeURIComponent(search)}`);
-        const rows = unwrap(raw);
+        const rows = Array.isArray(raw) ? raw : (raw.data || []);
         const labels = { 1: 'أجل', 2: 'نقد', 3: 'بنك', 4: 'شبكة' };
 
         rows.forEach(inv => {
@@ -902,7 +513,6 @@ async function performInvoiceSearch() {
             btn.addEventListener('click', () => loadInvoice(inv.purchase_invoice_id));
             tdBtn.appendChild(btn);
             tr.appendChild(tdBtn);
-
             tbody.appendChild(tr);
         });
     } catch (e) {
@@ -912,7 +522,7 @@ async function performInvoiceSearch() {
 }
 
 /* =========================================================
-   Load Invoice
+   تحميل فاتورة
    ========================================================= */
 
 async function loadInvoice(id) {
@@ -944,41 +554,57 @@ async function loadInvoice(id) {
         document.getElementById('PuInOtherCost').value = h.other_cost ?? 0;
         document.getElementById('otherCostDescription').value = h.other_cost_description ?? '';
 
-        if (Number(h.other_cost) > 0)
+        if (Number(h.other_cost) > 0) {
             document.getElementById('otherCostDescriptionContainer').classList.remove('d-none');
+        }
 
         paymentMethodChanged();
 
         const tbody = document.getElementById('purchaseInvoiceDetails');
         tbody.replaceChildren();
 
+        const tpl = document.getElementById('invoiceRowTemplate');
+
         details.forEach((d, i) => {
-            const row = cloneTemplate('invoiceRowTemplate');
+            const row = tpl.content.firstElementChild.cloneNode(true);
             const unitSel = row.querySelector('.row-unit');
-            cache.units.forEach(u => {
-                const opt = document.createElement('option');
-                opt.value = u.UnitID;
-                opt.textContent = u.UnitName;
-                if (u.UnitID == d.unit_id) opt.selected = true;
-                unitSel.appendChild(opt);
-            });
+
+            if (unitSel && typeof lookupCache !== 'undefined') {
+                (lookupCache.units || []).forEach(u => {
+                    const opt = document.createElement('option');
+                    opt.value = u.UnitID;
+                    opt.textContent = u.UnitName;
+                    if (String(u.UnitID) === String(d.unit_id)) opt.selected = true;
+                    unitSel.appendChild(opt);
+                });
+            }
+
             row.querySelector('.row-num').textContent = i + 1;
-            row.querySelector('.row-item').value = d.item_name ?? '';
-            row.querySelector('.row-item').dataset.itemId = d.item_id ?? '';
-            row.querySelector('.row-type').value = d.type_name ?? '';
-            row.querySelector('.row-type').dataset.typeId = d.type_id ?? '';
+
+            const itemInput = row.querySelector('.row-item');
+            itemInput.value = d.item_name ?? '';
+            itemInput.dataset.itemId = d.item_id ?? '';
+
+            const typeInput = row.querySelector('.row-type');
+            typeInput.value = d.type_name ?? '';
+            typeInput.dataset.typeId = d.type_id ?? '';
+
             row.querySelector('.row-code').value = d.code ?? '';
             row.querySelector('.row-weight').value = d.quantity;
             row.querySelector('.row-price').value = d.price;
             row.querySelector('.row-discount').value = d.discount;
             row.querySelector('.row-total').value = Number(d.total).toFixed(2);
+
             tbody.appendChild(row);
         });
 
         if (!details.length) setEmptyDetailsMessage();
 
         calculateTotals();
-        if (invoiceSearchModal) invoiceSearchModal.hide();
+
+        const modalEl = document.getElementById('invoiceSearchModal');
+        if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
+
         currentInvoiceId = h.purchase_invoice_id;
         setInvoiceMode('view');
         editSnapshot = null;
@@ -990,13 +616,47 @@ async function loadInvoice(id) {
 }
 
 /* =========================================================
+   Snapshot — كشف عدم التعديل
+   ========================================================= */
+
+function takeSnapshot() {
+    const data = {
+        invoice_date: document.getElementById('PurchaseInvoicesDate2')?.value || '',
+        account_id: document.getElementById('suplierID')?.value || '',
+        coin_id: document.getElementById('coinsID')?.value || '',
+        exchange_rate: document.getElementById('PuInExchangeRate2')?.value || '',
+        warehouse_id: document.getElementById('warehouseID')?.value || '',
+        payment_method: document.getElementById('PuInPaymentMethod2')?.value || '',
+        payment_account_id: document.getElementById('paymentAccountId')?.value || '',
+        statement: document.getElementById('PuInStatement2')?.value || '',
+        reference: document.getElementById('invoiceReference')?.value || '',
+        expenses: document.getElementById('PuInExpenses')?.value || '',
+        tax_cost: document.getElementById('PuInTaxCost')?.value || '',
+        transportation: document.getElementById('PuInTransportation')?.value || '',
+        other_cost: document.getElementById('PuInOtherCost')?.value || '',
+        other_cost_desc: document.getElementById('otherCostDescription')?.value || '',
+        details: Array.from(
+            document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row')
+        ).map(r => ({
+            item: r.querySelector('.row-item')?.dataset.itemId || '',
+            type: r.querySelector('.row-type')?.dataset.typeId || '',
+            code: r.querySelector('.row-code')?.value || '',
+            unit: r.querySelector('.row-unit')?.value || '',
+            qty: r.querySelector('.row-weight')?.value || '',
+            price: r.querySelector('.row-price')?.value || '',
+            discount: r.querySelector('.row-discount')?.value || '',
+        })),
+    };
+    return JSON.stringify(data);
+}
+
+/* =========================================================
    Save / Edit / Cancel / Print
    ========================================================= */
 
 function hasInvoiceData() {
     const el = document.getElementById('PurchaseInvoicesON2');
-    if (!el) return false;
-    return el.value.trim() !== '';
+    return el ? el.value.trim() !== '' : false;
 }
 
 function editInvoice() {
@@ -1004,6 +664,7 @@ function editInvoice() {
         notify('لا توجد فاتورة للتعديل', 'warning');
         return;
     }
+
     setInvoiceMode('edit');
     document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row')
         .forEach(r => enableRow(r));
@@ -1013,9 +674,8 @@ function editInvoice() {
         '#invoiceReference, #PuInExpenses, #PuInTaxCost, #PuInTransportation, ' +
         '#PuInOtherCost, #otherCostDescription'
     ).forEach(el => el.disabled = false);
-    paymentMethodChanged();
 
-    // ✅ حفظ لقطة للفاتورة بعد الدخول في وضع التعديل
+    paymentMethodChanged();
     editSnapshot = takeSnapshot();
 }
 
@@ -1026,7 +686,6 @@ function cancelInvoice() {
 }
 
 async function saveInvoice() {
-    // حماية من الحفظ المزدوج
     if (isSavingInvoice) return;
 
     const number = document.getElementById('PurchaseInvoicesON2').value.trim();
@@ -1047,7 +706,6 @@ async function saveInvoice() {
     const methodInt = PAYMENT_METHOD_TO_INT[methodStr];
     if (!methodInt) return notify('طريقة الدفع غير صالحة', 'danger');
 
-    // التحقق المنطقي: طرق الدفع الفوري تتطلب حسابًا
     if (methodInt !== 1 && !document.getElementById('paymentAccountId').value) {
         return notify('يجب اختيار حساب الدفع', 'warning');
     }
@@ -1067,14 +725,8 @@ async function saveInvoice() {
         if (price <= 0) return notify('سعر الوحدة يجب أن يكون أكبر من صفر', 'warning');
 
         const discount = parseFloat(row.querySelector('.row-discount').value) || 0;
-
         if (discount > qty * price) {
             return notify('الخصم لا يمكن أن يتجاوز قيمة الصف', 'warning');
-        }
-
-        const rowTotal = Math.max(0, qty * price - discount);
-        if (rowTotal <= 0) {
-            return notify('إجمالي الصف يجب أن يكون أكبر من صفر', 'warning');
         }
 
         details.push({
@@ -1090,10 +742,9 @@ async function saveInvoice() {
         });
     }
 
-    // ✅ كشف عدم وجود تعديلات في وضع التعديل
+    // كشف عدم التعديل
     if (invoiceMode === 'edit' && editSnapshot) {
-        const currentSnapshot = takeSnapshot();
-        if (currentSnapshot === editSnapshot) {
+        if (takeSnapshot() === editSnapshot) {
             notify('لم يتم إجراء أي تعديل على الفاتورة', 'info');
             return;
         }
@@ -1118,9 +769,7 @@ async function saveInvoice() {
         details,
     };
 
-    // بدء الحماية من الحفظ المزدوج
     isSavingInvoice = true;
-
     const saveBtn = document.getElementById('btnSaveInvoice');
     const saveNewBtn = document.getElementById('btnSaveAndNew');
     if (saveBtn) saveBtn.disabled = true;
@@ -1133,7 +782,6 @@ async function saveInvoice() {
         } else {
             r = await apiSend('/operation/purchases/invoicesPurch', 'POST', payload);
             currentInvoiceId = r.purchase_invoice_id;
-
             if (r.invoice_number) {
                 document.getElementById('PurchaseInvoicesON2').value = r.invoice_number;
             }

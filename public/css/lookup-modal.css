@@ -1,0 +1,82 @@
+/* =========================================================
+   النظام الموحّد للنوافذ المنبثقة (Lookup Modal)
+   ========================================================= */
+
+.lookup-table {
+    table-layout: fixed;
+    width: 100%;
+    margin-bottom: 0;
+}
+
+/* =========================================================
+   الرأس
+   ========================================================= */
+
+.lookup-table thead th {
+    vertical-align: middle;
+    font-weight: 600;
+    color: #495057;
+    padding: 10px 12px;
+    white-space: nowrap;
+    border-bottom: 2px solid #dee2e6;
+    background-color: #f8f9fa;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* =========================================================
+   الخلايا
+   ========================================================= */
+
+.lookup-table tbody td {
+    vertical-align: middle;
+    padding: 10px 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-color: #f1f3f5;
+}
+
+/* =========================================================
+   الصف
+   ========================================================= */
+
+.lookup-table tbody .lookup-row {
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+}
+
+.lookup-table tbody .lookup-row:hover {
+    background-color: #f0f6ff;
+}
+
+.lookup-table tbody .lookup-row:focus {
+    background-color: #cfe2ff !important;
+    outline: none;
+    box-shadow: inset 3px 0 0 #0d6efd;
+}
+
+.lookup-table tbody .lookup-row:focus td {
+    color: #0a58ca;
+    font-weight: 600;
+}
+
+/* =========================================================
+   حالة عدم وجود نتائج
+   ========================================================= */
+
+.lookup-empty {
+    text-align: center !important;
+    color: #6c757d;
+    padding: 30px 20px !important;
+    font-style: italic;
+    white-space: normal !important;
+}
+
+/* =========================================================
+   colgroup — ضبط صريح للعروض
+   ========================================================= */
+
+.lookup-table colgroup col {
+    /* العروض تُضبط ديناميكيًا من JS */
+}

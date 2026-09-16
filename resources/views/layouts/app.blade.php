@@ -20,6 +20,10 @@
         href="{{ asset('css/bootstrap.min.css') }}"  >
     <link
         rel="stylesheet"
+        href="{{ asset('css/lookup-modal.css') }}"  >
+        
+    <link
+        rel="stylesheet"
         href="{{ asset('css/accounting/chart.css') }}"  >
 
     <link rel="stylesheet" href="{{ asset('css/accounting/shared-tables.css') }}"  >
@@ -119,6 +123,13 @@
 
     </div>
 </div>
+
+        {{-- ===================================================== --}}
+        {{-- النافذة الموحّدة للنظام --}}
+        {{-- ===================================================== --}}
+
+        @include('shared.lookup-modal')
+        
     {{-- =========================================================
          Bootstrap JavaScript
     ========================================================== --}}
@@ -132,6 +143,7 @@
 
     <script src="{{ asset('js/system.js') }}"></script>
     <script src="{{ asset('js/shared/utils.js') }}"></script>
+    <script src="{{ asset('js/shared/lookup.js') }}"></script>
 
 
     {{-- =========================================================

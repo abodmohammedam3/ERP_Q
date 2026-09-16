@@ -291,9 +291,9 @@
                     </button>
                     <div class="collapse {{ $isSalesActive ? 'show' : '' }}" id="salesMenu">
                         <div class="border-end border-secondary me-3 pe-2">
-                            <a href="{{ route('sales.index') }}"
+                            <a href="{{ route('sales.invoices.index') }}"
                                class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
-                               {{ request()->routeIs('sales.*') ? 'bg-success text-white' : 'text-white-50' }}">
+                               {{ request()->routeIs('sales.invoices.*') ? 'bg-success text-white' : 'text-white-50' }}">
                                 <i class="bi bi-receipt-cutoff"></i> <span>فواتير البيع</span>
                             </a>
                             <a href="#" class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2 text-white-50">

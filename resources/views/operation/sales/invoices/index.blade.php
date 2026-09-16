@@ -6,17 +6,12 @@
 
 <div class="container-fluid py-3">
 
-    <!-- ========================= -->
     <!-- عنوان الشاشة والأزرار -->
-    <!-- ========================= -->
-
     <div class="d-flex justify-content-between align-items-center mb-3">
 
         <div>
             <h4 class="mb-1">فاتورة بيع</h4>
-            <small class="text-muted">
-                إدارة فواتير المبيعات للعملاء
-            </small>
+            <small class="text-muted">إدارة فواتير المبيعات للعملاء</small>
         </div>
 
         <div class="btn-group" role="group">
@@ -46,109 +41,86 @@
     </div>
 
 
-    <!-- ========================= -->
-    <!-- حالة الشاشة -->
-    <!-- ========================= -->
-
-    <div
-        id="salesInvoiceModeAlert"
-        class="alert alert-secondary py-2 d-none"
-        role="alert"
-    >
-        <i class="bi bi-eye"></i>
-        <span id="salesInvoiceModeText"></span>
-    </div>
-
-
-    <!-- ========================= -->
     <!-- رأس الفاتورة -->
-    <!-- ========================= -->
-
     @include('operation.sales.invoices.header')
 
-
-    <!-- ========================= -->
     <!-- تفاصيل الفاتورة -->
-    <!-- ========================= -->
-
     @include('operation.sales.invoices.detalis')
 
 </div>
 
 
-    <!-- ===================================================== -->
-    <!-- نافذة البحث عن فاتورة البيع -->
-    <!-- ===================================================== -->
-
-    @include('operation.sales.invoices.search')
-
-
 <!-- ===================================================== -->
-<!-- نافذة اختيار العميل -->
+<!-- نافذة البحث عن فاتورة بيع -->
 <!-- ===================================================== -->
 
-    @include('operation.models.customer')
+<div class="modal fade" id="salesInvoiceSearchModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
 
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-search"></i>
+                    البحث عن فاتورة بيع
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
 
-<!-- ===================================================== -->
-<!-- نافذة اختيار العملة -->
-<!-- ===================================================== -->
+            <div class="modal-body">
 
+                <div class="row g-2 mb-3">
+                    <div class="col-md-10">
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="salesInvoiceSearchInput"
+                            placeholder="أدخل رقم الفاتورة أو اسم العميل..."
+                            onkeydown="if(event.key==='Enter') performSalesInvoiceSearch()"
+                        >
+                    </div>
+                    <div class="col-md-2">
+                        <button
+                            type="button"
+                            class="btn btn-primary w-100"
+                            onclick="performSalesInvoiceSearch()"
+                        >
+                            <i class="bi bi-search"></i>
+                            بحث
+                        </button>
+                    </div>
+                </div>
 
-     @include('operation.models.currency')
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover align-middle">
+                        <thead class="table-light">
+                            <tr class="text-center">
+                                <th>رقم الفاتورة</th>
+                                <th>التاريخ</th>
+                                <th>العميل</th>
+                                <th>العملة</th>
+                                <th>طريقة الدفع</th>
+                                <th>الإجمالي</th>
+                                <th>اختيار</th>
+                            </tr>
+                        </thead>
+                        <tbody id="salesInvoiceSearchResults">
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">
+                                    أدخل بيانات البحث ثم اضغط بحث
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
 
-<!-- ===================================================== -->
-<!-- نافذة اختيار الصنف -->
-<!-- ===================================================== -->
-
-     @include('operation.models.item')
-
-
-<!-- ===================================================== -->
-<!-- نافذة اختيار النوع -->
-<!-- ===================================================== -->
-
-     @include('operation.models.type')
-
-
-<!-- ===================================================== -->
-<!-- نافذة اختيار المخزن -->
-<!-- ===================================================== -->
-
-     @include('operation.models.warehouses')
-
-
-<!-- ===================================================== -->
-<!-- نافذة اختيار الوحدة -->
-<!-- ===================================================== -->
-
-     @include('operation.models.unit')
-
+            </div>
+        </div>
+    </div>
+</div>
 
 @endsection
 
 
 @push('scripts')
-
-
-    {{-- ================================================= --}}
-    {{-- JavaScript - فاتورة البيع --}}
-    {{-- ================================================= --}}
-
-    <script src="{{ asset('js/invoice/sales_invoice_state.js') }}"></script>
-    <script src="{{ asset('js/invoice/sales_invoice_init.js') }}"></script>
-    <script src="{{ asset('js/invoice/sales_invoice_mode.js') }}"></script>
-    <script src="{{ asset('js/invoice/sales_invoice_form.js') }}"></script>
-    <script src="{{ asset('js/invoice/sales_invoice_payment.js') }}"></script>
-    <script src="{{ asset('js/invoice/sales_invoice_totals.js') }}"></script>
-    <script src="{{ asset('js/invoice/sales_invoice_rows.js') }}"></script>
-    <script src="{{ asset('js/invoice/sales_invoice_customer.js') }}"></script>
-    <script src="{{ asset('js/invoice/sales_invoice_currency.js') }}"></script>
-    <script src="{{ asset('js/invoice/sales_invoice_item.js') }}"></script>
-    <script src="{{ asset('js/invoice/sales_invoice_type.js') }}"></script>
-    <script src="{{ asset('js/invoice/sales_invoice_unit.js') }}"></script>
-    <script src="{{ asset('js/invoice/sales_invoice_warehouse.js') }}"></script>
-    <script src="{{ asset('js/invoice/sales_invoice_search.js') }}"></script>
-    <script src="{{ asset('js/invoice/sales_invoice.js') }}"></script>
-
+<script src="{{ asset('js/invoice/sales_invoice.js') }}"></script>
 @endpush

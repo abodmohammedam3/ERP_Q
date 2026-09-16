@@ -14,6 +14,7 @@ use App\Http\Controllers\Accounting\BoxController;
 use App\Http\Controllers\Accounting\BankController;
 use App\Http\Controllers\Operation\Purchases\PurchaseInvoiceController;
 use App\Http\Controllers\Operation\Movements\InventoryMovementController;
+use App\Http\Controllers\Operation\Sales\SalesInvoiceController;
 
 
 Route::get('/', function () {
@@ -120,6 +121,11 @@ Route::get(
     '/setting/customers/list',
     [CustomerController::class, 'list']
 )->name('customers.list');
+
+Route::get(
+    '/setting/customers/search',
+    [CustomerController::class, 'search']
+)->name('customers.search');
 
 Route::get(
     '/setting/customers/{id}',
@@ -418,9 +424,7 @@ Route::patch(
 // الصفحات التشغيلية
 // =====================================================
 
-Route::get('/operation/sales/invoices', function () {
-    return view('operation.sales.invoices.index');
-})->name('sales.index');
+
 
 Route::get('/operation/accounting/paymentVouchers', function () {
     return view('operation.accounting.paymentVouchers.index');
@@ -591,3 +595,86 @@ Route::post(
     '/operation/movements',
     [InventoryMovementController::class, 'store']
 )->name('movements.store');
+
+
+// =====================================================
+// فواتير البيع
+// =====================================================
+
+// -----------------------------------------------------
+// عرض الشاشة الرئيسية
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/sales/invoices',
+    [SalesInvoiceController::class, 'index']
+)->name('sales.invoices.index');
+
+
+// -----------------------------------------------------
+// رقم الفاتورة التالي
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/sales/invoices/next-number',
+    [SalesInvoiceController::class, 'nextNumber']
+)->name('sales.invoices.nextNumber');
+
+
+// -----------------------------------------------------
+// قائمة الفواتير (JSON)
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/sales/invoices/list',
+    [SalesInvoiceController::class, 'list']
+)->name('sales.invoices.list');
+
+// -----------------------------------------------------
+// آخر تكلفة لصنف في مخزن (مساعد)
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/sales/invoices/helpers/last-cost',
+    [SalesInvoiceController::class, 'lastCost']
+)->name('sales.invoices.lastCost');
+
+
+// -----------------------------------------------------
+// عرض فاتورة واحدة (JSON)
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/sales/invoices/{id}',
+    [SalesInvoiceController::class, 'show']
+)->name('sales.invoices.show');
+
+
+// -----------------------------------------------------
+// حفظ فاتورة جديدة
+// -----------------------------------------------------
+
+Route::post(
+    '/operation/sales/invoices',
+    [SalesInvoiceController::class, 'store']
+)->name('sales.invoices.store');
+
+
+// -----------------------------------------------------
+// تحديث فاتورة
+// -----------------------------------------------------
+
+Route::put(
+    '/operation/sales/invoices/{id}',
+    [SalesInvoiceController::class, 'update']
+)->name('sales.invoices.update');
+
+
+// -----------------------------------------------------
+// حذف فاتورة
+// -----------------------------------------------------
+
+Route::delete(
+    '/operation/sales/invoices/{id}',
+    [SalesInvoiceController::class, 'destroy']
+)->name('sales.invoices.destroy');

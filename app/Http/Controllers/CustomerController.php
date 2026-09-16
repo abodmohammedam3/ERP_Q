@@ -501,4 +501,36 @@ class CustomerController extends Controller
             ], 422);
         }
     }
+
+        /**
+     * بحث العملاء (JSON) — لنظام Lookup
+     */
+    public function search(Request $request)
+    {
+        $search = trim($request->input('search', ''));
+
+        $query = Customer::with('account')
+            ->orderBy('CustomersID', 'desc')
+            ->limit(50);
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('CustomersName2', 'like', "%{$search}%")
+                  ->orWhereHas('account', function ($aq) use ($search) {
+                      $aq->where('accCode', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        $customers = $query->get()->map(function ($c) {
+            return [
+                'CustomersID'    => $c->CustomersID,
+                'CustomersName2' => $c->CustomersName2,
+                'accountID'      => $c->accountID,
+                'accountCode'    => $c->account->accCode ?? null,
+            ];
+        });
+
+        return response()->json(['data' => $customers]);
+    }
 }

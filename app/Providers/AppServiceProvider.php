@@ -11,6 +11,8 @@ use App\Models\Inventory\Stock;
 use App\Models\Customer;
 use App\Models\Supplier;
 use App\Models\Purchases\PurchaseInvoice;
+use App\Models\Sales\SalesInvoice;
+
 
 use App\Observers\CharAccountObserver;
 use App\Observers\BankObserver;
@@ -19,6 +21,7 @@ use App\Observers\StockObserver;
 use App\Observers\CustomerObserver;
 use App\Observers\SupplierObserver;
 use App\Observers\PurchaseInvoiceObserver;
+use App\Observers\SalesInvoiceObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -38,5 +41,6 @@ class AppServiceProvider extends ServiceProvider
 
         // ✅ جديد: مراقب فاتورة الشراء
         PurchaseInvoice::observe(PurchaseInvoiceObserver::class);
+        SalesInvoice::observe(SalesInvoiceObserver::class);
     }
 }

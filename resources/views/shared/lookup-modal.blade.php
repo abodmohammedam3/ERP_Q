@@ -1,6 +1,6 @@
 {{-- =========================================================
      النافذة الموحّدة للنظام (Lookup Modal)
-     تُستخدم لاختيار المورد / العميل / العملة / المخزن / الصنف / النوع / الوحدة
+     تُستخدم لاختيار: المورد / العميل / العملة / المخزن / الصنف / النوع / الوحدة / الصندوق / البنك
      ========================================================= --}}
 
 <div class="modal fade" id="unifiedLookupModal" tabindex="-1" aria-hidden="true">
@@ -11,7 +11,13 @@
                 <h5 class="modal-title fw-bold" id="unifiedLookupTitle">
                     <i class="bi bi-search text-primary me-2"></i> اختيار
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
+                <button
+                    type="button"
+                    class="btn-close"
+                    style="margin-right: auto; margin-left: 0;"
+                    data-bs-dismiss="modal"
+                    aria-label="إغلاق"
+                ></button>
             </div>
 
             <div class="modal-body p-3">
@@ -33,6 +39,7 @@
 
                 <div class="table-responsive" style="max-height: 400px;">
                     <table class="table table-hover align-middle mb-0 lookup-table">
+                        <colgroup id="unifiedLookupColgroup"></colgroup>
                         <thead class="table-light sticky-top">
                             <tr id="unifiedLookupHeader"></tr>
                         </thead>

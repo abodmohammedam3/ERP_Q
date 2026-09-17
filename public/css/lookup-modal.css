@@ -13,15 +13,16 @@
    ========================================================= */
 
 .lookup-table thead th {
-    vertical-align: middle;
+    vertical-align: middle !important;
     font-weight: 600;
     color: #495057;
-    padding: 10px 12px;
-    white-space: nowrap;
+    padding: 10px 12px !important;
+    white-space: nowrap !important;
     border-bottom: 2px solid #dee2e6;
     background-color: #f8f9fa;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    box-sizing: border-box !important;
 }
 
 /* =========================================================
@@ -29,12 +30,32 @@
    ========================================================= */
 
 .lookup-table tbody td {
-    vertical-align: middle;
-    padding: 10px 12px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    vertical-align: middle !important;
+    padding: 10px 12px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
     border-color: #f1f3f5;
+    box-sizing: border-box !important;
+}
+
+/* =========================================================
+   المحاذاة (بدل style.setProperty في JS)
+   ========================================================= */
+
+.lookup-table th.text-center,
+.lookup-table td.text-center {
+    text-align: center !important;
+}
+
+.lookup-table th.text-start,
+.lookup-table td.text-start {
+    text-align: right !important;
+}
+
+.lookup-table th.text-end,
+.lookup-table td.text-end {
+    text-align: left !important;
 }
 
 /* =========================================================
@@ -73,10 +94,9 @@
     white-space: normal !important;
 }
 
-/* =========================================================
-   colgroup — ضبط صريح للعروض
-   ========================================================= */
-
-.lookup-table colgroup col {
-    /* العروض تُضبط ديناميكيًا من JS */
+.lookup-loading {
+    text-align: center !important;
+    color: #0d6efd;
+    padding: 30px 20px !important;
+    white-space: normal !important;
 }

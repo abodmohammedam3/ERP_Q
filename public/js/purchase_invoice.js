@@ -808,6 +808,14 @@ async function saveAndNewInvoice() {
 }
 
 function printInvoice() {
-    if (!hasInvoiceData()) { notify('لا توجد فاتورة للطباعة', 'warning'); return; }
-    window.print();
+    if (!hasInvoiceData() || !currentInvoiceId) {
+        notify('يجب حفظ الفاتورة أولاً قبل الطباعة', 'warning');
+        return;
+    }
+
+    window.open(
+        `/operation/purchases/invoicesPurch/${currentInvoiceId}/print`,
+        '_blank',
+        'width=900,height=700'
+    );
 }

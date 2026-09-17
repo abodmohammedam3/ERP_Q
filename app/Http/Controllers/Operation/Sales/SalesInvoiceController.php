@@ -283,6 +283,30 @@ class SalesInvoiceController extends Controller
         }
     }
 
+        /**
+     * طباعة فاتورة البيع
+     */
+    public function print($id)
+    {
+        $invoice = SalesInvoice::with([
+            'details.item',
+            'details.type',
+            'details.unit',
+            'customerAccount',
+            'coin',
+        ])->find($id);
+
+        if (!$invoice) {
+            abort(404, 'الفاتورة غير موجودة');
+        }
+
+        return view('print.sales-invoice', compact('invoice'));
+    }
+
+
+
+
+
     // =====================================================
     // التحقق من البيانات
     // =====================================================

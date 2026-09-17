@@ -504,6 +504,16 @@ Route::get(
 
 
 // -----------------------------------------------------
+// طباعة فاتورة الشراء
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/purchases/invoicesPurch/{id}/print',
+    [PurchaseInvoiceController::class, 'print']
+)->name('invoicesPurch.print');
+
+
+// -----------------------------------------------------
 // عرض فاتورة واحدة (JSON)
 // -----------------------------------------------------
 
@@ -638,6 +648,15 @@ Route::get(
     '/operation/sales/invoices/helpers/last-cost',
     [SalesInvoiceController::class, 'lastCost']
 )->name('sales.invoices.lastCost');
+
+// -----------------------------------------------------
+// طباعة فاتورة البيع
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/sales/invoices/{id}/print',
+    [SalesInvoiceController::class, 'print']
+)->name('sales.invoices.print');
 
 
 // -----------------------------------------------------

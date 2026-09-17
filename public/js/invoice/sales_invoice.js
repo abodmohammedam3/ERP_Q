@@ -767,13 +767,17 @@ async function saveAndNewSalesInvoice() {
 }
 
 function printSalesInvoice() {
-    if (!hasSalesInvoiceData()) {
-        salesNotify('لا توجد فاتورة للطباعة', 'warning');
+    if (!hasSalesInvoiceData() || !currentSalesInvoiceId) {
+        notify('يجب حفظ الفاتورة أولاً قبل الطباعة', 'warning');
         return;
     }
-    window.print();
-}
 
+    window.open(
+        `/operation/sales/invoices/${currentSalesInvoiceId}/print`,
+        '_blank',
+        'width=900,height=700'
+    );
+}
 /* =========================================================
    تصدير للـ HTML
    ========================================================= */

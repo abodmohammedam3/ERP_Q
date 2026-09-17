@@ -251,6 +251,29 @@ class PurchaseInvoiceController extends Controller
         }
     }
 
+
+        /**
+     * طباعة فاتورة الشراء
+     */
+    public function print($id)
+    {
+        $invoice = PurchaseInvoice::with([
+            'details.item',
+            'details.type',
+            'details.unit',
+            'supplierAccount',
+            'warehouse',
+            'coin',
+        ])->find($id);
+
+        if (!$invoice) {
+            abort(404, 'الفاتورة غير موجودة');
+        }
+
+        return view('print.purchase-invoice', compact('invoice'));
+    }
+
+
     // =====================================================
     // التحقق من البيانات (يبقى في Controller — طبقة HTTP)
     // =====================================================

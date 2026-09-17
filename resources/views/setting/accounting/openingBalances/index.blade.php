@@ -5,14 +5,16 @@
 @section('content')
 <div class="container-fluid py-3">
 
-    {{-- عنوان الشاشة --}}
+    {{-- العنوان --}}
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h4 class="mb-1">
                 <i class="bi bi-journal-bookmark"></i>
                 الأرصدة الافتتاحية
             </h4>
-            <small class="text-muted">إدارة الأرصدة الافتتاحية للصناديق والبنوك والعملاء والموردين</small>
+            <small class="text-muted">
+                إدارة الأرصدة الافتتاحية للصناديق والبنوك والعملاء والموردين
+            </small>
         </div>
 
         <div class="d-flex gap-2">
@@ -30,26 +32,24 @@
         </div>
     </div>
 
-    {{-- التابات: صناديق / بنوك / عملاء / موردين --}}
+    {{-- الأجزاء --}}
     @include('setting.accounting.openingBalances.tabs')
-
-    {{-- شريط البحث --}}
     @include('setting.accounting.openingBalances.search')
-
-    {{-- جدول العرض --}}
     @include('setting.accounting.openingBalances.table')
-
-    {{-- الإجماليات أسفل الجدول --}}
     @include('setting.accounting.openingBalances.footer')
 
 </div>
 
 {{-- المودلات --}}
 @include('setting.accounting.openingBalances.addUpdate')
+@include('setting.accounting.openingBalances.accountPicker')
 @include('setting.accounting.openingBalances.deletModel')
 
 @endsection
 
 @push('scripts')
+<script>
+    window.OB_SYSTEM_CURRENCY_CODE = @json($systemCurrencyCode ?? '');
+</script>
 <script src="{{ asset('js/accounting/openingBalances.js') }}"></script>
 @endpush

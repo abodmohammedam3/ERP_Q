@@ -7,7 +7,8 @@
                 data-bs-target="#tab-cash"
                 data-type="CASH"
                 role="tab">
-            <i class="fas fa-money-bill"></i> الصناديق
+            <i class="bi bi-cash-stack"></i>
+            الصناديق
         </button>
     </li>
 
@@ -18,7 +19,8 @@
                 data-bs-target="#tab-bank"
                 data-type="BANK"
                 role="tab">
-            <i class="fas fa-university"></i> البنوك
+            <i class="bi bi-bank"></i>
+            البنوك
         </button>
     </li>
 
@@ -29,7 +31,8 @@
                 data-bs-target="#tab-customer"
                 data-type="CUSTOMER"
                 role="tab">
-            <i class="fas fa-users"></i> العملاء
+            <i class="bi bi-people"></i>
+            العملاء
         </button>
     </li>
 
@@ -40,7 +43,8 @@
                 data-bs-target="#tab-supplier"
                 data-type="SUPPLIER"
                 role="tab">
-            <i class="fas fa-truck"></i> الموردين
+            <i class="bi bi-truck"></i>
+            الموردين
         </button>
     </li>
 

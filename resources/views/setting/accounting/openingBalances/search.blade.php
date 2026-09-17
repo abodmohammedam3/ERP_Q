@@ -1,9 +1,9 @@
 <div class="row mb-2" id="openingBalancesSearch">
-
     <div class="col-md-6">
         <div class="input-group">
+
             <span class="input-group-text">
-                <i class="fas fa-search"></i>
+                <i class="bi bi-search"></i>
             </span>
 
             <input type="text"
@@ -14,10 +14,11 @@
 
             <button type="button"
                     class="btn btn-outline-secondary"
-                    id="btnClearSearch">
-                <i class="fas fa-times"></i>
+                    id="btnClearSearch"
+                    title="مسح البحث">
+                <i class="bi bi-x-lg"></i>
             </button>
+
         </div>
     </div>
-
 </div>

@@ -8,13 +8,16 @@ use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\Inventory\ItemController;
 use App\Http\Controllers\Inventory\TypeController;
 use App\Http\Controllers\Inventory\UnitController;
+use App\Http\Controllers\accounting\OpeningBalanceController;
 use App\Http\Controllers\Inventory\StockController;
-use App\Http\Controllers\Accounting\CoinController;
-use App\Http\Controllers\Accounting\BoxController;
-use App\Http\Controllers\Accounting\BankController;
+use App\Http\Controllers\accounting\CoinController;
+use App\Http\Controllers\accounting\BoxController;
+use App\Http\Controllers\accounting\BankController;
 use App\Http\Controllers\Operation\Purchases\PurchaseInvoiceController;
 use App\Http\Controllers\Operation\Movements\InventoryMovementController;
 use App\Http\Controllers\Operation\Sales\SalesInvoiceController;
+
+
 
 
 Route::get('/', function () {
@@ -231,6 +234,38 @@ Route::patch(
 )->name('boxes.toggleStatus');
 
 
+
+// =====================================================
+// الأرصدة الافتتاحية
+// =====================================================
+
+Route::get('/setting/accounting/openingBalances',
+    [OpeningBalanceController::class, 'index']
+)->name('openingBalances.index');
+
+Route::get('/setting/accounting/openingBalances/list',
+    [OpeningBalanceController::class, 'list']
+)->name('openingBalances.list');
+
+Route::get('/setting/accounting/openingBalances/picker',
+    [OpeningBalanceController::class, 'picker']
+)->name('openingBalances.picker');
+
+Route::get('/setting/accounting/openingBalances/{id}/edit',
+    [OpeningBalanceController::class, 'edit']
+)->name('openingBalances.edit');
+
+Route::post('/setting/accounting/openingBalances',
+    [OpeningBalanceController::class, 'store']
+)->name('openingBalances.store');
+
+Route::put('/setting/accounting/openingBalances/{id}',
+    [OpeningBalanceController::class, 'update']
+)->name('openingBalances.update');
+
+Route::delete('/setting/accounting/openingBalances/{id}',
+    [OpeningBalanceController::class, 'destroy']
+)->name('openingBalances.destroy');
 // =====================================================
 // البنوك
 // =====================================================
@@ -261,14 +296,6 @@ Route::delete('/setting/accounting/banks/{bank}',
 Route::patch('/setting/accounting/banks/{bank}/toggle-status',
     [BankController::class, 'toggleStatus']
 )->name('banks.toggleStatus');
-
-
-Route::get('/setting/accounting/openingBalances', function () {
-    return view('setting.accounting.openingBalances.index');
-})->name('openingBalances.index');
-
-// ⚠️ تم حذف الراوت المكرر الخاص بـ /setting/suppliers
-// لأنه كان يتعارض مع Controller ويسبب عدم ظهور البيانات
 
 
 // =====================================================

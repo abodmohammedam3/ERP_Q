@@ -12,8 +12,10 @@ use App\Models\Customer;
 use App\Models\Supplier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use App\Services\JournalEntryService;
 
 class OpeningBalanceController extends Controller
 {
@@ -113,6 +115,10 @@ class OpeningBalanceController extends Controller
     {
         session()->save();
 
+        // 1) احذف القيد المرتبط (قبل حذف الرصيد)
+        JournalEntryService::deleteByDocNumber('OB-' . $id);
+
+        // 2) احذف الرصيد
         if (!OpeningBalance::where('openingBalancesID', $id)->delete()) {
             return $this->fail('الرصيد غير موجود.', 404);
         }
@@ -550,23 +556,111 @@ class OpeningBalanceController extends Controller
             return $this->fail($validator->errors()->first());
         }
 
-        // التحقق من التكرار + صحة الأسطر
         if ($error = $this->validateLines($request->lines, $id)) {
             return $this->fail($error);
         }
 
-        DB::transaction(function () use ($request, $id) {
+        DB::beginTransaction();
+
+        try {
+            // عند التعديل: احذف الأرصدة القديمة والقيود المرتبطة
             if ($id) {
+                JournalEntryService::deleteByDocNumber('OB-' . $id);
                 OpeningBalance::where('openingBalancesID', $id)->delete();
             }
 
-            OpeningBalance::insert($this->buildInsertData($request->lines));
-        });
+            // أضف الأرصدة الجديدة
+            $insertedIDs = [];
 
-        $this->clearListCache();
+            foreach ($request->lines as $line) {
+                $row = OpeningBalance::create([
+                    'accountID'       => $line['account_id'],
+                    'coinsID'         => $line['currency_id'] ?? null,
+                    'opeExchangeRate' => (float) ($line['exchange_rate'] ?? 1),
+                    'opeDebit'        => (float) ($line['debit']  ?? 0),
+                    'opeCredit'       => (float) ($line['credit'] ?? 0),
+                    'opeFiscalYear'   => now()->startOfYear(),
+                    'opeData'         => now(),
+                ]);
 
-        return $this->ok([
-            'message' => $id ? 'تم تعديل الرصيد بنجاح' : 'تم إضافة الرصيد بنجاح',
+                $insertedIDs[] = $row->openingBalancesID;
+            }
+
+            // ⭐ إنشاء قيد لكل رصيد مضاف
+            foreach ($insertedIDs as $balanceID) {
+                $this->createEntryForBalance($balanceID);
+            }
+
+            DB::commit();
+
+            $this->clearListCache();
+
+            return $this->ok([
+                'message' => $id ? 'تم تعديل الرصيد بنجاح' : 'تم إضافة الرصيد بنجاح',
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->fail('فشل الحفظ: ' . $e->getMessage());
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  Journal Entry Integration
+    // ══════════════════════════════════════════════════════════
+
+    /**
+     * إنشاء قيد محاسبي لرصيد افتتاحي واحد
+     */
+    private function createEntryForBalance(int $balanceID): void
+    {
+        $balance = OpeningBalance::with(['account', 'currency'])->find($balanceID);
+        if (!$balance) return;
+
+        $offsetAccount = CharAccount::where('system_key', 'openingBalance')->first();
+        if (!$offsetAccount) {
+            Log::warning('حساب الأرصدة الافتتاحية غير موجود (system_key = openingBalance)');
+            return;
+        }
+
+        $rate   = (float) ($balance->opeExchangeRate ?? 1);
+        $debit  = (float) $balance->opeDebit;
+        $credit = (float) $balance->opeCredit;
+
+        $localDebit  = $debit  * $rate;
+        $localCredit = $credit * $rate;
+        $netAmount   = $localDebit - $localCredit;
+
+        if ($netAmount == 0) return;
+
+        // ⭐ استخدم Service المشترك
+        JournalEntryService::create([
+            'docType'     => 'قيد افتتاحي',
+            'docNumber'   => 'OB-' . $balanceID,
+            'entryDate'   => $balance->opeData ?? now(),
+            'description' => 'الأرصدة الافتتاحية - ' . ($balance->account->accName ?? ''),
+            'lines'       => [
+                // سطر الرصيد
+                [
+                    'accountID'   => $balance->accountID,
+                    'coinsID'     => $balance->coinsID,
+                    'exchangRate' => $rate,
+                    'debit'       => $debit,
+                    'credit'      => $credit,
+                    'localDebit'  => $localDebit,
+                    'localCredit' => $localCredit,
+                ],
+                // سطر الطرف المقابل
+                [
+                    'accountID'   => $offsetAccount->accountID,
+                    'coinsID'     => null,
+                    'exchangRate' => 1,
+                    'debit'       => $netAmount < 0 ? abs($netAmount) : 0,
+                    'credit'      => $netAmount > 0 ? $netAmount : 0,
+                    'localDebit'  => $netAmount < 0 ? abs($netAmount) : 0,
+                    'localCredit' => $netAmount > 0 ? $netAmount : 0,
+                ],
+            ],
         ]);
     }
 
@@ -578,14 +672,12 @@ class OpeningBalanceController extends Controller
     {
         $accountIds = collect($lines)->pluck('account_id')->unique()->all();
 
-        // 1) منع التكرار داخل نفس الطلب
         $ids = collect($lines)->pluck('account_id');
 
         if ($ids->count() !== $ids->unique()->count()) {
             return 'لا يمكن إدخال نفس الحساب أكثر من مرة في نفس العملية.';
         }
 
-        // 2) منع التكرار في قاعدة البيانات
         $query = OpeningBalance::whereIn('accountID', $accountIds);
 
         if ($excludeId) {
@@ -603,7 +695,6 @@ class OpeningBalanceController extends Controller
             return "الحسابات التالية لها رصيد افتتاحي مسجل مسبقًا: {$duplicates}";
         }
 
-        // 3) التحقق من الحسابات النشطة
         $activeIds = CharAccount::whereIn('accountID', $accountIds)
             ->where('IsActive', 1)
             ->pluck('accountID')

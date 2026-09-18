@@ -67,7 +67,7 @@
     <table class="table table-bordered table-hover align-middle" id="obTable">
         <thead class="table-light">
             <tr>
-                <th width="50">#</th>
+                <th width="50">الرقم</th>
                 <th>رقم الحساب</th>
                 <th>اسم الحساب</th>
                 <th width="80">العملة</th>

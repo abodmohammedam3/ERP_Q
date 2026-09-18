@@ -185,7 +185,21 @@ let lookupLastClosedAt = 0;
 let lookupSearchTimer = null;
 
 /* =========================================================================
-   5) أدوات مساعدة
+   5) الصفحات المستثناة من التحميل المسبق
+   ========================================================================= */
+
+const lookupSkipPreloadPages = [
+    'openingBalances',
+    'journalEntries',
+];
+
+function lookupShouldSkipPreload() {
+    const currentPath = window.location.pathname;
+    return lookupSkipPreloadPages.some(page => currentPath.includes(page));
+}
+
+/* =========================================================================
+   6) أدوات مساعدة
    ========================================================================= */
 
 function lookupNormalize(data) {
@@ -195,7 +209,7 @@ function lookupNormalize(data) {
 }
 
 /* =========================================================================
-   6) Lazy Loading — تحميل نقاط البيانات عند الطلب
+   7) Lazy Loading — تحميل نقاط البيانات عند الطلب
    ========================================================================= */
 
 async function lookupEnsureLoaded(key) {
@@ -238,7 +252,7 @@ async function lookupEnsureLoaded(key) {
 }
 
 /* =========================================================================
-   7) التهيئة
+   8) التهيئة
    ========================================================================= */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -277,16 +291,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     lookupSetupFocusTrap(modalEl);
 
-    // ✅ Preload مؤجل — لا يزاحم تحميل الصفحة
-    if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(() => lookupEnsureLoaded('unit'), { timeout: 2000 });
-    } else {
-        setTimeout(() => lookupEnsureLoaded('unit'), 800);
-    }
+    // ✅ Preload الوحدات — تحتاجها صفوف الفواتير
+    lookupEnsureLoaded('unit');
 });
 
 /* =========================================================================
-   8) Event Delegation
+   8) Event Delegation — لكل حقول data-lookup
+   =========================================================================
+   - Enter       → يفتح النافذة (دائمًا)
+   - Tab مع نص   → يفتح النافذة
+   - Tab فارغ    → ينتقل بشكل طبيعي
    ========================================================================= */
 
 document.addEventListener('keydown', (e) => {
@@ -362,7 +376,7 @@ document.addEventListener('blur', (e) => {
 }, true);
 
 /* =========================================================================
-   9) فتح النافذة
+   9) فتح النافذة — تحميل قبل الإظهار
    ========================================================================= */
 
 async function openLookup(key, target) {
@@ -414,7 +428,7 @@ async function openLookup(key, target) {
 }
 
 /* =========================================================================
-   10) عرض الجدول
+   11) عرض الجدول
    ========================================================================= */
 
 function lookupRenderHeader(config) {
@@ -541,7 +555,7 @@ function lookupFilterAndRender() {
 }
 
 /* =========================================================================
-   11) البحث — مع Debounce
+   11) البحث داخل النافذة
    ========================================================================= */
 
 function lookupSearchInput() {
@@ -563,7 +577,7 @@ function lookupSearchKeyDown(e) {
 }
 
 /* =========================================================================
-   12) التركيز
+   13) التركيز
    ========================================================================= */
 
 function lookupFocusFirstRow() {
@@ -572,7 +586,7 @@ function lookupFocusFirstRow() {
 }
 
 /* =========================================================================
-   13) اختيار صف
+   14) اختيار صف
    ========================================================================= */
 
 function lookupSelectRow(row) {
@@ -615,7 +629,7 @@ function lookupSelectRow(row) {
 }
 
 /* =========================================================================
-   14) Focus Trap
+   14) Focus Trap — حصر التركيز داخل النافذة
    ========================================================================= */
 
 function lookupSetupFocusTrap(modalEl) {
@@ -658,7 +672,7 @@ function lookupSetupFocusTrap(modalEl) {
 }
 
 /* =========================================================================
-   15) تصدير الدوال العامة
+   16) تصدير الدوال العامة
    ========================================================================= */
 
 window.openLookup = openLookup;
@@ -668,3 +682,7 @@ window.lookupCache = lookupCache;
 window.LookupConfigs = LookupConfigs;
 window.lookupEnsureLoaded = lookupEnsureLoaded;
 window.lookupLoadedFlags = lookupLoadedFlags;
+
+/* =========================================================================
+   16) نهاية الملف
+   ========================================================================= */

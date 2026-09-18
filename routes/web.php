@@ -16,6 +16,7 @@ use App\Http\Controllers\accounting\BankController;
 use App\Http\Controllers\Operation\Purchases\PurchaseInvoiceController;
 use App\Http\Controllers\Operation\Movements\InventoryMovementController;
 use App\Http\Controllers\Operation\Sales\SalesInvoiceController;
+use App\Http\Controllers\accounting\JournalEntryController;
 
 
 
@@ -32,39 +33,20 @@ Route::get('/dashboard', function () {
 // دوال دليل الحسابات
 // =====================================================
 
-// -----------------------------------------------------
-// الصفحة الرئيسية
-// -----------------------------------------------------
-
 Route::get(
     '/settings/accounting/chartOfAccounts',
     [CharAccountController::class, 'index']
 )->name('chartOfAccounts.index');
-
-
-// -----------------------------------------------------
-// شجرة الحسابات التجميعية
-// -----------------------------------------------------
 
 Route::get(
     '/settings/accounting/chartOfAccounts/tree',
     [CharAccountController::class, 'tree']
 )->name('chartOfAccounts.tree');
 
-
-// -----------------------------------------------------
-// الحسابات التحليلية التابعة
-// -----------------------------------------------------
-
 Route::get(
     '/settings/accounting/chartOfAccounts/{account}/analytical',
     [CharAccountController::class, 'analyticalAccounts']
 )->name('chartOfAccounts.analytical');
-
-
-// -----------------------------------------------------
-// رقم الحساب الفرعي التالي
-// -----------------------------------------------------
 
 Route::get(
     '/settings/accounting/chartOfAccounts/next-code/{parentId}',
@@ -72,19 +54,11 @@ Route::get(
 )->name('chartOfAccounts.nextCode');
 
 
-// -----------------------------------------------------
-// إضافة حساب
-// -----------------------------------------------------
-
 Route::post(
     '/settings/accounting/chartOfAccounts',
     [CharAccountController::class, 'store']
 )->name('chartOfAccounts.store');
 
-
-// -----------------------------------------------------
-// جلب حساب للتعديل
-// -----------------------------------------------------
 
 Route::get(
     '/settings/accounting/chartOfAccounts/{account}',
@@ -92,19 +66,11 @@ Route::get(
 )->name('chartOfAccounts.edit');
 
 
-// -----------------------------------------------------
-// تحديث حساب
-// -----------------------------------------------------
-
 Route::put(
     '/settings/accounting/chartOfAccounts/{account}',
     [CharAccountController::class, 'update']
 )->name('chartOfAccounts.update');
 
-
-// -----------------------------------------------------
-// حذف حساب
-// -----------------------------------------------------
 
 Route::delete(
     '/settings/accounting/chartOfAccounts/{account}',
@@ -192,10 +158,6 @@ Route::delete(
 
 
 // =====================================================
-// الصفحات الأخرى (الإعدادات)
-// =====================================================
-
-// =====================================================
 // الصناديق
 // =====================================================
 Route::get(
@@ -266,6 +228,23 @@ Route::put('/setting/accounting/openingBalances/{id}',
 Route::delete('/setting/accounting/openingBalances/{id}',
     [OpeningBalanceController::class, 'destroy']
 )->name('openingBalances.destroy');
+
+// =====================================================
+// قيود اليومية
+// =====================================================
+
+Route::get('/operation/accounting/journalEntries',
+    [JournalEntryController::class, 'index']
+)->name('journalEntries.index');
+
+Route::get('/operation/accounting/journalEntries/list',
+    [JournalEntryController::class, 'list']
+)->name('journalEntries.list');
+
+Route::get('/operation/accounting/journalEntries/{id}/show',
+    [JournalEntryController::class, 'show']
+)->name('journalEntries.show');
+
 // =====================================================
 // البنوك
 // =====================================================

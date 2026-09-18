@@ -8,12 +8,12 @@
         <div class="modal-content" style="height: 70vh;">
 
             {{-- الرأس --}}
-            <div class="modal-header">
+            <div class="modal-header position-relative">
                 <h5 class="modal-title" id="accountPickerTitle">
                     اختيار
                 </h5>
                 <button type="button"
-                        class="btn-close"
+                        class="btn-close position-absolute top-0 start-0 m-3"
                         data-bs-dismiss="modal">
                 </button>
             </div>

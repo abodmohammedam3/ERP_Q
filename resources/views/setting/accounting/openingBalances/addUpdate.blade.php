@@ -38,7 +38,7 @@
                         <table class="table table-bordered mb-0" id="linesTable">
                             <thead class="table-light sticky-top">
                                 <tr>
-                                    <th width="40">#</th>
+                                    <th width="40">الرقم</th>
                                     <th width="110">النوع</th>
                                     <th width="200">الحساب</th>
                                     <th width="120">العملة</th>

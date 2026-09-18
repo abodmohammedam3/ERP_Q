@@ -301,11 +301,12 @@
                             </a>
                         </div>
                     </div>
-
+                    
                     {{-- الحسابات --}}
                     @php
                         $isAccountsActive = request()->routeIs('paymentVouchers.*') ||
-                                             request()->routeIs('receiptVouchers.*');
+                                            request()->routeIs('receiptVouchers.*') ||
+                                            request()->routeIs('journalEntries.*');
                     @endphp
                     <button type="button"
                             class="btn btn-dark w-100 d-flex align-items-center justify-content-between text-end rounded-2 px-3 py-2 border-0"
@@ -321,18 +322,31 @@
                     </button>
                     <div class="collapse {{ $isAccountsActive ? 'show' : '' }}" id="accountsOperationsMenu">
                         <div class="border-end border-secondary me-3 pe-2">
+
+                            {{-- قيود اليومية --}}
+                            <a href="{{ route('journalEntries.index') }}"
+                            class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
+                            {{ request()->routeIs('journalEntries.*') ? 'bg-success text-white' : 'text-white-50' }}">
+                                <i class="bi bi-journal-text"></i> <span>قيود اليومية</span>
+                            </a>
+
+                            {{-- سند صرف --}}
                             <a href="{{ route('paymentVouchers.index') }}"
-                               class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
-                               {{ request()->routeIs('paymentVouchers.*') ? 'bg-success text-white' : 'text-white-50' }}">
+                            class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
+                            {{ request()->routeIs('paymentVouchers.*') ? 'bg-success text-white' : 'text-white-50' }}">
                                 <i class="bi bi-cash"></i> <span>سند صرف</span>
                             </a>
+
+                            {{-- سند قبض --}}
                             <a href="{{ route('receiptVouchers.index') }}"
-                               class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
-                               {{ request()->routeIs('receiptVouchers.*') ? 'bg-success text-white' : 'text-white-50' }}">
+                            class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
+                            {{ request()->routeIs('receiptVouchers.*') ? 'bg-success text-white' : 'text-white-50' }}">
                                 <i class="bi bi-cash-stack"></i> <span>سند قبض</span>
                             </a>
+
                         </div>
                     </div>
+              
 
                     {{-- حركة المخزون --}}
                      <a

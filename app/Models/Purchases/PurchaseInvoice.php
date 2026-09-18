@@ -32,18 +32,20 @@ class PurchaseInvoice extends Model
         'other_cost_description',
         'statement',
         'reference',
+        'total_in_base_currency',   // ✅ جديد
     ];
 
     protected $casts = [
-        'invoice_date'    => 'date',
-        'exchange_rate'   => 'decimal:6',
-        'items_total'     => 'decimal:6',
-        'discount_total'  => 'decimal:6',
-        'expenses'        => 'decimal:6',
-        'tax_cost'        => 'decimal:6',
-        'transportation'  => 'decimal:6',
-        'other_cost'      => 'decimal:6',
-        'payment_method'  => 'integer',
+        'invoice_date'            => 'date',
+        'exchange_rate'           => 'decimal:6',
+        'items_total'             => 'decimal:6',
+        'discount_total'          => 'decimal:6',
+        'expenses'                => 'decimal:6',
+        'tax_cost'                => 'decimal:6',
+        'transportation'          => 'decimal:6',
+        'other_cost'              => 'decimal:6',
+        'total_in_base_currency'  => 'decimal:6',   // ✅ جديد
+        'payment_method'          => 'integer',
     ];
 
     // ============================================
@@ -58,57 +60,26 @@ class PurchaseInvoice extends Model
     // العلاقات
     // ============================================
 
-    /**
-     * حساب المورد في دليل الحسابات
-     */
     public function supplierAccount()
     {
-        return $this->belongsTo(
-            CharAccount::class,
-            'account_id',
-            'accountID'
-        );
+        return $this->belongsTo(CharAccount::class, 'account_id', 'accountID');
     }
 
-    /**
-     * حساب الدفع الفوري (صندوق/بنك/محفظة)
-     */
     public function paymentAccount()
     {
-        return $this->belongsTo(
-            CharAccount::class,
-            'payment_account_id',
-            'accountID'
-        );
+        return $this->belongsTo(CharAccount::class, 'payment_account_id', 'accountID');
     }
 
-    /**
-     * العملة
-     */
     public function coin()
     {
-        return $this->belongsTo(
-            Coin::class,
-            'coin_id',
-            'coinsID'
-        );
+        return $this->belongsTo(Coin::class, 'coin_id', 'coinsID');
     }
 
-    /**
-     * المخزن
-     */
     public function warehouse()
     {
-        return $this->belongsTo(
-            Stock::class,
-            'warehouse_id',
-            'StockID'
-        );
+        return $this->belongsTo(Stock::class, 'warehouse_id', 'StockID');
     }
 
-    /**
-     * تفاصيل الأصناف
-     */
     public function details()
     {
         return $this->hasMany(
@@ -139,12 +110,17 @@ class PurchaseInvoice extends Model
     }
 
     /**
-     * الإجمالي بالعملة المحلية
-     * = الإجمالي بعملة الفاتورة × سعر الصرف
+     * الإجمالي بالعملة المحلية (Accessor احتياطي — يعتمد على العمود المخزّن)
+     * = total_in_base_currency
      */
     public function getTotalInLocalCurrencyAttribute(): float
     {
+        // إن كان العمود مُخزَّنًا، نستخدمه. وإلا نحسبه ديناميكيًا.
+        if (!empty($this->attributes['total_in_base_currency'])) {
+            return (float) $this->attributes['total_in_base_currency'];
+        }
+
         return $this->total_in_invoice_currency
-            * (float) $this->exchange_rate;
+            * (float) ($this->exchange_rate ?: 1);
     }
 }

@@ -18,27 +18,19 @@ class PurchaseInvoiceService
     {
         return DB::transaction(function () use ($request) {
 
-            // 1. توليد رقم الفاتورة على الخادم بشكل آمن
             $nextNumber = $this->nextInvoiceNumber();
 
             $data = $this->headerData($request);
             $data['invoice_number'] = (string) $nextNumber;
 
-            // 2. إنشاء الرأس
             $invoice = PurchaseInvoice::create($data);
 
-            // 3. حفظ التفاصيل
             $this->saveDetails($invoice, $request->input('details', []));
 
-            // 4. إعادة حساب الإجماليات
             $this->recalculateTotals($invoice);
 
-            // 5. مزامنة حركة المخزون
             $invoice->load('details');
             $this->syncInventoryMovement($invoice);
-
-            // 6. (لاحقًا) مزامنة القيود المحاسبية
-            // $this->syncAccountingEntry($invoice);
 
             return $invoice;
         });
@@ -53,23 +45,17 @@ class PurchaseInvoiceService
 
             $invoice = PurchaseInvoice::findOrFail($id);
 
-            // 1. تحديث الرأس (بدون رقم الفاتورة)
             $data = $this->headerData($request);
             unset($data['invoice_number']);
             $invoice->update($data);
 
-            // 2. حذف التفاصيل القديمة وإعادة إضافتها
             $invoice->details()->delete();
             $this->saveDetails($invoice, $request->input('details', []));
 
-            // 3. إعادة حساب الإجماليات
             $this->recalculateTotals($invoice);
 
-            // 4. مزامنة حركة المخزون (حذف القديمة + إنشاء جديدة)
             $invoice->load('details');
             $this->syncInventoryMovement($invoice);
-
-            // 5. (لاحقًا) مزامنة القيود المحاسبية
 
             return $invoice;
         });
@@ -84,12 +70,8 @@ class PurchaseInvoiceService
 
             $invoice = PurchaseInvoice::findOrFail($id);
 
-            // 1. حذف حركة المخزون المرتبطة
             $this->deleteInventoryMovement($invoice);
 
-            // 2. (لاحقًا) حذف القيود المحاسبية
-
-            // 3. حذف التفاصيل + الرأس
             $invoice->details()->delete();
             $invoice->delete();
         });
@@ -104,10 +86,10 @@ class PurchaseInvoiceService
      */
     public function syncInventoryMovement(PurchaseInvoice $invoice): void
     {
-        // 1. حذف أي حركة قديمة (حالة التعديل)
+        // 1. حذف أي حركة قديمة
         $this->deleteInventoryMovement($invoice);
 
-        // 2. توليد رقم الحركة بشكل آمن
+        // 2. توليد رقم الحركة
         $lastMovement = InventoryMovement::lockForUpdate()
             ->orderBy('movement_id', 'desc')
             ->first();
@@ -133,13 +115,49 @@ class PurchaseInvoiceService
             'total'           => 0,
         ]);
 
-        // 4. إنشاء التفاصيل
-        $movementTotal = 0;
+        $rate = (float) ($invoice->exchange_rate ?: 1);
 
-        foreach ($invoice->details as $detail) {
-            $quantity  = (float) $detail->quantity;
-            $unitCost  = (float) $detail->price;
-            $lineTotal = $quantity * $unitCost;
+        // 4. التكاليف الإضافية بعملة الفاتورة
+        $extraCostsFC = (float) $invoice->expenses
+                      + (float) $invoice->tax_cost
+                      + (float) $invoice->transportation
+                      + (float) $invoice->other_cost;
+
+        // 5. حساب مجموع الصافي (لقاعدة التوزيع)
+        $detailsCollection = $invoice->details;
+        $totalNetFC = 0;
+
+        foreach ($detailsCollection as $d) {
+            $totalNetFC += max(
+                0,
+                ((float) $d->quantity * (float) $d->price) - (float) $d->discount
+            );
+        }
+
+        $movementTotalBC = 0;
+
+        // 6. إنشاء التفاصيل
+        foreach ($detailsCollection as $detail) {
+            $quantity   = (float) $detail->quantity;
+            $priceFC    = (float) $detail->price;
+            $discountFC = (float) $detail->discount;
+
+            // الصافي بعد الخصم (بعملة الفاتورة)
+            $lineNetFC = max(0, ($quantity * $priceFC) - $discountFC);
+
+            // توزيع التكاليف الإضافية نسبيًا
+            $shareFC = 0;
+            if ($totalNetFC > 0 && $extraCostsFC > 0) {
+                $shareFC = ($lineNetFC / $totalNetFC) * $extraCostsFC;
+            }
+
+            // التكلفة الواصلة (Landed Cost) بعملة الفاتورة
+            $landedFC   = $lineNetFC + $shareFC;
+            $unitCostFC = $quantity > 0 ? ($landedFC / $quantity) : 0;
+
+            // التحويل إلى العملة الأساسية
+            $unitCostBC  = $unitCostFC * $rate;
+            $lineTotalBC = $landedFC   * $rate;
 
             InventoryMovementDetail::create([
                 'movement_id'  => $movement->movement_id,
@@ -149,18 +167,17 @@ class PurchaseInvoiceService
                 'code'         => $detail->code,
                 'warehouse_id' => $invoice->warehouse_id,
                 'quantity'     => $quantity,
-                'unit_cost'    => $unitCost,
+                'unit_cost'    => $unitCostBC,
                 'min_price'    => null,
                 'max_price'    => null,
                 'sale_price'   => null,
-                'total'        => $lineTotal,
+                'total'        => $lineTotalBC,
             ]);
 
-            $movementTotal += $lineTotal;
+            $movementTotalBC += $lineTotalBC;
         }
 
-        // 5. تحديث إجمالي الحركة
-        $movement->total = $movementTotal;
+        $movement->total = $movementTotalBC;
         $movement->save();
     }
 
@@ -186,9 +203,6 @@ class PurchaseInvoiceService
     // دوال مساعدة داخلية
     // =====================================================
 
-    /**
-     * توليد رقم الفاتورة التالي بشكل آمن (داخل Transaction)
-     */
     private function nextInvoiceNumber(): int
     {
         $last = PurchaseInvoice::lockForUpdate()
@@ -198,33 +212,27 @@ class PurchaseInvoiceService
         return $last ? ((int) $last->invoice_number + 1) : 1;
     }
 
-    /**
-     * تجهيز بيانات الرأس
-     */
     private function headerData(Request $request): array
     {
         return [
-            'invoice_number'      => $request->input('invoice_number'),
-            'invoice_date'        => $request->input('invoice_date'),
-            'account_id'          => $request->input('account_id'),
-            'payment_account_id'  => $request->input('payment_account_id'),
-            'coin_id'             => $request->input('coin_id'),
-            'warehouse_id'        => $request->input('warehouse_id'),
-            'exchange_rate'       => $request->input('exchange_rate', 1),
-            'payment_method'      => $request->input('payment_method'),
-            'expenses'            => $request->input('expenses', 0),
-            'tax_cost'            => $request->input('tax_cost', 0),
-            'transportation'      => $request->input('transportation', 0),
-            'other_cost'          => $request->input('other_cost', 0),
+            'invoice_number'         => $request->input('invoice_number'),
+            'invoice_date'           => $request->input('invoice_date'),
+            'account_id'             => $request->input('account_id'),
+            'payment_account_id'     => $request->input('payment_account_id'),
+            'coin_id'                => $request->input('coin_id'),
+            'warehouse_id'           => $request->input('warehouse_id'),
+            'exchange_rate'          => $request->input('exchange_rate', 1),
+            'payment_method'         => $request->input('payment_method'),
+            'expenses'               => $request->input('expenses', 0),
+            'tax_cost'               => $request->input('tax_cost', 0),
+            'transportation'         => $request->input('transportation', 0),
+            'other_cost'             => $request->input('other_cost', 0),
             'other_cost_description' => $request->input('other_cost_description'),
-            'statement'           => $request->input('statement'),
-            'reference'           => $request->input('reference'),
+            'statement'              => $request->input('statement'),
+            'reference'              => $request->input('reference'),
         ];
     }
 
-    /**
-     * حفظ التفاصيل
-     */
     private function saveDetails(PurchaseInvoice $invoice, array $details): void
     {
         foreach ($details as $row) {
@@ -249,6 +257,10 @@ class PurchaseInvoiceService
 
     /**
      * إعادة حساب الإجماليات من التفاصيل
+     *
+     * - items_total / discount_total  → أعمدة حقيقية
+     * - total_in_invoice_currency     → Accessor (لا يُخزَّن)
+     * - total_in_base_currency        → عمود حقيقي ✅
      */
     private function recalculateTotals(PurchaseInvoice $invoice): void
     {
@@ -262,8 +274,22 @@ class PurchaseInvoiceService
             $discountTotal += (float) $d->discount;
         }
 
+        $net = max(0, $itemsTotal - $discountTotal);
+
         $invoice->items_total    = $itemsTotal;
         $invoice->discount_total = $discountTotal;
+
+        // حساب الإجمالي بعملة الفاتورة (محليًا — لا يُحفظ)
+        $totalInInvoiceCurrency = $net
+            + (float) $invoice->expenses
+            + (float) $invoice->tax_cost
+            + (float) $invoice->transportation
+            + (float) $invoice->other_cost;
+
+        $rate = (float) ($invoice->exchange_rate ?: 1);
+
+        // ✅ حفظ الإجمالي بالعملة الأساسية فقط (العمود المخزَّن)
+        $invoice->total_in_base_currency = $totalInInvoiceCurrency * $rate;
         $invoice->save();
     }
 }

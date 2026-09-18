@@ -124,16 +124,26 @@ class ItemController extends Controller
         ]);
     }
 
-    public function search(Request $request)
+  public function search(Request $request)
     {
-        $search = $request->input('search', '');
-        $items = Item::where('itemName2', 'LIKE', "%{$search}%")
-            ->orderBy('itemName2')
-            ->get(['itemID', 'itemName2']);
-
-        return response()->json([
-            'success' => true,
-            'data' => $items,
-        ]);
+     $search = trim($request->input('search', ''));
+     $limit  = min((int) $request->input('limit', 500), 1000);
+        
+     $query = Item::query()
+         ->where('is_active', 1)
+         ->select(['itemID', 'itemName2']);
+        
+     if ($search !== '') {
+         $query->where('itemName2', 'LIKE', "%{$search}%");
+     }
+    
+     $items = $query->orderBy('itemName2')
+         ->limit($limit)
+         ->get();
+    
+     return response()->json([
+         'success' => true,
+         'data'    => $items,
+     ]);
     }
 }

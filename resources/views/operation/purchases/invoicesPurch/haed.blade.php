@@ -112,6 +112,11 @@
                     name="coinsID"
                 >
                 <input
+                    type="hidden"
+                    id="currencyCode"
+                    name="currencyCode"
+                >
+                <input
                     type="text"
                     class="form-control"
                     id="currencyName"

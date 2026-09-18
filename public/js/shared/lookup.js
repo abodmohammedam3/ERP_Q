@@ -3,9 +3,10 @@
    =========================================================================
    - تحميل قبل الإظهار (لا يبقى في "جاري التحميل")
    - Event Delegation (أداء عالي)
-   - Preload للوحدات
-   - Enter: يفتح دائمًا | Tab: يفتح مع نص فقط | Tab فارغ: ينتقل
-   - blur: يفتح فقط عند وجود نص
+   - Preload مؤجل للوحدات
+   - Debounce للبحث (200ms)
+   - حد أقصى للعرض (300 صف)
+   - AbortController لإلغاء الطلبات القديمة
    ========================================================================= */
 
 /* =========================================================================
@@ -142,7 +143,7 @@ const lookupEndpointMap = {
     customer: '/setting/customers/search',
     currency: '/setting/accounting/coins/list',
     warehouse: '/setting/inventory/warehouses/list',
-    item: '/setting/inventory/items/list',
+    item: '/setting/inventory/items/search',      // ✅ تم التغيير من /list إلى /search
     type: '/setting/inventory/types/list',
     unit: '/setting/inventory/units/list',
     box: '/setting/accounting/boxes/list',
@@ -166,10 +167,13 @@ const lookupCache = {
 };
 
 const lookupLoadedFlags = {};
+const lookupAborts = {};
 
 /* =========================================================================
    4) الحالة
    ========================================================================= */
+
+const LOOKUP_MAX_RENDER = 300;
 
 let lookupModalInstance = null;
 let activeLookupKey = null;
@@ -178,6 +182,7 @@ let lookupJustOpened = false;
 let lookupRowSelected = false;
 let lookupKeyDownHandled = false;
 let lookupLastClosedAt = 0;
+let lookupSearchTimer = null;
 
 /* =========================================================================
    5) أدوات مساعدة
@@ -202,9 +207,14 @@ async function lookupEnsureLoaded(key) {
     const cacheKey = LookupConfigs[key]?.cacheKey;
     if (!cacheKey) return;
 
+    // ✅ إلغاء الطلب السابق لنفس المفتاح
+    if (lookupAborts[key]) lookupAborts[key].abort();
+    lookupAborts[key] = new AbortController();
+
     try {
         const res = await fetch(url, {
-            headers: { 'Accept': 'application/json' }
+            headers: { 'Accept': 'application/json' },
+            signal: lookupAborts[key].signal,
         });
 
         if (!res.ok) {
@@ -218,9 +228,12 @@ async function lookupEnsureLoaded(key) {
         lookupLoadedFlags[key] = true;
 
     } catch (e) {
+        if (e.name === 'AbortError') return;
         console.warn(`lookup load failed: ${key}`, e);
         lookupCache[cacheKey] = [];
         lookupLoadedFlags[key] = true;
+    } finally {
+        delete lookupAborts[key];
     }
 }
 
@@ -264,16 +277,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     lookupSetupFocusTrap(modalEl);
 
-    // ✅ Preload الوحدات — تحتاجها صفوف الفواتير
-    lookupEnsureLoaded('unit');
+    // ✅ Preload مؤجل — لا يزاحم تحميل الصفحة
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(() => lookupEnsureLoaded('unit'), { timeout: 2000 });
+    } else {
+        setTimeout(() => lookupEnsureLoaded('unit'), 800);
+    }
 });
 
 /* =========================================================================
-   8) Event Delegation — لكل حقول data-lookup
-   =========================================================================
-   - Enter       → يفتح النافذة (دائمًا)
-   - Tab مع نص   → يفتح النافذة
-   - Tab فارغ    → ينتقل بشكل طبيعي
+   8) Event Delegation
    ========================================================================= */
 
 document.addEventListener('keydown', (e) => {
@@ -282,9 +295,6 @@ document.addEventListener('keydown', (e) => {
 
     const value = (target.value || '').trim();
 
-    // ────────────────────────────────────────
-    // Enter → يفتح النافذة دائماً
-    // ────────────────────────────────────────
     if (e.key === 'Enter') {
         e.preventDefault();
 
@@ -300,10 +310,6 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
-    // ────────────────────────────────────────
-    // Tab مع نص → يفتح النافذة
-    // Tab فارغ → ينتقل بشكل طبيعي (لا نمنع)
-    // ────────────────────────────────────────
     if (e.key === 'Tab' && !e.shiftKey && value !== '') {
         e.preventDefault();
 
@@ -319,35 +325,21 @@ document.addEventListener('keydown', (e) => {
     }
 }, true);
 
-/* =========================================================================
-   blur ذكي — يفتح فقط عند وجود نص
-   ========================================================================= */
-
 document.addEventListener('blur', (e) => {
     const target = e.target;
     if (!target || !target.dataset || !target.dataset.lookup) return;
 
-    // ✅ لا تفتح النافذة لو الحقل فارغ
     const value = (target.value || '').trim();
     if (value === '') return;
 
-    // Tab/Enter → عالجناه
     if (lookupKeyDownHandled) return;
     if (lookupJustOpened) return;
-
-    // نافذة مفتوحة
     if (document.querySelector('.modal.show')) return;
-
-    // أُغلقت قبل لحظة → لا تُعِد الفتح
     if (Date.now() - lookupLastClosedAt < 400) return;
 
-    // ✅ فحص التركيز الجديد
     const next = e.relatedTarget;
-
-    // لا يوجد تركيز جديد → المستخدم ضغط خارج الصفحة
     if (!next) return;
 
-    // التركيز انتقل إلى زر / رابط / نافذة → لا تفتح
     const tag = next.tagName;
     const isButtonLike =
         tag === 'BUTTON' ||
@@ -370,7 +362,7 @@ document.addEventListener('blur', (e) => {
 }, true);
 
 /* =========================================================================
-   9) فتح النافذة — تحميل قبل الإظهار
+   9) فتح النافذة
    ========================================================================= */
 
 async function openLookup(key, target) {
@@ -391,37 +383,30 @@ async function openLookup(key, target) {
     activeLookupTarget = target;
     lookupRowSelected = false;
 
-    // 1. العنوان
     const titleEl = document.getElementById('unifiedLookupTitle');
     if (titleEl) {
         titleEl.innerHTML =
             `<i class="bi ${config.icon || 'bi-search'} text-primary me-2"></i> ${config.title}`;
     }
 
-    // 2. رأس الجدول
     lookupRenderHeader(config);
 
-    // 3. حقل البحث
     const searchInput = document.getElementById('unifiedLookupSearch');
     if (searchInput) {
         searchInput.value = target?.value || '';
     }
 
-    // 4. إظهار "جاري التحميل" أو البيانات
     if (!lookupLoadedFlags[key]) {
         lookupRenderLoading(config);
     } else {
         lookupFilterAndRender();
     }
 
-    // 5. فتح النافذة
     lookupModalInstance.show();
 
-    // 6. جلب البيانات إن لم تكن محمّلة
     if (!lookupLoadedFlags[key]) {
         await lookupEnsureLoaded(key);
 
-        // اعرض الصفوف بغض النظر عن حالة النافذة
         if (activeLookupKey === key) {
             lookupFilterAndRender();
         }
@@ -480,7 +465,9 @@ function lookupRenderRows(rows, config) {
 
     tbody.replaceChildren();
 
-    if (!rows.length) {
+    const total = rows.length;
+
+    if (!total) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = config.columns.length;
@@ -491,9 +478,13 @@ function lookupRenderRows(rows, config) {
         return;
     }
 
+    const visible = total > LOOKUP_MAX_RENDER
+        ? rows.slice(0, LOOKUP_MAX_RENDER)
+        : rows;
+
     const fragment = document.createDocumentFragment();
 
-    rows.forEach(row => {
+    visible.forEach(row => {
         const tr = document.createElement('tr');
         tr.className = 'lookup-row';
         tr.tabIndex = 0;
@@ -522,6 +513,17 @@ function lookupRenderRows(rows, config) {
     });
 
     tbody.appendChild(fragment);
+
+    // ✅ تنبيه عند تجاوز الحد
+    if (total > LOOKUP_MAX_RENDER) {
+        const hintTr = document.createElement('tr');
+        const hintTd = document.createElement('td');
+        hintTd.colSpan = config.columns.length;
+        hintTd.className = 'text-center text-muted py-2 small';
+        hintTd.textContent = `يتم عرض ${LOOKUP_MAX_RENDER} من ${total} — اكتب للبحث`;
+        hintTr.appendChild(hintTd);
+        tbody.appendChild(hintTr);
+    }
 }
 
 function lookupFilterAndRender() {
@@ -539,11 +541,14 @@ function lookupFilterAndRender() {
 }
 
 /* =========================================================================
-   11) البحث داخل النافذة
+   11) البحث — مع Debounce
    ========================================================================= */
 
 function lookupSearchInput() {
-    lookupFilterAndRender();
+    clearTimeout(lookupSearchTimer);
+    lookupSearchTimer = setTimeout(() => {
+        lookupFilterAndRender();
+    }, 200);
 }
 
 function lookupSearchKeyDown(e) {
@@ -610,7 +615,7 @@ function lookupSelectRow(row) {
 }
 
 /* =========================================================================
-   14) Focus Trap — حصر التركيز داخل النافذة
+   14) Focus Trap
    ========================================================================= */
 
 function lookupSetupFocusTrap(modalEl) {
@@ -663,7 +668,3 @@ window.lookupCache = lookupCache;
 window.LookupConfigs = LookupConfigs;
 window.lookupEnsureLoaded = lookupEnsureLoaded;
 window.lookupLoadedFlags = lookupLoadedFlags;
-
-/* =========================================================================
-   16) نهاية الملف
-   ========================================================================= */

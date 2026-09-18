@@ -18,10 +18,15 @@ class UnitController extends Controller
 
     public function list(Request $request)
     {
-        $units = Unit::orderBy('UnitID', 'asc')->get();
+        $limit = min((int) $request->input('limit', 500), 1000);
+        
+        $units = Unit::orderBy('UnitID', 'asc')
+            ->limit($limit)
+            ->get();
+        
         return response()->json([
             'success' => true,
-            'data' => $units,
+            'data'    => $units,
         ]);
     }
 

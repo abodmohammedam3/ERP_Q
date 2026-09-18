@@ -128,7 +128,7 @@
         {{-- النافذة الموحّدة للنظام --}}
         {{-- ===================================================== --}}
 
-        @include('shared.lookup-modal')
+        
         
     {{-- =========================================================
          Bootstrap JavaScript
@@ -143,7 +143,6 @@
 
     <script src="{{ asset('js/system.js') }}"></script>
     <script src="{{ asset('js/shared/utils.js') }}"></script>
-    <script src="{{ asset('js/shared/lookup.js') }}"></script>
 
 
     {{-- =========================================================

@@ -3,6 +3,22 @@
    ========================================================= */
 
 /* =========================================================
+   إعدادات العملة الأساسية (تُمرَّر من Blade)
+   ========================================================= */
+const SYSTEM_CURRENCY_ID = window.PURCHASE_SYSTEM_CURRENCY_ID || null;
+const SYSTEM_CURRENCY_CODE = window.PURCHASE_SYSTEM_CURRENCY_CODE || '';
+
+/* ─────────────────────────────────────────────────────
+   هل عملة الفاتورة = العملة الأساسية؟
+   ───────────────────────────────────────────────────── */
+function isInvoiceInSystemCurrency() {
+    const coinId = document.getElementById('coinsID')?.value || '';
+    if (!SYSTEM_CURRENCY_ID || !coinId) return false;
+
+    return String(coinId) === String(SYSTEM_CURRENCY_ID);
+}
+
+/* =========================================================
    الخرائط الثابتة
    ========================================================= */
 
@@ -64,29 +80,32 @@ function notify(message, type = 'info') {
     }
 }
 
+function formatMoney(v) {
+    return Number(v || 0).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+}
+
 /* =========================================================
    خطافات النظام الموحّد (LookupConfigs)
    ========================================================= */
 
-/**
- * عند اختيار مورد — لا حاجة لأي شيء إضافي (data-lookup تكفل بملء suplierID)
- */
-
-/**
- * عند اختيار عملة — تحديث سعر الصرف وإعادة الحساب
- */
 function registerCurrencyLookupHook() {
     if (typeof LookupConfigs === 'undefined') return;
+
     LookupConfigs.currency.onSelect = (row) => {
         const rateEl = document.getElementById('PuInExchangeRate2');
         if (rateEl) rateEl.value = row.coinsExchangeRate ?? 1;
+
+        // ✅ حفظ رمز العملة
+        const codeEl = document.getElementById('currencyCode');
+        if (codeEl) codeEl.value = row.coinsCode ?? '';
+
         calculateTotals();
     };
 }
 
-/**
- * عند اختيار صنف داخل صف — تخزين الـ itemID والانتقال للنوع
- */
 function registerItemLookupHook() {
     if (typeof LookupConfigs === 'undefined') return;
     LookupConfigs.item.onSelect = (row, target) => {
@@ -98,9 +117,6 @@ function registerItemLookupHook() {
     };
 }
 
-/**
- * عند اختيار نوع داخل صف — تخزين الـ typeID والانتقال للرمز
- */
 function registerTypeLookupHook() {
     if (typeof LookupConfigs === 'undefined') return;
     LookupConfigs.type.onSelect = (row, target) => {
@@ -214,16 +230,32 @@ function clearInvoiceForm() {
         else el.value = '';
     });
 
-    ['suplierID', 'coinsID', 'warehouseID', 'paymentAccountId', 'AmountWords']
+    ['suplierID', 'coinsID', 'currencyCode', 'warehouseID',
+        'paymentAccountId', 'AmountWords']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
 
     setEmptyDetailsMessage();
 
-    const discEl = document.getElementById('totalDiscountDisplay');
-    if (discEl) discEl.textContent = '0.00';
+    // تصفير خلايا الإجماليات الأربع
+    const zeroTargets = [
+        'totalDiscountForeign',
+        'totalDiscountLocal',
+        'invoiceTotalForeign',
+        'invoiceTotalLocal',
+    ];
 
-    const totalEl = document.getElementById('invoiceTotalDisplay');
-    if (totalEl) totalEl.textContent = '0.00';
+    zeroTargets.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.textContent = '0.00';
+            el.style.display = '';
+            if (id === 'invoiceTotalLocal' || id === 'totalDiscountLocal') {
+                el.className = 'amount-local';
+            } else {
+                el.className = 'amount-foreign';
+            }
+        }
+    });
 
     hidePaymentAccounts();
 
@@ -271,9 +303,13 @@ function addInvoiceRow() {
 
     const row = tpl.content.firstElementChild.cloneNode(true);
 
-    // تعبئة الوحدات من Cache الموحّد
     const unitSelect = row.querySelector('.row-unit');
     if (unitSelect && typeof lookupCache !== 'undefined') {
+        const emptyOpt = document.createElement('option');
+        emptyOpt.value = '';
+        emptyOpt.textContent = '— اختر الوحدة —';
+        unitSelect.appendChild(emptyOpt);
+
         (lookupCache.units || []).forEach(u => {
             const opt = document.createElement('option');
             opt.value = u.UnitID;
@@ -355,15 +391,59 @@ function calculateTotals() {
     const other = parseFloat(document.getElementById('PuInOtherCost')?.value) || 0;
 
     const net = Math.max(0, itemsTotal - discountTotal);
-    const total = net + expenses + tax + trans + other;
+    const totalFC = net + expenses + tax + trans + other;
 
-    const discEl = document.getElementById('totalDiscountDisplay');
-    if (discEl) discEl.textContent = discountTotal.toFixed(2);
+    const rate = parseFloat(document.getElementById('PuInExchangeRate2')?.value) || 1;
+    const totalBC = totalFC * rate;
 
-    const totalEl = document.getElementById('invoiceTotalDisplay');
-    if (totalEl) totalEl.textContent = total.toFixed(2);
+    const isSystemCurrency = isInvoiceInSystemCurrency();
 
-    updateAmountWords(total);
+    // خلية الخصم
+    renderAmountDisplay(
+        document.getElementById('totalDiscountForeign'),
+        document.getElementById('totalDiscountLocal'),
+        discountTotal,
+        discountTotal * rate,
+        isSystemCurrency
+    );
+
+    // خلية إجمالي الفاتورة
+    renderAmountDisplay(
+        document.getElementById('invoiceTotalForeign'),
+        document.getElementById('invoiceTotalLocal'),
+        totalFC,
+        totalBC,
+        isSystemCurrency
+    );
+
+    updateAmountWords(totalFC);
+}
+
+/* ─────────────────────────────────────────────────────
+   تحديث خلية مزدوجة (foreign + local)
+   ───────────────────────────────────────────────────── */
+function renderAmountDisplay(foreignEl, localEl, amountFC, amountBC, isSystemCurrency) {
+    if (!foreignEl || !localEl) return;
+
+    const fcCode = document.getElementById('currencyCode')?.value || '';
+    const bcCode = SYSTEM_CURRENCY_CODE || '';
+
+    if (isSystemCurrency) {
+        // العملة نفسها → سطر واحد فقط
+        foreignEl.style.display = 'none';
+        foreignEl.textContent = '';
+
+        localEl.textContent = `${formatMoney(amountFC)} ${fcCode}`.trim();
+        localEl.className = 'amount-single';
+        return;
+    }
+
+    // عملتان مختلفتان → سطران
+    foreignEl.style.display = '';
+    foreignEl.textContent = `${formatMoney(amountFC)} ${fcCode}`.trim();
+
+    localEl.textContent = `${formatMoney(amountBC)} ${bcCode}`.trim();
+    localEl.className = 'amount-local';
 }
 
 function updateAmountWords(total) {
@@ -384,7 +464,7 @@ function updateAmountWords(total) {
 function exchangeRateChanged() { calculateTotals(); }
 
 /* =========================================================
-   Payment method — يغيّر نوع Lookup للحساب
+   Payment method
    ========================================================= */
 
 function paymentMethodChanged(clearPrevious = false) {
@@ -417,12 +497,10 @@ function paymentMethodChanged(clearPrevious = false) {
     container.classList.remove('d-none');
     input.disabled = (invoiceMode === 'view');
 
-    // تحديد نوع Lookup حسب طريقة الدفع
     if (method === 'bank') {
         input.dataset.lookup = 'bank';
         input.dataset.lookupDisplayField = 'bankName';
     } else {
-        // cash أو network → نستخدم الصناديق
         input.dataset.lookup = 'box';
         input.dataset.lookupDisplayField = 'boxName';
     }
@@ -539,6 +617,7 @@ async function loadInvoice(id) {
         document.getElementById('supplierName').value = h.supplier_name ?? '';
         document.getElementById('coinsID').value = h.coin_id ?? '';
         document.getElementById('currencyName').value = h.coin_name ?? '';
+        document.getElementById('currencyCode').value = h.coin_code ?? '';
         document.getElementById('PuInExchangeRate2').value = h.exchange_rate ?? 1;
         document.getElementById('warehouseID').value = h.warehouse_id ?? '';
         document.getElementById('warehouseName').value = h.warehouse_name ?? '';
@@ -570,13 +649,23 @@ async function loadInvoice(id) {
             const unitSel = row.querySelector('.row-unit');
 
             if (unitSel && typeof lookupCache !== 'undefined') {
+                const emptyOpt = document.createElement('option');
+                emptyOpt.value = '';
+                emptyOpt.textContent = '— اختر الوحدة —';
+                unitSel.appendChild(emptyOpt);
+
                 (lookupCache.units || []).forEach(u => {
                     const opt = document.createElement('option');
                     opt.value = u.UnitID;
                     opt.textContent = u.UnitName;
-                    if (String(u.UnitID) === String(d.unit_id)) opt.selected = true;
                     unitSel.appendChild(opt);
                 });
+
+                if (d.unit_id !== null && d.unit_id !== undefined && d.unit_id !== '') {
+                    unitSel.value = String(d.unit_id);
+                } else {
+                    unitSel.value = '';
+                }
             }
 
             row.querySelector('.row-num').textContent = i + 1;
@@ -616,7 +705,7 @@ async function loadInvoice(id) {
 }
 
 /* =========================================================
-   Snapshot — كشف عدم التعديل
+   Snapshot
    ========================================================= */
 
 function takeSnapshot() {
@@ -679,8 +768,17 @@ function editInvoice() {
     editSnapshot = takeSnapshot();
 }
 
-function cancelInvoice() {
+async function cancelInvoice() {
     if (!confirm('هل أنت متأكد من إلغاء العملية؟')) return;
+
+    // إذا كنا في وضع تعديل فاتورة موجودة → أعد تحميلها
+    if (invoiceMode === 'edit' && currentInvoiceId) {
+        await loadInvoice(currentInvoiceId);
+        notify('تم التراجع عن التعديلات', 'info');
+        return;
+    }
+
+    // إذا كنا في وضع إضافة فاتورة جديدة → امسح النموذج
     clearInvoiceForm();
     notify('تم إلغاء العملية', 'info');
 }
@@ -742,7 +840,6 @@ async function saveInvoice() {
         });
     }
 
-    // كشف عدم التعديل
     if (invoiceMode === 'edit' && editSnapshot) {
         if (takeSnapshot() === editSnapshot) {
             notify('لم يتم إجراء أي تعديل على الفاتورة', 'info');
@@ -790,9 +887,7 @@ async function saveInvoice() {
         setInvoiceMode('view');
         editSnapshot = null;
     } catch (e) {
-        let m = e.message;
-        if (e.errors) m += ' — ' + Object.values(e.errors).flat().join(' | ');
-        notify(m, 'danger');
+        notify(e.message, 'danger');
     } finally {
         isSavingInvoice = false;
         if (invoiceMode !== 'view') {

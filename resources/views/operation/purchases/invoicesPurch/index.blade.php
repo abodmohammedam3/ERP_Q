@@ -41,6 +41,7 @@
 
     <!-- رأس + تفاصيل الفاتورة -->
     @include('operation.purchases.invoicesPurch.detals')
+    @include('shared.lookup-modal')
 
 </div>
 
@@ -127,5 +128,12 @@
 @endsection
 
 @push('scripts')
-<script src="{{ asset('js/purchase_invoice.js') }}"></script>
+<script>
+    window.PURCHASE_SYSTEM_CURRENCY_ID   = @json($systemCurrencyId ?? null);
+    window.PURCHASE_SYSTEM_CURRENCY_CODE = @json($systemCurrencyCode ?? '');
+</script>
+<script defer src="{{ asset('js/shared/lookup.js') }}"></script>
+<script defer src="{{ asset('js/purchase_invoice.js') }}"></script>
+
+
 @endpush

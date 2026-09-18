@@ -35,7 +35,7 @@
 
 
 @push('scripts')
-    <script src="{{asset("js/items.js")}}"></script>
+    <script defer src="{{asset("js/items.js")}}"></script>
 @endpush
 
 @endsection

@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use App\Models\Accounting\Coin;
 
 class PurchaseInvoiceController extends Controller
 {
@@ -28,10 +29,19 @@ class PurchaseInvoiceController extends Controller
     /**
      * عرض شاشة فواتير الشراء
      */
-    public function index()
-    {
-        return view('operation.purchases.invoicesPurch.index');
-    }
+
+     public function index()
+        {
+            session()->save();
+        
+            $systemCurrency = Coin::where('coinsSystem', 1)
+                ->first(['coinsID', 'coinsCode']);
+        
+            return view('operation.purchases.invoicesPurch.index', [
+                'systemCurrencyId'   => $systemCurrency->coinsID ?? null,
+                'systemCurrencyCode' => $systemCurrency->coinsCode ?? '',
+            ]);
+        }
 
     /**
      * قائمة الفواتير (JSON) — تُستخدم في نافذة البحث
@@ -100,6 +110,7 @@ class PurchaseInvoiceController extends Controller
                 'payment_account_name'=> $invoice->paymentAccount->accName ?? '',
                 'coin_id'             => $invoice->coin_id,
                 'coin_name'           => $invoice->coin->coinsName ?? '',
+                'coin_code'           => $invoice->coin->coinsCode ?? '',
                 'warehouse_id'        => $invoice->warehouse_id,
                 'warehouse_name'      => $invoice->warehouse->StockName ?? '',
                 'exchange_rate'       => (float) $invoice->exchange_rate,
@@ -113,7 +124,8 @@ class PurchaseInvoiceController extends Controller
                 'other_cost_description' => $invoice->other_cost_description,
                 'statement'           => $invoice->statement,
                 'reference'           => $invoice->reference,
-                'total'               => $invoice->total_in_invoice_currency,
+                'total'                => (float) $invoice->total_in_invoice_currency,
+                'total_in_base'        => (float) ($invoice->total_in_base_currency ?? 0),
             ],
             'details' => $invoice->details->map(function ($d) {
                 return [
@@ -290,7 +302,7 @@ class PurchaseInvoiceController extends Controller
             'payment_method'      => ['required', 'integer', 'in:1,2,3,4'],
             'coin_id'             => ['required', 'exists:coins,coinsID'],
             'warehouse_id'        => ['required', 'exists:stocks,StockID'],
-            'exchange_rate'       => ['nullable', 'numeric', 'min:0'],
+            'exchange_rate'       => ['required', 'numeric', 'gt:0'],
             'payment_account_id'  => ['nullable', 'exists:characcount,accountID'],
             'expenses'            => ['nullable', 'numeric', 'min:0'],
             'tax_cost'            => ['nullable', 'numeric', 'min:0'],

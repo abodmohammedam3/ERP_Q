@@ -12,6 +12,7 @@ use App\Models\Customer;
 use App\Models\Supplier;
 use App\Models\Purchases\PurchaseInvoice;
 use App\Models\Sales\SalesInvoice;
+use App\Models\Accounting\Coin;
 
 
 use App\Observers\CharAccountObserver;
@@ -22,6 +23,7 @@ use App\Observers\CustomerObserver;
 use App\Observers\SupplierObserver;
 use App\Observers\PurchaseInvoiceObserver;
 use App\Observers\SalesInvoiceObserver;
+use App\Observers\CoinObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -42,5 +44,6 @@ class AppServiceProvider extends ServiceProvider
         // ✅ جديد: مراقب فاتورة الشراء
         PurchaseInvoice::observe(PurchaseInvoiceObserver::class);
         SalesInvoice::observe(SalesInvoiceObserver::class);
+        Coin::observe(CoinObserver::class);
     }
 }

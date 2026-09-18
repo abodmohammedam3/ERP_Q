@@ -1,3 +1,65 @@
+<style>
+    .amount-foreign {
+        font-size: 0.75rem;
+        color: #6c757d;
+        direction: ltr;
+        text-align: right;
+        line-height: 1.2;
+        font-weight: 400;
+    }
+
+    .amount-local {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #212529;
+        direction: ltr;
+        text-align: right;
+        line-height: 1.3;
+    }
+
+    .amount-single {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #212529;
+        direction: ltr;
+        text-align: right;
+    }
+
+    .totals-box {
+        display: flex;
+        align-items: stretch;
+        gap: 0;
+        border: 1px solid #dee2e6;
+        border-radius: 0.5rem;
+        background: #fff;
+        overflow: hidden;
+    }
+
+    .totals-item {
+        flex: 1;
+        padding: 10px 16px;
+        text-align: center;
+        border-left: 1px solid #e9ecef;
+    }
+
+    .totals-item:first-child { border-left: none; }
+
+    .totals-label {
+        display: block;
+        font-size: 0.9rem;
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+
+    .totals-item.discount .totals-label { color: #dc3545; }
+    .totals-item.total    .totals-label { color: #198654; }
+
+    .amount-words {
+        font-size: 0.85rem;
+    }
+</style>
+
+
 <!-- ========================= -->
 <!-- تفاصيل الفاتورة -->
 <!-- ========================= -->
@@ -52,13 +114,13 @@
             </tbody>
 
             <!-- الإجماليات -->
-            <tfoot>
+           <tfoot>
                 <tr>
                     <td colspan="10" class="p-3 bg-light">
                         <div class="row g-3 align-items-center">
-
-                            {{-- المبلغ كتابة --}}
-                            <div class="col-md-7">
+            
+                            {{-- المبلغ كتابة — أوسع الآن --}}
+                            <div class="col-md-6">
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-text bg-white fw-bold text-secondary text-nowrap">
                                         <i class="bi bi-fonts me-1"></i>
@@ -74,22 +136,28 @@
                                     >
                                 </div>
                             </div>
-
-                            {{-- الإجماليات --}}
-                            <div class="col-md-5">
-                                <div class="d-flex align-items-center justify-content-end gap-3 border rounded-3 bg-white p-2 px-3">
-                                    <div class="d-flex align-items-center gap-2">
-                                        <span class="text-danger small fw-bold">إجمالي الخصم</span>
-                                        <strong class="text-danger" id="totalDiscountDisplay">0.00</strong>
+            
+                            {{-- الإجماليات بخليتين فقط --}}
+                            <div class="col-md-6">
+                                <div class="totals-box">
+            
+                                    {{-- إجمالي الخصم --}}
+                                    <div class="totals-item discount">
+                                        <span class="totals-label">إجمالي الخصم</span>
+                                        <div class="amount-foreign" id="totalDiscountForeign">0.00</div>
+                                        <div class="amount-local"   id="totalDiscountLocal">0.00</div>
                                     </div>
-                                    <div class="vr"></div>
-                                    <div class="d-flex align-items-center gap-2">
-                                        <span class="text-success small fw-bold">إجمالي الفاتورة</span>
-                                        <strong class="text-success fs-5" id="invoiceTotalDisplay">0.00</strong>
+            
+                                    {{-- إجمالي الفاتورة --}}
+                                    <div class="totals-item total">
+                                        <span class="totals-label">إجمالي الفاتورة</span>
+                                        <div class="amount-foreign" id="invoiceTotalForeign">0.00</div>
+                                        <div class="amount-local"   id="invoiceTotalLocal">0.00</div>
                                     </div>
+            
                                 </div>
                             </div>
-
+            
                         </div>
                     </td>
                 </tr>

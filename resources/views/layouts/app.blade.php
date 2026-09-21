@@ -134,15 +134,15 @@
          Bootstrap JavaScript
     ========================================================== --}}
 
-    <script src="{{ asset('js/bootstrap.bundle.min.js') }}"></script>
+    <script defer src="{{ asset('js/bootstrap.bundle.min.js') }}"></script>
 
 
     {{-- =========================================================
          JavaScript العام للنظام
     ========================================================== --}}
 
-    <script src="{{ asset('js/system.js') }}"></script>
-    <script src="{{ asset('js/shared/utils.js') }}"></script>
+    <script defer src="{{ asset('js/system.js') }}"></script>
+    <script defer src="{{ asset('js/shared/utils.js') }}"></script>
 
 
     {{-- =========================================================

@@ -291,8 +291,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     lookupSetupFocusTrap(modalEl);
 
-    // ✅ Preload الوحدات — تحتاجها صفوف الفواتير
-    lookupEnsureLoaded('unit');
+    // ✅ Preload مؤجل — لا يزاحم تحميل الصفحة
+    if (!lookupShouldSkipPreload()) {
+        const runPreload = () => lookupEnsureLoaded('unit');
+
+        if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(runPreload, { timeout: 2500 });
+        } else {
+            setTimeout(runPreload, 1200);
+        }
+    }
 });
 
 /* =========================================================================

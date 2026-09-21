@@ -1,10 +1,27 @@
+/* ═══════════════════════════════════════════════
+   Bootstrap 5 RTL
+   ═══════════════════════════════════════════════ */
+@import 'bootstrap/dist/css/bootstrap.rtl.min.css';
 
+/* ═══════════════════════════════════════════════
+   Bootstrap Icons
+   ═══════════════════════════════════════════════ */
 @import 'bootstrap-icons/font/bootstrap-icons.css';
 
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../storage/framework/views/*.php';
-@source "../**/*.blade.php";
-@source "../**/*.js";
-@source "../**/*.vue";
+/* ═══════════════════════════════════════════════
+   ملفات CSS المخصصة
+   ═══════════════════════════════════════════════ */
+@import './lookup-modal.css';
+@import './accounting/chart.css';
+@import './accounting/shared-tables.css';
 
+/* ═══════════════════════════════════════════════
+   تحسينات عامة
+   ═══════════════════════════════════════════════ */
+body {
+   font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+}
 
+.sticky-top {
+   z-index: 1020;
+}

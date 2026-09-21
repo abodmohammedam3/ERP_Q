@@ -96,8 +96,7 @@
 
 @push('scripts')
 
-    <script
-        src="{{ asset('js/accounting/chartOfAccounts.js') }}"
-    ></script>
+       @vite(['resources/js/pages/chart-of-accounts.js'])
+
 
 @endpush

@@ -34,7 +34,7 @@
 </div>
 
 @push('scripts')
-    <script src="{{ asset('js/boxes.js') }}"></script>
+    @vite(['resources/js/pages/boxes.js'])
 @endpush
 
 @endsection

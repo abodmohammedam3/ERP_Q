@@ -132,8 +132,7 @@
     window.PURCHASE_SYSTEM_CURRENCY_ID   = @json($systemCurrencyId ?? null);
     window.PURCHASE_SYSTEM_CURRENCY_CODE = @json($systemCurrencyCode ?? '');
 </script>
-<script defer src="{{ asset('js/shared/lookup.js') }}"></script>
-<script defer src="{{ asset('js/purchase_invoice.js') }}"></script>
+@vite(['resources/js/pages/purchase-invoice.js'])
 
 
 @endpush

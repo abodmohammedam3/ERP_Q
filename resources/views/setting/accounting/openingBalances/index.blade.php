@@ -51,5 +51,10 @@
 <script>
     window.OB_SYSTEM_CURRENCY_CODE = @json($systemCurrencyCode ?? '');
 </script>
-<script src="{{ asset('js/accounting/openingBalances.js') }}"></script>
+
+
+<script>
+    window.OB_SYSTEM_CURRENCY_CODE = @json($systemCurrencyCode ?? '');
+</script>
+@vite(['resources/js/pages/opening-balances.js'])
 @endpush

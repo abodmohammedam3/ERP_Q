@@ -35,6 +35,6 @@
 
 @push('scripts')
 
-<script src="{{ asset('js/movements.js') }}"></script>
+    @vite(['resources/js/pages/movements.js'])
 
 @endpush

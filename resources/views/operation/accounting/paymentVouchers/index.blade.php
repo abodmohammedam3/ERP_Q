@@ -67,15 +67,6 @@
 
 
 @push('scripts')
-    <!-- المكونات العامة -->
-    <script src="{{ asset('js/shared/modals.js') }}"></script>
-    <script src="{{ asset('js/payment/paymentSearch.js') }}"></script>
-    <script src="{{ asset('js/shared/state.js') }}"></script>
-    <script src="{{ asset('js/shared/supplier.js') }}"></script>
-    <script src="{{ asset('js/shared/currency.js') }}"></script>
-    <script src="{{ asset('js/shared/paymentMethod.js') }}"></script>
-    <script src="{{ asset('js/shared/utils.js') }}"></script>
+      @vite(['resources/js/pages/payment-voucher.js'])
 
-    <!-- ملف الصفحة -->
-    <script src="{{ asset('js/payment/payment.js') }}"></script>
 @endpush

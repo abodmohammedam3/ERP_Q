@@ -48,4 +48,5 @@
 
 @push('scripts')
 
-<script src="{{ asset('js/supplier.js') }}"></script>@endpush
+    @vite(['resources/js/pages/suppliers.js'])
+@endpush

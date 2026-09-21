@@ -42,5 +42,5 @@
 @endsection
 
 @push('scripts')
-<script src="{{ asset('js/customer.js') }}"></script>
+    @vite(['resources/js/pages/customers.js'])
 @endpush

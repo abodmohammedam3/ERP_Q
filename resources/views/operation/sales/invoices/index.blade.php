@@ -122,5 +122,5 @@
 
 
 @push('scripts')
-<script src="{{ asset('js/invoice/sales_invoice.js') }}"></script>
+    @vite(['resources/js/pages/sales-invoice.js'])
 @endpush

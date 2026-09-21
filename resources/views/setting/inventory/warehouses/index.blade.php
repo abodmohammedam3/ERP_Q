@@ -39,5 +39,5 @@
 
 @endsection
 @push('scripts')
-<script src="{{ asset('js/stocks.js') }}"></script>
+    @vite(['resources/js/pages/stocks.js'])
 @endpush

@@ -33,9 +33,9 @@
 
 </div>
 
-
+@endsection
 @push('scripts')
-    <script defer src="{{asset("js/items.js")}}"></script>
+    @vite(['resources/js/pages/items.js'])
 @endpush
 
-@endsection
+

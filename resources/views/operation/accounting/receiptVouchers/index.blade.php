@@ -67,14 +67,5 @@
 
 @push('scripts')
     <!-- المكونات العامة -->
-    <script src="{{ asset('js/shared/modals.js') }}"></script>
-    <script src="{{ asset('js/shared/state.js') }}"></script>
-    <script src="{{ asset('js/shared/customer.js') }}"></script>          <!-- العميل -->
-    <script src="{{ asset('js/shared/currency.js') }}"></script>
-    <script src="{{ asset('js/shared/paymentMethod.js') }}"></script>
-    <script src="{{ asset('js/recepit/receiptSearch.js') }}"></script>
-    <script src="{{ asset('js/shared/utils.js') }}"></script>
-
-    <!-- ملف الصفحة الرئيسي -->
-    <script src="{{ asset('js/recepit/recepit.js') }}"></script>
+ @vite(['resources/js/pages/receipt-voucher.js'])
 @endpush

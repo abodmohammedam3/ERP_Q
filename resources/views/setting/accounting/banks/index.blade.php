@@ -34,7 +34,7 @@
 </div>
 
 @push('scripts')
-    <script src="{{ asset('js/banks.js') }}"></script>
+    @vite(['resources/js/pages/banks.js'])
 @endpush
 
 @endsection

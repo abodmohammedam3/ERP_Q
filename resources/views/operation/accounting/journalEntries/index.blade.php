@@ -43,5 +43,5 @@
 @endsection
 
 @push('scripts')
-<script src="{{ asset('js/accounting/journalEntries.js') }}"></script>
+    @vite(['resources/js/pages/journal-entries.js'])
 @endpush

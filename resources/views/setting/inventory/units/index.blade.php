@@ -36,7 +36,7 @@
 
 
 @push('scripts')
-    <script src="{{ asset('js/units.js') }}"></script>
+    @vite(['resources/js/pages/units.js'])
 @endpush
 
 @endsection

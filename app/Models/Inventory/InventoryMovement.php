@@ -40,11 +40,24 @@ class InventoryMovement extends Model
     const TYPE_SALE_RETURN     = 'sale_return';
 
     // ============================================
-    // ✅ ثوابت المصدر (جديد)
+    // ثوابت المصدر
     // ============================================
     const SOURCE_PURCHASE_INVOICE = 'purchase_invoice';
     const SOURCE_SALES_INVOICE    = 'sales_invoice';
     const SOURCE_MANUAL           = null;
+
+    /**
+     * ✅ مصدر "فرز / تجهيز المخزون"
+     *
+     * حركات الفرز تُسجَّل كحركتين:
+     *   - OUT: movement_type = 'issue' + source_type = 'sorting'
+     *   - IN:  movement_type = 'supply' + source_type = 'sorting'
+     *
+     * ويتم ربطهما عبر:
+     *   - document_number = 'SORT-XXXXXX'
+     *   - source_id = movement_id الأصلي (اختياري)
+     */
+    const SOURCE_SORTING          = 'sorting';
 
     // ============================================
     // ثوابت الاتجاه
@@ -109,6 +122,17 @@ class InventoryMovement extends Model
      */
     public function isFromInvoice(): bool
     {
-        return !empty($this->source_type) && !empty($this->source_id);
+        return in_array($this->source_type, [
+            self::SOURCE_PURCHASE_INVOICE,
+            self::SOURCE_SALES_INVOICE,
+        ], true) && !empty($this->source_id);
+    }
+
+    /**
+     * ✅ هل الحركة ناتجة عن عملية فرز/تجهيز؟
+     */
+    public function isFromSorting(): bool
+    {
+        return $this->source_type === self::SOURCE_SORTING;
     }
 }

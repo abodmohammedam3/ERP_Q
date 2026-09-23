@@ -9,6 +9,8 @@
 const SALES_PAYMENT_TO_INT = { credit: 1, cash: 2, bank: 3, network: 4 };
 const SALES_PAYMENT_TO_STR = { 1: 'credit', 2: 'cash', 3: 'bank', 4: 'network' };
 
+const PIECE_UNIT_NAMES = ['الحبة', 'حبة', 'حبه', 'حب', 'قطعة', 'قطعه'];
+
 /* =========================================================
    الحالة العامة
    ========================================================= */
@@ -17,6 +19,14 @@ let salesMode = 'view';
 let currentSalesInvoiceId = null;
 let isSavingSales = false;
 let salesEditSnapshot = null;
+
+/* حالة نافذة الأرصدة */
+let stockBalancesModalInstance = null;
+let sortingFromBalanceModalInstance = null;
+let activeStockBalanceInput = null;
+let activeStockBalanceRow = null;
+let stockBalancesCache = [];
+let activeBalanceData = null;
 
 const SALES_CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
@@ -75,6 +85,13 @@ function salesSetValue(id, value) {
     el.value = value ?? '';
 }
 
+function salesFormatMoney(v) {
+    return Number(v || 0).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+}
+
 /* =========================================================
    Lookup Hooks
    ========================================================= */
@@ -82,61 +99,14 @@ function salesSetValue(id, value) {
 function registerSalesLookupHooks() {
     if (typeof LookupConfigs === 'undefined') return;
 
-    // العميل → التركيز على العملة (عبر data-lookup-next)
-
-    // العملة → تحديث سعر الصرف
+    // ✅ العملة (للرأس)
     LookupConfigs.currency.onSelect = (row) => {
         salesSetValue('SalesExchangeRate', row.coinsExchangeRate ?? 1);
         calculateSalesTotals();
     };
 
-    // الصنف → تخزين ID + جلب التكلفة
-    LookupConfigs.item.onSelect = async (row, target) => {
-        const tr = target.closest('tr');
-        if (!tr || !tr.classList.contains('sales-detail-row')) return;
-
-        tr.querySelector('.row-item-id').value = row.itemID ?? '';
-        await fetchSalesCost(tr);
-    };
-
-    // النوع → تخزين ID
-    LookupConfigs.type.onSelect = (row, target) => {
-        const tr = target.closest('tr');
-        if (!tr) return;
-        tr.querySelector('.row-type-id').value = row.id ?? '';
-    };
-
-    // المخزن → تخزين ID + جلب التكلفة
-    LookupConfigs.warehouse.onSelect = async (row, target) => {
-        const tr = target.closest('tr');
-        if (!tr) return;
-
-        tr.querySelector('.row-warehouse-id').value = row.StockID ?? '';
-        await fetchSalesCost(tr);
-    };
-}
-
-/* =========================================================
-   جلب التكلفة
-   ========================================================= */
-
-async function fetchSalesCost(tr) {
-    if (!tr) return;
-
-    const itemId = tr.querySelector('.row-item-id')?.value;
-    const warehouseId = tr.querySelector('.row-warehouse-id')?.value;
-
-    if (!itemId || !warehouseId) return;
-
-    try {
-        const res = await salesApiGet(
-            `/operation/sales/invoices/helpers/last-cost?item_id=${itemId}&warehouse_id=${warehouseId}`
-        );
-        const costInput = tr.querySelector('.row-cost-price');
-        if (costInput) costInput.value = res.cost || 0;
-    } catch (e) {
-        console.warn('Failed to fetch cost', e);
-    }
+    // ⚠️ hooks الصنف / النوع / المخزن أُزيلت
+    // صفوف البيع تستخدم نافذة الأرصدة الموحّدة بدلًا منها.
 }
 
 /* =========================================================
@@ -145,6 +115,17 @@ async function fetchSalesCost(tr) {
 
 document.addEventListener('DOMContentLoaded', () => {
     registerSalesLookupHooks();
+
+    const balancesEl = document.getElementById('stockBalancesModal');
+    if (balancesEl) {
+        stockBalancesModalInstance = new bootstrap.Modal(balancesEl);
+    }
+
+    const sortingEl = document.getElementById('sortingFromBalanceModal');
+    if (sortingEl) {
+        sortingFromBalanceModalInstance = new bootstrap.Modal(sortingEl);
+    }
+
     setSalesMode('view');
     clearSalesForm();
 });
@@ -156,14 +137,12 @@ document.addEventListener('DOMContentLoaded', () => {
 function setSalesMode(mode) {
     salesMode = mode;
 
-    // حقول الرأس
     document.querySelectorAll(
         '#SalesInvoiceDate, #SalesPaymentMethod, #salesPaymentAccount, ' +
         '#customerName, #salesCurrencyName, #SalesExchangeRate, ' +
         '#SalesStatement, #SalesReference'
     ).forEach(el => { el.disabled = (mode === 'view'); });
 
-    // صفوف التفاصيل
     document.querySelectorAll('#salesInvoiceDetails .sales-detail-row')
         .forEach(row => enableSalesRow(row));
 
@@ -285,20 +264,11 @@ function addSalesRow() {
 
     const row = tpl.content.firstElementChild.cloneNode(true);
 
-    // تعبئة الوحدات
-    const unitSelect = row.querySelector('.row-unit');
-    if (unitSelect && typeof lookupCache !== 'undefined') {
-        const units = lookupCache.units || [];
-        units.forEach(u => {
-            const opt = document.createElement('option');
-            opt.value = u.UnitID;
-            opt.textContent = u.UnitName;
-            unitSelect.appendChild(opt);
-        });
-
-        // الوحدة الافتراضية = "حبه"
-        const defaultUnit = units.find(u => u.UnitName === 'حبه');
-        if (defaultUnit) unitSelect.value = defaultUnit.UnitID;
+    // ✅ الوحدة الافتراضية = "الحبة"
+    const defaultUnit = findDefaultPieceUnit();
+    if (defaultUnit) {
+        row.querySelector('.row-unit-id').value = defaultUnit.UnitID;
+        row.querySelector('.row-unit').value = defaultUnit.UnitName;
     }
 
     tbody.appendChild(row);
@@ -415,7 +385,6 @@ function salesPaymentMethodChanged(clearPrevious = false) {
     container.classList.remove('d-none');
     input.disabled = (salesMode === 'view');
 
-    // تغيير نوع Lookup
     if (method === 'bank') {
         input.dataset.lookup = 'bank';
         input.dataset.lookupDisplayField = 'bankName';
@@ -534,17 +503,9 @@ async function loadSalesInvoice(id) {
         details.forEach((d, i) => {
             const row = tpl.content.firstElementChild.cloneNode(true);
 
-            // تعبئة الوحدات
-            const unitSel = row.querySelector('.row-unit');
-            if (unitSel && typeof lookupCache !== 'undefined') {
-                (lookupCache.units || []).forEach(u => {
-                    const opt = document.createElement('option');
-                    opt.value = u.UnitID;
-                    opt.textContent = u.UnitName;
-                    if (String(u.UnitID) === String(d.unit_id)) opt.selected = true;
-                    unitSel.appendChild(opt);
-                });
-            }
+            // ✅ الوحدة (input + hidden)
+            row.querySelector('.row-unit-id').value = d.unit_id ?? '';
+            row.querySelector('.row-unit').value = d.unit_name ?? '';
 
             row.querySelector('.row-num').textContent = i + 1;
 
@@ -608,7 +569,7 @@ function takeSalesSnapshot() {
             item: r.querySelector('.row-item-id')?.value || '',
             type: r.querySelector('.row-type-id')?.value || '',
             code: r.querySelector('.row-code')?.value || '',
-            unit: r.querySelector('.row-unit')?.value || '',
+            unit: r.querySelector('.row-unit-id')?.value || '',
             warehouse: r.querySelector('.row-warehouse-id')?.value || '',
             price: r.querySelector('.row-price')?.value || '',
             measure: r.querySelector('.row-measure')?.value || '',
@@ -684,6 +645,8 @@ async function saveSalesInvoice() {
         const warehouseId = row.querySelector('.row-warehouse-id')?.value;
         if (!warehouseId) return salesNotify('يجب اختيار المخزن في كل الصفوف', 'warning');
 
+        const unitId = row.querySelector('.row-unit-id')?.value || null;
+
         const qty = parseFloat(row.querySelector('.row-measure')?.value) || 0;
         if (qty <= 0) return salesNotify('الكمية يجب أن تكون أكبر من صفر', 'warning');
 
@@ -699,8 +662,7 @@ async function saveSalesInvoice() {
             item_id: Number(itemId),
             type_id: row.querySelector('.row-type-id')?.value
                 ? Number(row.querySelector('.row-type-id').value) : null,
-            unit_id: row.querySelector('.row-unit')?.value
-                ? Number(row.querySelector('.row-unit').value) : null,
+            unit_id: unitId ? Number(unitId) : null,
             warehouse_id: Number(warehouseId),
             code: row.querySelector('.row-code')?.value || null,
             quantity: qty,
@@ -768,7 +730,7 @@ async function saveAndNewSalesInvoice() {
 
 function printSalesInvoice() {
     if (!hasSalesInvoiceData() || !currentSalesInvoiceId) {
-        notify('يجب حفظ الفاتورة أولاً قبل الطباعة', 'warning');
+        salesNotify('يجب حفظ الفاتورة أولاً قبل الطباعة', 'warning');
         return;
     }
 
@@ -778,21 +740,506 @@ function printSalesInvoice() {
         'width=900,height=700'
     );
 }
+
+/* =========================================================================
+   ✅ Modal: الأرصدة والتسعير
+   ========================================================================= */
+
+function findDefaultPieceUnit() {
+    const units = (typeof lookupCache !== 'undefined' && lookupCache.units) || [];
+    for (const name of PIECE_UNIT_NAMES) {
+        const found = units.find(u => u.UnitName === name);
+        if (found) return found;
+    }
+    return null;
+}
+
+function isKiloUnit(unitName) {
+    if (!unitName) return false;
+    const n = String(unitName).trim().toLowerCase();
+    return n.includes('كيلو') || n.includes('كجم') || n === 'kg' || n.includes('kilogram');
+}
+
+function openStockBalancesModal(input) {
+    if (salesMode === 'view') return;
+    if (!stockBalancesModalInstance) {
+        salesNotify('نافذة الأرصدة غير جاهزة', 'danger');
+        return;
+    }
+
+    activeStockBalanceInput = input;
+    activeStockBalanceRow = input.closest('tr');
+
+    const itemName = activeStockBalanceRow?.querySelector('.row-item')?.value || '';
+    const searchInput = document.getElementById('stockBalancesSearch');
+    if (searchInput) searchInput.value = itemName;
+
+    stockBalancesModalInstance.show();
+
+    if (stockBalancesCache.length === 0) {
+        fetchStockBalances();
+    } else {
+        filterStockBalances();
+    }
+}
+
+async function fetchStockBalances() {
+    const tbody = document.getElementById('stockBalancesBody');
+    if (tbody) {
+        tbody.replaceChildren();
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 11;
+        td.className = 'text-center text-muted py-4';
+        td.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري التحميل...';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+    }
+
+    try {
+        const res = await salesApiGet('/operation/movements/helpers/stock-balances');
+        stockBalancesCache = Array.isArray(res.data) ? res.data : [];
+        filterStockBalances();
+    } catch (e) {
+        console.error(e);
+        salesNotify('فشل تحميل الأرصدة', 'danger');
+        if (tbody) {
+            tbody.replaceChildren();
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 11;
+            td.className = 'text-center text-danger py-4';
+            td.textContent = 'فشل تحميل الأرصدة';
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+        }
+    }
+}
+
+function filterStockBalances() {
+    const search = (document.getElementById('stockBalancesSearch')?.value || '').trim().toLowerCase();
+
+    if (!search) {
+        renderStockBalances(stockBalancesCache);
+        return;
+    }
+
+    const filtered = stockBalancesCache.filter(row => {
+        return (
+            (row.item_name || '').toLowerCase().includes(search) ||
+            (row.type_name || '').toLowerCase().includes(search) ||
+            (row.code || '').toLowerCase().includes(search) ||
+            (row.warehouse_name || '').toLowerCase().includes(search) ||
+            (row.unit_name || '').toLowerCase().includes(search)
+        );
+    });
+
+    renderStockBalances(filtered);
+}
+
+function renderStockBalances(rows) {
+    const tbody = document.getElementById('stockBalancesBody');
+    if (!tbody) return;
+
+    tbody.replaceChildren();
+
+    if (!rows.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 11;
+        td.className = 'text-center text-muted py-4';
+        td.textContent = 'لا توجد أرصدة متاحة';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    rows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.className = 'text-center';
+
+        // الصنف
+        const tdItem = document.createElement('td');
+        tdItem.className = 'text-start';
+        tdItem.textContent = row.item_name || '—';
+        tr.appendChild(tdItem);
+
+        // النوع
+        const tdType = document.createElement('td');
+        tdType.textContent = row.type_name || '—';
+        tr.appendChild(tdType);
+
+        // الرمز
+        const tdCode = document.createElement('td');
+        tdCode.textContent = row.code || '—';
+        tr.appendChild(tdCode);
+
+        // المخزن
+        const tdWh = document.createElement('td');
+        tdWh.textContent = row.warehouse_name || '—';
+        tr.appendChild(tdWh);
+
+        // الوحدة
+        const tdUnit = document.createElement('td');
+        tdUnit.textContent = row.unit_name || '—';
+        tr.appendChild(tdUnit);
+
+        // الرصيد
+        const tdQty = document.createElement('td');
+        tdQty.className = 'fw-bold text-success';
+        tdQty.textContent = salesFormatMoney(row.quantity);
+        tr.appendChild(tdQty);
+
+        // التكلفة
+        const tdCost = document.createElement('td');
+        tdCost.textContent = salesFormatMoney(row.unit_cost);
+        tr.appendChild(tdCost);
+
+        // سعر البيع
+        const tdSale = document.createElement('td');
+        const saleInput = document.createElement('input');
+        saleInput.type = 'number';
+        saleInput.className = 'form-control form-control-sm text-center';
+        saleInput.value = row.sale_price || 0;
+        saleInput.step = '0.01';
+        saleInput.min = '0';
+        saleInput.style.minWidth = '80px';
+        saleInput.addEventListener('change', () => {
+            updatePricingInline(row, { sale_price: parseFloat(saleInput.value) || 0 });
+        });
+        tdSale.appendChild(saleInput);
+        tr.appendChild(tdSale);
+
+        // الحد الأدنى
+        const tdMin = document.createElement('td');
+        const minInput = document.createElement('input');
+        minInput.type = 'number';
+        minInput.className = 'form-control form-control-sm text-center';
+        minInput.value = row.min_price || 0;
+        minInput.step = '0.01';
+        minInput.min = '0';
+        minInput.style.minWidth = '80px';
+        minInput.addEventListener('change', () => {
+            updatePricingInline(row, { min_price: parseFloat(minInput.value) || 0 });
+        });
+        tdMin.appendChild(minInput);
+        tr.appendChild(tdMin);
+
+        // الحد الأعلى
+        const tdMax = document.createElement('td');
+        const maxInput = document.createElement('input');
+        maxInput.type = 'number';
+        maxInput.className = 'form-control form-control-sm text-center';
+        maxInput.value = row.max_price || 0;
+        maxInput.step = '0.01';
+        maxInput.min = '0';
+        maxInput.style.minWidth = '80px';
+        maxInput.addEventListener('change', () => {
+            updatePricingInline(row, { max_price: parseFloat(maxInput.value) || 0 });
+        });
+        tdMax.appendChild(maxInput);
+        tr.appendChild(tdMax);
+
+        // الإجراءات
+        const tdActions = document.createElement('td');
+        const actionsWrap = document.createElement('div');
+        actionsWrap.className = 'd-flex gap-1 justify-content-center';
+
+        const btnSelect = document.createElement('button');
+        btnSelect.type = 'button';
+        btnSelect.className = 'btn btn-sm btn-primary';
+        btnSelect.innerHTML = '<i class="bi bi-check-lg"></i>';
+        btnSelect.title = 'اختيار هذا الرصيد';
+        btnSelect.addEventListener('click', () => selectStockBalance(row));
+        actionsWrap.appendChild(btnSelect);
+
+        if (isKiloUnit(row.unit_name)) {
+            const btnSort = document.createElement('button');
+            btnSort.type = 'button';
+            btnSort.className = 'btn btn-sm btn-warning';
+            btnSort.innerHTML = '<i class="bi bi-scissors"></i>';
+            btnSort.title = 'فرز الدفعة';
+            btnSort.addEventListener('click', () => openSortingFromBalance(row));
+            actionsWrap.appendChild(btnSort);
+        }
+
+        tdActions.appendChild(actionsWrap);
+        tr.appendChild(tdActions);
+
+        fragment.appendChild(tr);
+    });
+
+    tbody.appendChild(fragment);
+}
+
+function selectStockBalance(row) {
+    if (!activeStockBalanceRow) return;
+
+    activeStockBalanceRow.querySelector('.row-item-id').value = row.item_id ?? '';
+    activeStockBalanceRow.querySelector('.row-item').value = row.item_name ?? '';
+
+    activeStockBalanceRow.querySelector('.row-type-id').value = row.type_id ?? '';
+    activeStockBalanceRow.querySelector('.row-type').value = row.type_name ?? '';
+
+    activeStockBalanceRow.querySelector('.row-code').value = row.code ?? '';
+
+    activeStockBalanceRow.querySelector('.row-unit-id').value = row.unit_id ?? '';
+    activeStockBalanceRow.querySelector('.row-unit').value = row.unit_name ?? '';
+
+    activeStockBalanceRow.querySelector('.row-warehouse-id').value = row.warehouse_id ?? '';
+    activeStockBalanceRow.querySelector('.row-warehouse').value = row.warehouse_name ?? '';
+
+    activeStockBalanceRow.querySelector('.row-price').value = row.sale_price || 0;
+    activeStockBalanceRow.querySelector('.row-cost-price').value = row.unit_cost || 0;
+    activeStockBalanceRow.querySelector('.row-measure').value = 1;
+
+    calculateSalesRow(activeStockBalanceRow.querySelector('.row-measure'));
+
+    stockBalancesModalInstance?.hide();
+
+    setTimeout(() => {
+        activeStockBalanceRow?.querySelector('.row-measure')?.focus();
+    }, 300);
+}
+
+async function updatePricingInline(rowData, changes) {
+    // ✅ القاعدة: 0 أو فارغ → null
+    const toNullable = (v) => {
+        const n = Number(v);
+        return (v === '' || v === null || v === undefined || isNaN(n) || n <= 0) ? null : n;
+    };
+
+    const saleValue = changes.sale_price !== undefined
+        ? changes.sale_price
+        : rowData.sale_price;
+
+    const minValue = changes.min_price !== undefined
+        ? changes.min_price
+        : rowData.min_price;
+
+    const maxValue = changes.max_price !== undefined
+        ? changes.max_price
+        : rowData.max_price;
+
+    const payload = {
+        item_id: rowData.item_id,
+        warehouse_id: rowData.warehouse_id,
+        unit_id: rowData.unit_id || null,
+        sale_price: toNullable(saleValue),
+        min_price: toNullable(minValue),
+        max_price: toNullable(maxValue),
+    };
+
+    // ✅ فحوصات (فقط عند وجود قيم)
+    const sale = payload.sale_price;
+    const min = payload.min_price;
+    const max = payload.max_price;
+
+    if (min !== null && max !== null && min > max) {
+        salesNotify(`الحد الأدنى (${min}) أكبر من الحد الأعلى (${max})`, 'warning');
+        return;
+    }
+    if (sale !== null && min !== null && sale < min) {
+        salesNotify(`سعر البيع (${sale}) أقل من الحد الأدنى (${min})`, 'warning');
+        return;
+    }
+    if (sale !== null && max !== null && sale > max) {
+        salesNotify(`سعر البيع (${sale}) أكبر من الحد الأعلى (${max})`, 'warning');
+        return;
+    }
+
+    try {
+        const r = await fetch('/operation/movements/helpers/pricing', {
+            method: 'PUT',
+            headers: salesApiHeaders(true),
+            body: JSON.stringify(payload),
+        });
+
+        const data = await r.json().catch(() => ({}));
+
+        if (!r.ok) {
+            let errorMsg = data.message || 'فشل تحديث التسعير';
+            if (data.errors) {
+                const messages = Object.values(data.errors).flat();
+                if (messages.length) errorMsg = messages.join(' | ');
+            }
+            throw new Error(errorMsg);
+        }
+
+        // ✅ تحديث الـ cache (بالقيم الجديدة أو null)
+        rowData.sale_price = payload.sale_price ?? 0;
+        rowData.min_price = payload.min_price ?? 0;
+        rowData.max_price = payload.max_price ?? 0;
+
+        salesNotify('تم تحديث التسعير', 'success');
+    } catch (e) {
+        console.error('updatePricingInline failed:', e);
+        salesNotify(e.message, 'danger');
+    }
+}
+
+/* =========================================================================
+   ✅ Modal: الفرز
+   ========================================================================= */
+
+function openSortingFromBalance(rowData) {
+    activeBalanceData = rowData;
+
+    document.getElementById('sortingItemName').textContent = rowData.item_name || '—';
+    document.getElementById('sortingTypeName').textContent = rowData.type_name || '—';
+    document.getElementById('sortingWarehouseName').textContent = rowData.warehouse_name || '—';
+    document.getElementById('sortingAvailable').textContent = salesFormatMoney(rowData.quantity);
+    document.getElementById('sortingUnitCost').textContent = salesFormatMoney(rowData.unit_cost);
+
+    document.getElementById('sortingInputQty').value = '';
+    document.getElementById('sortingOutputQty').value = '';
+    document.getElementById('sortingSalePrice').value = '';
+    document.getElementById('sortingMinPrice').value = '';
+    document.getElementById('sortingMaxPrice').value = '';
+    document.getElementById('sortingResultUnitCost').textContent = '0.00';
+    document.getElementById('sortingResultTotal').textContent = '0.00';
+
+    // ✅ إزالة التركيز قبل الإغلاق (يمنع تحذير aria-hidden)
+    if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+    }
+
+    const balancesEl = document.getElementById('stockBalancesModal');
+    if (balancesEl) {
+        balancesEl.addEventListener('hidden.bs.modal', function handler() {
+            balancesEl.removeEventListener('hidden.bs.modal', handler);
+            sortingFromBalanceModalInstance?.show();
+            setTimeout(() => document.getElementById('sortingInputQty')?.focus(), 300);
+        });
+    }
+    stockBalancesModalInstance?.hide();
+}
+
+function calculateSortingFromBalance() {
+    if (!activeBalanceData) return;
+
+    const inputQty = parseFloat(document.getElementById('sortingInputQty').value) || 0;
+    const outputQty = parseFloat(document.getElementById('sortingOutputQty').value) || 0;
+    const kgCost = parseFloat(activeBalanceData.unit_cost) || 0;
+
+    if (inputQty <= 0 || outputQty <= 0 || kgCost <= 0) {
+        document.getElementById('sortingResultUnitCost').textContent = '0.00';
+        document.getElementById('sortingResultTotal').textContent = '0.00';
+        return;
+    }
+
+    const totalCost = inputQty * kgCost;
+    const unitCost = totalCost / outputQty;
+
+    document.getElementById('sortingResultUnitCost').textContent = salesFormatMoney(unitCost);
+    document.getElementById('sortingResultTotal').textContent = salesFormatMoney(totalCost);
+}
+
+async function saveSortingFromBalance() {
+    if (!activeBalanceData) return;
+
+    const inputQty = parseFloat(document.getElementById('sortingInputQty').value) || 0;
+    const outputQty = parseFloat(document.getElementById('sortingOutputQty').value) || 0;
+
+    if (inputQty <= 0) {
+        salesNotify('الكمية المفرزة يجب أن تكون أكبر من صفر', 'warning');
+        return;
+    }
+    if (outputQty <= 0) {
+        salesNotify('عدد الحبات يجب أن يكون أكبر من صفر', 'warning');
+        return;
+    }
+    if (inputQty > activeBalanceData.quantity) {
+        salesNotify(`الرصيد المتاح (${salesFormatMoney(activeBalanceData.quantity)}) أقل من المطلوب`, 'warning');
+        return;
+    }
+
+    const pieceUnit = findDefaultPieceUnit();
+    if (!pieceUnit) {
+        salesNotify('وحدة "الحبة" غير موجودة في النظام', 'danger');
+        return;
+    }
+
+    const payload = {
+        item_id: activeBalanceData.item_id,
+        type_id: activeBalanceData.type_id,
+        warehouse_id: activeBalanceData.warehouse_id,
+        input_unit_id: activeBalanceData.unit_id,
+        output_unit_id: pieceUnit.UnitID,
+        input_quantity: inputQty,
+        output_quantity: outputQty,
+        code: activeBalanceData.code || null,
+        sale_price: parseFloat(document.getElementById('sortingSalePrice').value) || null,
+        min_price: parseFloat(document.getElementById('sortingMinPrice').value) || null,
+        max_price: parseFloat(document.getElementById('sortingMaxPrice').value) || null,
+    };
+
+    const btn = document.getElementById('btnSaveSorting');
+    if (btn) btn.disabled = true;
+
+    try {
+        const r = await fetch('/operation/movements/sort', {
+            method: 'POST',
+            headers: salesApiHeaders(true),
+            body: JSON.stringify(payload),
+        });
+        const data = await r.json();
+
+        if (!r.ok) {
+            throw new Error(data.message || 'فشل الفرز');
+        }
+
+        salesNotify('تم الفرز بنجاح', 'success');
+
+        sortingFromBalanceModalInstance?.hide();
+
+        stockBalancesCache = [];
+
+        setTimeout(() => {
+            fetchStockBalances();
+            stockBalancesModalInstance?.show();
+        }, 350);
+
+    } catch (e) {
+        salesNotify(e.message, 'danger');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
 /* =========================================================
    تصدير للـ HTML
    ========================================================= */
 
-window.resetSalesInvoice = resetSalesInvoice;
-window.addSalesRow = addSalesRow;
-window.removeSalesRow = removeSalesRow;
-window.calculateSalesRow = calculateSalesRow;
-window.salesExchangeRateChanged = salesExchangeRateChanged;
-window.salesPaymentMethodChanged = salesPaymentMethodChanged;
-window.searchSalesInvoice = searchSalesInvoice;
-window.performSalesInvoiceSearch = performSalesInvoiceSearch;
-window.loadSalesInvoice = loadSalesInvoice;
-window.editSalesInvoice = editSalesInvoice;
-window.cancelSalesInvoice = cancelSalesInvoice;
-window.saveSalesInvoice = saveSalesInvoice;
-window.saveAndNewSalesInvoice = saveAndNewSalesInvoice;
-window.printSalesInvoice = printSalesInvoice;
+Object.assign(window, {
+    resetSalesInvoice,
+    addSalesRow,
+    removeSalesRow,
+    calculateSalesRow,
+    salesExchangeRateChanged,
+    salesPaymentMethodChanged,
+    searchSalesInvoice,
+    performSalesInvoiceSearch,
+    loadSalesInvoice,
+    editSalesInvoice,
+    cancelSalesInvoice,
+    saveSalesInvoice,
+    saveAndNewSalesInvoice,
+    printSalesInvoice,
+
+    openStockBalancesModal,
+    fetchStockBalances,
+    filterStockBalances,
+    renderStockBalances,
+    selectStockBalance,
+    updatePricingInline,
+
+    openSortingFromBalance,
+    calculateSortingFromBalance,
+    saveSortingFromBalance,
+
+    findDefaultPieceUnit,
+    isKiloUnit,
+});

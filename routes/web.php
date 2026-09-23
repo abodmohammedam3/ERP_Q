@@ -594,7 +594,82 @@ Route::get(
 
 
 // -----------------------------------------------------
+// ✅ Helpers — جلب الرصيد المتاح (Unit-aware)
+// ⚠️ يجب أن يوضع قبل /{id}
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/movements/helpers/available',
+    [InventoryMovementController::class, 'available']
+)->name('movements.helpers.available');
+
+
+// -----------------------------------------------------
+// ✅ Helpers — جلب التسعير الحالي
+// ⚠️ يجب أن يوضع قبل /{id}
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/movements/helpers/pricing',
+    [InventoryMovementController::class, 'pricing']
+)->name('movements.helpers.pricing');
+
+
+// -----------------------------------------------------
+// ✅ Helpers — جلب الرصيد + التكلفة + التسعير (مدمج)
+// ⚠️ يجب أن يوضع قبل /{id}
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/movements/helpers/stock-pricing',
+    [InventoryMovementController::class, 'stockPricing']
+)->name('movements.helpers.stockPricing');
+
+
+// -----------------------------------------------------
+// ✅ تحديث التسعير لآخر حركة "in"
+// -----------------------------------------------------
+
+Route::put(
+    '/operation/movements/helpers/pricing',
+    [InventoryMovementController::class, 'updatePricing']
+)->name('movements.helpers.updatePricing');
+
+
+// -----------------------------------------------------
+// ✅ Helpers — جلب جميع الأرصدة مع التسعير
+// ⚠️ يجب أن يوضع قبل /{id}
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/movements/helpers/stock-balances',
+    [InventoryMovementController::class, 'allStockBalances']
+)->name('movements.helpers.stockBalances');
+
+
+// -----------------------------------------------------
+// ✅ فرز / تجهيز المخزون
+// -----------------------------------------------------
+
+Route::post(
+    '/operation/movements/sort',
+    [InventoryMovementController::class, 'sort']
+)->name('movements.sort');
+
+
+// -----------------------------------------------------
+// ✅ عكس عملية فرز
+// -----------------------------------------------------
+
+Route::post(
+    '/operation/movements/sort/{documentNumber}/reverse',
+    [InventoryMovementController::class, 'reverseSort']
+)->name('movements.sort.reverse');
+
+
+// -----------------------------------------------------
 // عرض حركة واحدة (JSON)
+// ⚠️ يجب أن يكون بعد helpers
 // -----------------------------------------------------
 
 Route::get(

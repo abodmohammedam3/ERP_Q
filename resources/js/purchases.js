@@ -88,6 +88,31 @@ function formatMoney(v) {
 }
 
 /* =========================================================
+   إدارة حالة حقل سعر الصرف (مركزية)
+   =========================================================
+   - إذا كانت العملة = العملة الأساسية → القيمة 1 + معطَّل دائمًا
+   - إذا كانت العملة أجنبية → مفعَّل في add/edit، معطَّل في view
+   ========================================================= */
+
+function applyExchangeRateState() {
+    const rateEl = document.getElementById('PuInExchangeRate2');
+    if (!rateEl) return;
+
+    const isSys = isInvoiceInSystemCurrency();
+
+    if (isSys) {
+        rateEl.value = 1;
+        rateEl.disabled = true;
+        rateEl.readOnly = true;
+        rateEl.classList.add('bg-light');
+    } else {
+        rateEl.disabled = (invoiceMode === 'view');
+        rateEl.readOnly = false;
+        rateEl.classList.remove('bg-light');
+    }
+}
+
+/* =========================================================
    خطافات النظام الموحّد (LookupConfigs)
    ========================================================= */
 
@@ -96,11 +121,19 @@ function registerCurrencyLookupHook() {
 
     LookupConfigs.currency.onSelect = (row) => {
         const rateEl = document.getElementById('PuInExchangeRate2');
-        if (rateEl) rateEl.value = row.coinsExchangeRate ?? 1;
+        const codeEl = document.getElementById('currencyCode');
 
         // ✅ حفظ رمز العملة
-        const codeEl = document.getElementById('currencyCode');
         if (codeEl) codeEl.value = row.coinsCode ?? '';
+
+        // ✅ تعيين سعر الصرف الافتراضي (قبل تطبيق الحالة)
+        if (rateEl) {
+            const isSys = String(row.coinsID) === String(SYSTEM_CURRENCY_ID);
+            rateEl.value = isSys ? 1 : (row.coinsExchangeRate ?? 1);
+        }
+
+        // ✅ تطبيق حالة الحقل (تعطيل/تفعيل)
+        applyExchangeRateState();
 
         calculateTotals();
     };
@@ -150,10 +183,13 @@ function setInvoiceMode(mode) {
 
     document.querySelectorAll(
         '#PurchaseInvoicesON2, #PurchaseInvoicesDate2, #PuInPaymentMethod2, ' +
-        '#paymentAccount, #supplierName, #currencyName, #PuInExchangeRate2, ' +
+        '#paymentAccount, #supplierName, #currencyName, ' +
         '#warehouseName, #PuInStatement2, #invoiceReference, #PuInExpenses, ' +
         '#PuInTaxCost, #PuInTransportation, #PuInOtherCost, #otherCostDescription'
     ).forEach(el => { el.disabled = (mode === 'view'); });
+
+    // ✅ ملاحظة: تم إزالة #PuInExchangeRate2 من القائمة أعلاه
+    //    لأن حالته تُدار مركزياً عبر applyExchangeRateState()
 
     document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row')
         .forEach(row => enableRow(row));
@@ -187,6 +223,9 @@ function setInvoiceMode(mode) {
         if (printBtn) printBtn.disabled = true;
         paymentMethodChanged();
     }
+
+    // ✅ تطبيق حالة سعر الصرف في نهاية كل تغيير للوضع
+    applyExchangeRateState();
 }
 
 /* =========================================================
@@ -222,7 +261,7 @@ async function resetInvoice() {
 function clearInvoiceForm() {
     document.querySelectorAll(
         '#PurchaseInvoicesON2, #PurchaseInvoicesDate2, #PuInPaymentMethod2, ' +
-        '#paymentAccount, #supplierName, #currencyName, #PuInExchangeRate2, ' +
+        '#paymentAccount, #supplierName, #currencyName, ' +
         '#warehouseName, #PuInStatement2, #invoiceReference, #PuInExpenses, ' +
         '#PuInTaxCost, #PuInTransportation, #PuInOtherCost, #otherCostDescription'
     ).forEach(el => {
@@ -233,6 +272,13 @@ function clearInvoiceForm() {
     ['suplierID', 'coinsID', 'currencyCode', 'warehouseID',
         'paymentAccountId', 'AmountWords']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+
+    // ✅ إعادة تعيين سعر الصرف إلى 1 (بدل فارغ)
+    const rateEl = document.getElementById('PuInExchangeRate2');
+    if (rateEl) {
+        rateEl.value = 1;
+        rateEl.readOnly = false;
+    }
 
     setEmptyDetailsMessage();
 
@@ -393,17 +439,20 @@ function calculateTotals() {
     const net = Math.max(0, itemsTotal - discountTotal);
     const totalFC = net + expenses + tax + trans + other;
 
-    const rate = parseFloat(document.getElementById('PuInExchangeRate2')?.value) || 1;
-    const totalBC = totalFC * rate;
-
     const isSystemCurrency = isInvoiceInSystemCurrency();
+
+    // ✅ سعر الصرف الفعّال: 1 للعملة الأساسية، القيمة المُدخلة لغيرها
+    const rate = parseFloat(document.getElementById('PuInExchangeRate2')?.value) || 1;
+    const effectiveRate = isSystemCurrency ? 1 : rate;
+
+    const totalBC = totalFC * effectiveRate;
 
     // خلية الخصم
     renderAmountDisplay(
         document.getElementById('totalDiscountForeign'),
         document.getElementById('totalDiscountLocal'),
         discountTotal,
-        discountTotal * rate,
+        discountTotal * effectiveRate,
         isSystemCurrency
     );
 
@@ -696,6 +745,10 @@ async function loadInvoice(id) {
 
         currentInvoiceId = h.purchase_invoice_id;
         setInvoiceMode('view');
+
+        // ✅ تطبيق حالة سعر الصرف بناءً على العملة المحمَّلة
+        applyExchangeRateState();
+
         editSnapshot = null;
 
         notify('تم تحميل الفاتورة بنجاح', 'success');
@@ -755,16 +808,30 @@ function editInvoice() {
     }
 
     setInvoiceMode('edit');
+
     document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row')
         .forEach(r => enableRow(r));
+
     document.querySelectorAll(
         '#PurchaseInvoicesDate2, #PuInPaymentMethod2, #paymentAccount, #supplierName, ' +
-        '#currencyName, #PuInExchangeRate2, #warehouseName, #PuInStatement2, ' +
+        '#currencyName, #warehouseName, #PuInStatement2, ' +
         '#invoiceReference, #PuInExpenses, #PuInTaxCost, #PuInTransportation, ' +
         '#PuInOtherCost, #otherCostDescription'
     ).forEach(el => el.disabled = false);
 
+    // ✅ ملاحظة: تم إزالة #PuInExchangeRate2 من القائمة أعلاه
+    //    لأن حالته تُدار مركزياً
+
+    if (getValue('PuInPaymentMethod2') === 'credit') {
+        setValue('paymentAccountId', '');
+        setValue('paymentAccount', '');
+    }
+
     paymentMethodChanged();
+
+    // ✅ تطبيق حالة سعر الصرف بعد تفعيل الحقول
+    applyExchangeRateState();
+
     editSnapshot = takeSnapshot();
 }
 
@@ -847,6 +914,14 @@ async function saveInvoice() {
         }
     }
 
+    // ✅ حماية: إرسال سعر الصرف الصحيح للسيرفر
+    //    - للعملة الأساسية: 1 (حتى لو عُدِّل الحقل يدوياً)
+    //    - للعملات الأجنبية: القيمة المُدخلة (أو 1 كقيمة افتراضية)
+    const isSystemCurrency = isInvoiceInSystemCurrency();
+    const exchangeRate = isSystemCurrency
+        ? 1
+        : (parseFloat(document.getElementById('PuInExchangeRate2').value) || 1);
+
     const payload = {
         invoice_number: number,
         invoice_date: document.getElementById('PurchaseInvoicesDate2').value,
@@ -855,7 +930,7 @@ async function saveInvoice() {
         payment_account_id: document.getElementById('paymentAccountId').value || null,
         coin_id: Number(coinId),
         warehouse_id: Number(wid),
-        exchange_rate: parseFloat(document.getElementById('PuInExchangeRate2').value) || 1,
+        exchange_rate: exchangeRate,
         expenses: parseFloat(document.getElementById('PuInExpenses').value) || 0,
         tax_cost: parseFloat(document.getElementById('PuInTaxCost').value) || 0,
         transportation: parseFloat(document.getElementById('PuInTransportation').value) || 0,
@@ -914,6 +989,7 @@ function printInvoice() {
         'width=900,height=700'
     );
 }
+
 /* ═══════════════════════════════════════════════════════════
    تصدير الدوال للنطاق العام
    ═══════════════════════════════════════════════════════════ */
@@ -941,6 +1017,7 @@ Object.assign(window, {
     paymentMethodChanged,
     otherCostChanged,
     hidePaymentAccounts,
+    applyExchangeRateState,
 
     // الأوضاع
     setInvoiceMode,

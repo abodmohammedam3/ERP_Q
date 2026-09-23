@@ -92,6 +92,12 @@ class SalesInvoiceService
     // المخزون
     // =====================================================
 
+    /**
+     * التحقق من كفاية الرصيد
+     *
+     * ✅ unit-aware: يُمرِّر unit_id إلى availableQuantity
+     *    لضمان فحص الرصيد في الوحدة الصحيحة فقط (حبة/كيلو).
+     */
     protected function validateStockAvailability(array $details): void
     {
         $errors = [];
@@ -99,13 +105,15 @@ class SalesInvoiceService
         foreach ($details as $i => $row) {
             $itemId      = $row['item_id'] ?? null;
             $warehouseId = $row['warehouse_id'] ?? null;
+            $unitId      = $row['unit_id'] ?? null;
             $qty         = (float) ($row['quantity'] ?? 0);
 
             if (!$itemId || !$warehouseId || $qty <= 0) continue;
 
             $available = $this->inventoryService->availableQuantity(
                 (int) $itemId,
-                (int) $warehouseId
+                (int) $warehouseId,
+                $unitId !== null ? (int) $unitId : null   // ✅ جديد
             );
 
             if ($available < $qty) {
@@ -232,24 +240,59 @@ class SalesInvoiceService
         ];
     }
 
+    /**
+     * حفظ تفاصيل الفاتورة
+     *
+     * ✅ Option C — مقارنة ذكية لـ cost_price:
+     *   - إذا الواجهة أرسلت 0 → استخدم serverCost
+     *   - إذا serverCost = 0 → استخدم uiCost
+     *   - إذا الاثنان > 0 → قارن:
+     *       - الفرق ≤ 10% → استخدم uiCost (تعديل مقصود)
+     *       - الفرق > 10% → استخدم serverCost (حماية من التلاعب)
+     */
     protected function saveDetails(SalesInvoice $invoice, array $details): void
     {
         foreach ($details as $row) {
+            $itemId      = (int) $row['item_id'];
+            $warehouseId = (int) $row['warehouse_id'];
+            $unitId      = isset($row['unit_id']) && $row['unit_id'] !== null
+                ? (int) $row['unit_id']
+                : null;
+
             $quantity = (float) ($row['quantity'] ?? 0);
             $price    = (float) ($row['price'] ?? 0);
             $discount = (float) ($row['discount'] ?? 0);
             $total    = max(0, ($quantity * $price) - $discount);
 
+            // ✅ جلب تكلفة الوحدة من السيرفر (unit-aware)
+            $serverCost = $this->inventoryService->lastCost(
+                $itemId,
+                $warehouseId,
+                $unitId
+            );
+
+            $uiCost = (float) ($row['cost_price'] ?? 0);
+
+            // ✅ Option C — مقارنة ذكية
+            if ($uiCost <= 0) {
+                $costPrice = $serverCost;
+            } elseif ($serverCost <= 0) {
+                $costPrice = $uiCost;
+            } else {
+                $diffRatio = abs($uiCost - $serverCost) / $serverCost;
+                $costPrice = $diffRatio > 0.1 ? $serverCost : $uiCost;
+            }
+
             SalesInvoiceDetail::create([
                 'sales_invoice_id' => $invoice->sales_invoice_id,
-                'item_id'          => $row['item_id'],
+                'item_id'          => $itemId,
                 'type_id'          => $row['type_id'] ?? null,
-                'unit_id'          => $row['unit_id'] ?? null,
-                'warehouse_id'     => $row['warehouse_id'],
+                'unit_id'          => $unitId,
+                'warehouse_id'     => $warehouseId,
                 'code'             => $row['code'] ?? null,
                 'quantity'         => $quantity,
                 'price'            => $price,
-                'cost_price'       => $row['cost_price'] ?? null,
+                'cost_price'       => $costPrice,
                 'discount'         => $discount,
                 'total'            => $total,
             ]);

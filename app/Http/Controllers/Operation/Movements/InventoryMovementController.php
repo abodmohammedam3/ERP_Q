@@ -5,12 +5,31 @@ namespace App\Http\Controllers\Operation\Movements;
 use App\Http\Controllers\Controller;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\Inventory\InventoryMovementDetail;
+use App\Services\Inventory\InventoryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use App\Models\Inventory\Item;
+use App\Models\Inventory\Type;
+use App\Models\Inventory\Stock;
+use App\Models\Inventory\Unit;
 
 class InventoryMovementController extends Controller
 {
+    /**
+     * @var InventoryService
+     */
+    protected InventoryService $inventoryService;
+
+    /**
+     * Constructor Injection
+     */
+    public function __construct(InventoryService $inventoryService)
+    {
+        $this->inventoryService = $inventoryService;
+    }
+
     /**
      * عرض شاشة حركات المخزون
      */
@@ -144,6 +163,8 @@ class InventoryMovementController extends Controller
 
     /**
      * حفظ حركة جديدة
+     *
+     * ✅ فحص (source_type + source_id) قبل try/catch
      */
     public function store(Request $request)
     {
@@ -156,10 +177,21 @@ class InventoryMovementController extends Controller
             ], 422);
         }
 
+        if ($request->filled('source_type') && $request->filled('source_id')) {
+            $exists = InventoryMovement::where('source_type', $request->input('source_type'))
+                ->where('source_id', $request->input('source_id'))
+                ->exists();
+
+            if ($exists) {
+                return response()->json([
+                    'message' => 'توجد حركة مرتبطة بنفس المصدر مسبقًا',
+                ], 409);
+            }
+        }
+
         try {
             DB::beginTransaction();
 
-            // توليد رقم الحركة على الخادم بشكل آمن
             $last = InventoryMovement::lockForUpdate()
                 ->orderBy('movement_id', 'desc')
                 ->first();
@@ -183,7 +215,6 @@ class InventoryMovementController extends Controller
             ]);
 
             $this->saveDetails($movement, $request->input('details', []));
-
             $this->recalculateTotal($movement);
 
             DB::commit();
@@ -198,9 +229,672 @@ class InventoryMovementController extends Controller
             DB::rollBack();
             return response()->json([
                 'message' => 'فشل حفظ الحركة',
-                'error'   => $e->getMessage(),
+                'error'   => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
+    }
+
+    // =====================================================
+    // ✅ الفرز / التجهيز
+    // =====================================================
+
+    /**
+     * تنفيذ عملية فرز / تجهيز
+     *
+     * يحوّل كمية من وحدة (كيلو) إلى وحدة أخرى (حبة)
+     * عبر حركتين مترابطتين:
+     *   - issue/out: الوحدة الأصلية
+     *   - supply/in: الوحدة الناتجة
+     *
+     * POST /operation/movements/sort
+     */
+    public function sort(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'item_id'         => ['required', 'exists:Items,itemID'],
+            'type_id'         => ['nullable', 'exists:type,id'],
+            'warehouse_id'    => ['required', 'exists:stocks,StockID'],
+            'input_unit_id'   => ['required', 'exists:units,UnitID'],
+            'output_unit_id'  => ['required', 'exists:units,UnitID', 'different:input_unit_id'],
+            'input_quantity'  => ['required', 'numeric', 'gt:0'],
+            'output_quantity' => ['required', 'numeric', 'gt:0'],
+            'code'            => ['nullable', 'string', 'max:50'],
+            'sale_price'      => ['nullable', 'numeric', 'min:0'],
+            'min_price'       => ['nullable', 'numeric', 'min:0'],
+            'max_price'       => ['nullable', 'numeric', 'min:0'],
+            'movement_date'   => ['nullable', 'date'],
+        ], [
+            'item_id.required'         => 'يجب اختيار الصنف',
+            'item_id.exists'           => 'الصنف المحدد غير موجود',
+            'warehouse_id.required'    => 'يجب اختيار المخزن',
+            'warehouse_id.exists'      => 'المخزن المحدد غير موجود',
+            'input_unit_id.required'   => 'يجب تحديد الوحدة الأصلية',
+            'input_unit_id.exists'     => 'الوحدة الأصلية غير موجودة',
+            'output_unit_id.required'  => 'يجب تحديد الوحدة الناتجة',
+            'output_unit_id.exists'    => 'الوحدة الناتجة غير موجودة',
+            'output_unit_id.different' => 'الوحدة الناتجة يجب أن تختلف عن الأصلية',
+            'input_quantity.required'  => 'يجب إدخال الكمية المفرزة',
+            'input_quantity.gt'        => 'الكمية المفرزة يجب أن تكون أكبر من صفر',
+            'output_quantity.required' => 'يجب إدخال عدد الوحدات الناتجة',
+            'output_quantity.gt'       => 'عدد الوحدات الناتجة يجب أن يكون أكبر من صفر',
+        ]);
+
+        // ✅ تحقق منطقي: min ≤ sale ≤ max
+        $validator->after(function ($v) use ($request) {
+            $sale = $request->input('sale_price');
+            $min  = $request->input('min_price');
+            $max  = $request->input('max_price');
+
+            if ($sale !== null && $min !== null && (float) $sale < (float) $min) {
+                $v->errors()->add('sale_price', 'سعر البيع أقل من الحد الأدنى');
+            }
+
+            if ($sale !== null && $max !== null && (float) $sale > (float) $max) {
+                $v->errors()->add('sale_price', 'سعر البيع أكبر من الحد الأعلى');
+            }
+
+            if ($min !== null && $max !== null && (float) $min > (float) $max) {
+                $v->errors()->add('min_price', 'الحد الأدنى أكبر من الحد الأعلى');
+            }
+        });
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'بيانات غير صحيحة',
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $result = $this->inventoryService->sortInventory([
+                'item_id'         => (int) $request->input('item_id'),
+                'type_id'         => $request->input('type_id') ? (int) $request->input('type_id') : null,
+                'warehouse_id'    => (int) $request->input('warehouse_id'),
+                'input_unit_id'   => (int) $request->input('input_unit_id'),
+                'output_unit_id'  => (int) $request->input('output_unit_id'),
+                'input_quantity'  => (float) $request->input('input_quantity'),
+                'output_quantity' => (float) $request->input('output_quantity'),
+                'code'            => $request->input('code'),
+                'sale_price'      => $request->input('sale_price'),
+                'min_price'       => $request->input('min_price'),
+                'max_price'       => $request->input('max_price'),
+                'movement_date'   => $request->input('movement_date') ?: now()->format('Y-m-d'),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم الفرز بنجاح',
+                'data'    => $result,
+            ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => 'بيانات غير صحيحة',
+                'errors'  => $e->errors(),
+            ], 422);
+
+        } catch (\Throwable $e) {
+            Log::error('Inventory sort failed', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+                'input'   => $request->all(),
+            ]);
+
+            return response()->json([
+                'message' => 'فشل الفرز',
+                'error'   => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
+    }
+
+    /**
+     * عكس عملية فرز (Reverse Sorting)
+     *
+     * ينشئ حركتين جديدتين لعكس الفرز:
+     *   - issue/out: الوحدة الناتجة (حبة)
+     *   - supply/in: الوحدة الأصلية (كيلو)
+     *
+     * ⚠️ لا يحذف الحركات الأصلية — يحافظ على التاريخ.
+     *
+     * POST /operation/movements/sort/{documentNumber}/reverse
+     *
+     * ملاحظة: هذا التنفيذ الأولي (P2). قد يحتاج تطويرًا لاحقًا
+     * لمراعاة حالات مثل بيع جزء من الناتج قبل العكس.
+     */
+    public function reverseSort(Request $request, string $documentNumber)
+    {
+        // ─────────────────────────────────────────────
+        // 1. البحث عن الحركتين الأصليتين
+        // ─────────────────────────────────────────────
+        $movements = InventoryMovement::with('details')
+            ->where('document_number', $documentNumber)
+            ->where('source_type', InventoryMovement::SOURCE_SORTING)
+            ->orderBy('movement_id')
+            ->get();
+
+        if ($movements->count() < 2) {
+            return response()->json([
+                'message' => 'لم يتم العثور على عملية فرز صالحة بهذا الرقم',
+            ], 404);
+        }
+
+        // ─────────────────────────────────────────────
+        // 2. التحقق من عدم وجود عملية عكس سابقة
+        // ─────────────────────────────────────────────
+        $reversalDoc = 'REV-' . $documentNumber;
+
+        $alreadyReversed = InventoryMovement::where('document_number', $reversalDoc)
+            ->exists();
+
+        if ($alreadyReversed) {
+            return response()->json([
+                'message' => 'تم عكس هذه العملية مسبقًا',
+            ], 409);
+        }
+
+        // ─────────────────────────────────────────────
+        // 3. استخراج بيانات الحركتين
+        // ─────────────────────────────────────────────
+        $outMovement = $movements->firstWhere('direction', 'out');
+        $inMovement  = $movements->firstWhere('direction', 'in');
+
+        if (!$outMovement || !$inMovement) {
+            return response()->json([
+                'message' => 'بيانات عملية الفرز غير مكتملة',
+            ], 422);
+        }
+
+        $outDetail = $outMovement->details->first();
+        $inDetail  = $inMovement->details->first();
+
+        if (!$outDetail || !$inDetail) {
+            return response()->json([
+                'message' => 'تفاصيل عملية الفرز غير مكتملة',
+            ], 422);
+        }
+
+        // ─────────────────────────────────────────────
+        // 4. التحقق من توفر الناتج للعكس
+        // ─────────────────────────────────────────────
+        $availableOutput = $this->inventoryService->availableQuantity(
+            (int) $inDetail->item_id,
+            (int) $inDetail->warehouse_id,
+            (int) $inDetail->unit_id
+        );
+
+        if ($availableOutput < (float) $inDetail->quantity) {
+            return response()->json([
+                'message' => "لا يمكن عكس العملية — الرصيد الحالي من الوحدة الناتجة ({$availableOutput}) أقل من المطلوب ({$inDetail->quantity}). قد يكون جزء من الكمية قد تم بيعه.",
+            ], 422);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $lastMovement = InventoryMovement::lockForUpdate()
+                ->orderByDesc('movement_id')
+                ->first();
+
+            $nextDisplayId = $lastMovement
+                ? ((int) $lastMovement->display_id + 1)
+                : 1;
+
+            // ─────────────────────────────────────────
+            // 5. حركة OUT للوحدة الناتجة (حبة)
+            // ─────────────────────────────────────────
+            $reverseOutMovement = InventoryMovement::create([
+                'display_id'      => (string) $nextDisplayId,
+                'movement_type'   => InventoryMovement::TYPE_ISSUE,
+                'direction'       => InventoryMovement::DIRECTION_OUT,
+                'movement_date'   => now()->format('Y-m-d'),
+                'document_number' => $reversalDoc,
+                'warehouse_id'    => $inDetail->warehouse_id,
+                'statement'       => "عكس فرز {$documentNumber} - صرف الوحدات الناتجة",
+                'source_type'     => InventoryMovement::SOURCE_SORTING,
+                'source_id'       => $outMovement->movement_id,
+                'total'           => $inDetail->total,
+            ]);
+
+            InventoryMovementDetail::create([
+                'movement_id'  => $reverseOutMovement->movement_id,
+                'item_id'      => $inDetail->item_id,
+                'type_id'      => $inDetail->type_id,
+                'unit_id'      => $inDetail->unit_id,
+                'code'         => $inDetail->code,
+                'warehouse_id' => $inDetail->warehouse_id,
+                'quantity'     => $inDetail->quantity,
+                'unit_cost'    => $inDetail->unit_cost,
+                'total'        => $inDetail->total,
+            ]);
+
+            // ─────────────────────────────────────────
+            // 6. حركة IN للوحدة الأصلية (كيلو)
+            // ─────────────────────────────────────────
+            $nextDisplayId++;
+
+            $reverseInMovement = InventoryMovement::create([
+                'display_id'      => (string) $nextDisplayId,
+                'movement_type'   => InventoryMovement::TYPE_SUPPLY,
+                'direction'       => InventoryMovement::DIRECTION_IN,
+                'movement_date'   => now()->format('Y-m-d'),
+                'document_number' => $reversalDoc,
+                'warehouse_id'    => $outDetail->warehouse_id,
+                'statement'       => "عكس فرز {$documentNumber} - إرجاع الكمية الأصلية",
+                'source_type'     => InventoryMovement::SOURCE_SORTING,
+                'source_id'       => $outMovement->movement_id,
+                'total'           => $outDetail->total,
+            ]);
+
+            InventoryMovementDetail::create([
+                'movement_id'  => $reverseInMovement->movement_id,
+                'item_id'      => $outDetail->item_id,
+                'type_id'      => $outDetail->type_id,
+                'unit_id'      => $outDetail->unit_id,
+                'code'         => $outDetail->code,
+                'warehouse_id' => $outDetail->warehouse_id,
+                'quantity'     => $outDetail->quantity,
+                'unit_cost'    => $outDetail->unit_cost,
+                'total'        => $outDetail->total,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم عكس الفرز بنجاح',
+                'data'    => [
+                    'reversal_document_number' => $reversalDoc,
+                    'out_movement_id'          => $reverseOutMovement->movement_id,
+                    'in_movement_id'           => $reverseInMovement->movement_id,
+                ],
+            ], 201);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            Log::error('Inventory reverse sort failed', [
+                'message'         => $e->getMessage(),
+                'document_number' => $documentNumber,
+            ]);
+
+            return response()->json([
+                'message' => 'فشل عكس الفرز',
+                'error'   => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
+    }
+
+    // =====================================================
+    // ✅ Helpers — للواجهة الأمامية
+    // =====================================================
+
+    /**
+     * جلب الرصيد المتاح لصنف في مخزن بوحدة محددة
+     *
+     * GET /operation/movements/helpers/available
+     *     ?item_id=X&warehouse_id=Y&unit_id=Z
+     */
+    public function available(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'item_id'      => ['required', 'integer', 'exists:Items,itemID'],
+            'warehouse_id' => ['required', 'integer', 'exists:stocks,StockID'],
+            'unit_id'      => ['nullable', 'integer', 'exists:units,UnitID'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'بيانات غير صحيحة',
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        $itemId      = (int) $request->input('item_id');
+        $warehouseId = (int) $request->input('warehouse_id');
+        $unitId      = $request->input('unit_id')
+            ? (int) $request->input('unit_id')
+            : null;
+
+        $quantity = $this->inventoryService->availableQuantity(
+            $itemId,
+            $warehouseId,
+            $unitId
+        );
+
+        $cost = $unitId !== null
+            ? $this->inventoryService->lastCost($itemId, $warehouseId, $unitId)
+            : 0;
+
+        return response()->json([
+            'success'   => true,
+            'data'      => [
+                'quantity' => $quantity,
+                'cost'     => $cost,
+            ],
+        ]);
+    }
+
+    /**
+     * جلب التسعير الحالي لصنف في مخزن بوحدة محددة
+     *
+     * GET /operation/movements/helpers/pricing
+     *     ?item_id=X&warehouse_id=Y&unit_id=Z
+     */
+    public function pricing(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'item_id'      => ['required', 'integer', 'exists:Items,itemID'],
+            'warehouse_id' => ['required', 'integer', 'exists:stocks,StockID'],
+            'unit_id'      => ['nullable', 'integer', 'exists:units,UnitID'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'بيانات غير صحيحة',
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        $itemId      = (int) $request->input('item_id');
+        $warehouseId = (int) $request->input('warehouse_id');
+        $unitId      = $request->input('unit_id')
+            ? (int) $request->input('unit_id')
+            : null;
+
+        $pricing = $this->inventoryService->lastPricing(
+            $itemId,
+            $warehouseId,
+            $unitId
+        );
+
+        return response()->json([
+            'success' => true,
+            'data'    => $pricing,
+        ]);
+    }
+        /**
+     * ✅ جلب الرصيد + التكلفة + التسعير (مدمج)
+     *
+     * GET /operation/movements/helpers/stock-pricing
+     *     ?item_id=X&warehouse_id=Y&unit_id=Z&type_id=W
+     */
+    public function stockPricing(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'item_id'      => ['required', 'integer', 'exists:Items,itemID'],
+            'warehouse_id' => ['required', 'integer', 'exists:stocks,StockID'],
+            'unit_id'      => ['required', 'integer', 'exists:units,UnitID'],
+            'type_id'      => ['nullable', 'integer', 'exists:type,id'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'بيانات غير صحيحة',
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        $itemId      = (int) $request->input('item_id');
+        $warehouseId = (int) $request->input('warehouse_id');
+        $unitId      = (int) $request->input('unit_id');
+        $typeId      = $request->input('type_id') ? (int) $request->input('type_id') : null;
+
+        $quantity = $this->inventoryService->availableQuantity(
+            $itemId,
+            $warehouseId,
+            $unitId
+        );
+
+        $cost = $this->inventoryService->currentUnitCost(
+            $itemId,
+            $typeId,
+            $warehouseId,
+            $unitId
+        );
+
+        $pricing = $this->inventoryService->lastPricing(
+            $itemId,
+            $warehouseId,
+            $unitId
+        );
+
+        // جلب اسم الوحدة
+        $unitName = \App\Models\Inventory\Unit::where('UnitID', $unitId)
+            ->value('UnitName') ?? '';
+
+        return response()->json([
+            'success' => true,
+            'data'    => [
+                'quantity'   => $quantity,
+                'cost'       => $cost,
+                'unit_name'  => $unitName,
+                'sale_price' => $pricing['sale_price'],
+                'min_price'  => $pricing['min_price'],
+                'max_price'  => $pricing['max_price'],
+            ],
+        ]);
+    }
+
+        /**
+     * ✅ تحديث التسعير لآخر حركة "in"
+     *
+     * PUT /operation/movements/helpers/pricing
+     *
+     * ⚠️ معالجة خاصة:
+     *   - unit_id قد يكون null
+     *   - sale_price / min_price / max_price:
+     *       0 أو فارغ = "لم يُحدَّد" → null في DB
+     *       يُتجاهل في التحقق المنطقي
+     */
+    public function updatePricing(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'item_id'      => ['required', 'integer', 'exists:Items,itemID'],
+            'warehouse_id' => ['required', 'integer', 'exists:stocks,StockID'],
+            'unit_id'      => ['nullable', 'integer', 'exists:units,UnitID'],
+            'sale_price'   => ['nullable', 'numeric', 'min:0'],
+            'min_price'    => ['nullable', 'numeric', 'min:0'],
+            'max_price'    => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        // ✅ تحويل 0/فارغ إلى null قبل التحقق المنطقي
+        $toNullable = function ($value) {
+            if ($value === null || $value === '') return null;
+            $n = (float) $value;
+            return $n > 0 ? $n : null;
+        };
+
+        $saleF = $toNullable($request->input('sale_price'));
+        $minF  = $toNullable($request->input('min_price'));
+        $maxF  = $toNullable($request->input('max_price'));
+
+        // ✅ تحقق منطقي (مع تجاهل القيم الفارغة)
+        $validator->after(function ($v) use ($saleF, $minF, $maxF) {
+            if ($minF !== null && $maxF !== null && $minF > $maxF) {
+                $v->errors()->add('min_price', 'الحد الأدنى أكبر من الحد الأعلى');
+            }
+            if ($saleF !== null && $minF !== null && $saleF < $minF) {
+                $v->errors()->add('sale_price', 'سعر البيع أقل من الحد الأدنى');
+            }
+            if ($saleF !== null && $maxF !== null && $saleF > $maxF) {
+                $v->errors()->add('sale_price', 'سعر البيع أكبر من الحد الأعلى');
+            }
+        });
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'بيانات غير صحيحة',
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        $itemId      = (int) $request->input('item_id');
+        $warehouseId = (int) $request->input('warehouse_id');
+        $unitId      = $request->input('unit_id')
+            ? (int) $request->input('unit_id')
+            : null;
+
+        // ✅ آخر حركة "in" — دعم unit_id = null
+        $detail = InventoryMovementDetail::query()
+            ->whereHas('movement', function ($q) {
+                $q->where('direction', 'in');
+            })
+            ->where('item_id', $itemId)
+            ->where('warehouse_id', $warehouseId)
+            ->when(
+                $unitId !== null,
+                fn($q) => $q->where('unit_id', $unitId),
+                fn($q) => $q->whereNull('unit_id')
+            )
+            ->orderByDesc('movement_detail_id')
+            ->first();
+
+        if (!$detail) {
+            return response()->json([
+                'message' => 'لا يوجد سجل تسعير لهذا الصنف في الوحدة المحددة.',
+            ], 404);
+        }
+
+        // ✅ تخزين null بدل 0 (القيم الفارغة تُنظَّف)
+        $detail->sale_price = $saleF;
+        $detail->min_price  = $minF;
+        $detail->max_price  = $maxF;
+        $detail->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم تحديث التسعير بنجاح',
+            'data'    => [
+                'movement_detail_id' => $detail->movement_detail_id,
+                'sale_price'         => $detail->sale_price !== null ? (float) $detail->sale_price : 0,
+                'min_price'          => $detail->min_price  !== null ? (float) $detail->min_price  : 0,
+                'max_price'          => $detail->max_price  !== null ? (float) $detail->max_price  : 0,
+            ],
+        ]);
+    }
+
+        /**
+     * ✅ جلب جميع الأرصدة المتاحة مع التسعير
+     *    (للنافذة المنبثقة الموحّدة)
+     *
+     * GET /operation/movements/helpers/stock-balances
+     *
+     * يُرجع مصفوفة من الصفوف، كل صف يمثل تركيبة:
+     *   (صنف + نوع + مخزن + وحدة)
+     * مع الرصيد والتكلفة والتسعير الحالي.
+     */
+    public function allStockBalances(Request $request)
+    {
+        // ─────────────────────────────────────────────
+        // 1. جلب جميع التركيبات مع الأرصدة
+        // ─────────────────────────────────────────────
+        $combinations = DB::table('inventory_movement_details as imd')
+            ->join(
+                'inventory_movements as im',
+                'im.movement_id',
+                '=',
+                'imd.movement_id'
+            )
+            ->select(
+                'imd.item_id',
+                'imd.type_id',
+                'imd.warehouse_id',
+                'imd.unit_id',
+                DB::raw("SUM(CASE WHEN im.direction = 'in' THEN imd.quantity ELSE 0 END) as total_in"),
+                DB::raw("SUM(CASE WHEN im.direction = 'out' THEN imd.quantity ELSE 0 END) as total_out")
+            )
+            ->groupBy('imd.item_id', 'imd.type_id', 'imd.warehouse_id', 'imd.unit_id')
+            ->get()
+            ->filter(function ($c) {
+                return ((float) $c->total_in - (float) $c->total_out) > 0.000001;
+            })
+            ->values();
+
+        if ($combinations->isEmpty()) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
+        // ─────────────────────────────────────────────
+        // 2. تحميل الأسماء في bulk (تجنب N+1)
+        // ─────────────────────────────────────────────
+        $itemIds      = $combinations->pluck('item_id')->unique()->filter()->values()->toArray();
+        $typeIds      = $combinations->pluck('type_id')->unique()->filter()->values()->toArray();
+        $warehouseIds = $combinations->pluck('warehouse_id')->unique()->filter()->values()->toArray();
+        $unitIds      = $combinations->pluck('unit_id')->unique()->filter()->values()->toArray();
+
+        $items = \App\Models\Inventory\Item::whereIn('itemID', $itemIds)
+            ->pluck('itemName2', 'itemID')->toArray();
+
+        $types = \App\Models\Inventory\Type::whereIn('id', $typeIds)
+            ->pluck('name', 'id')->toArray();
+
+        $warehouses = \App\Models\Inventory\Stock::whereIn('StockID', $warehouseIds)
+            ->pluck('StockName', 'StockID')->toArray();
+
+        $units = \App\Models\Inventory\Unit::whereIn('UnitID', $unitIds)
+            ->pluck('UnitName', 'UnitID')->toArray();
+
+        // ─────────────────────────────────────────────
+        // 3. جلب آخر تفصيل "in" لكل تركيبة (للتكلفة والتسعير)
+        //    استعلامان فقط:
+        //    a) MAX(movement_detail_id) لكل تركيبة
+        //    b) WHERE IN للحصول على التفاصيل الكاملة
+        // ─────────────────────────────────────────────
+        $latestIds = DB::table('inventory_movement_details as imd')
+            ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
+            ->where('im.direction', 'in')
+            ->groupBy('imd.item_id', 'imd.type_id', 'imd.warehouse_id', 'imd.unit_id')
+            ->selectRaw('MAX(imd.movement_detail_id) as max_id')
+            ->pluck('max_id')
+            ->toArray();
+
+        $latestDetails = InventoryMovementDetail::whereIn('movement_detail_id', $latestIds)
+            ->get()
+            ->keyBy(function ($d) {
+                $typeKey = $d->type_id !== null ? $d->type_id : 'null';
+                $unitKey = $d->unit_id !== null ? $d->unit_id : 'null';
+                return "{$d->item_id}:{$typeKey}:{$d->warehouse_id}:{$unitKey}";
+            });
+
+        // ─────────────────────────────────────────────
+        // 4. بناء الصفوف النهائية
+        // ─────────────────────────────────────────────
+        $rows = [];
+
+        foreach ($combinations as $c) {
+            $typeKey = $c->type_id !== null ? $c->type_id : 'null';
+            $unitKey = $c->unit_id !== null ? $c->unit_id : 'null';
+            $lookupKey = "{$c->item_id}:{$typeKey}:{$c->warehouse_id}:{$unitKey}";
+
+            /** @var InventoryMovementDetail|null $last */
+            $last = $latestDetails->get($lookupKey);
+
+            $rows[] = [
+                'item_id'        => (int) $c->item_id,
+                'item_name'      => $items[$c->item_id] ?? '',
+                'type_id'        => $c->type_id !== null ? (int) $c->type_id : null,
+                'type_name'      => $c->type_id !== null ? ($types[$c->type_id] ?? '') : '',
+                'warehouse_id'   => (int) $c->warehouse_id,
+                'warehouse_name' => $warehouses[$c->warehouse_id] ?? '',
+                'unit_id'        => $c->unit_id !== null ? (int) $c->unit_id : null,
+                'unit_name'      => $c->unit_id !== null ? ($units[$c->unit_id] ?? '') : '',
+                'code'           => $last->code ?? '',
+                'quantity'       => (float) $c->total_in - (float) $c->total_out,
+                'unit_cost'      => $last ? (float) $last->unit_cost : 0,
+                'sale_price'     => ($last && $last->sale_price !== null)
+                    ? (float) $last->sale_price : 0,
+                'min_price'      => ($last && $last->min_price !== null)
+                    ? (float) $last->min_price : 0,
+                'max_price'      => ($last && $last->max_price !== null)
+                    ? (float) $last->max_price : 0,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'data'    => $rows,
+        ]);
     }
 
     // =====================================================
@@ -208,7 +902,7 @@ class InventoryMovementController extends Controller
     // =====================================================
 
     /**
-     * التحقق من البيانات
+     * التحقق من بيانات الحركة اليدوية
      */
     private function validateMovement(Request $request)
     {
@@ -251,17 +945,15 @@ class InventoryMovementController extends Controller
             'details.*.unit_cost.min'   => 'تكلفة الوحدة لا يمكن أن تكون سالبة',
         ]);
 
-        // تحقق منطقي إضافي
         $validator->after(function ($v) use ($request) {
             foreach ($request->input('details', []) as $i => $row) {
-                $min = isset($row['min_price']) && $row['min_price'] !== ''
+                $min  = isset($row['min_price']) && $row['min_price'] !== ''
                     ? (float) $row['min_price'] : null;
-                $max = isset($row['max_price']) && $row['max_price'] !== ''
+                $max  = isset($row['max_price']) && $row['max_price'] !== ''
                     ? (float) $row['max_price'] : null;
                 $sale = isset($row['sale_price']) && $row['sale_price'] !== ''
                     ? (float) $row['sale_price'] : null;
 
-                // min ≤ max
                 if ($min !== null && $max !== null && $min > $max) {
                     $v->errors()->add(
                         "details.{$i}.min_price",
@@ -269,7 +961,6 @@ class InventoryMovementController extends Controller
                     );
                 }
 
-                // sale_price ضمن الحدود (إن وُجدت)
                 if ($sale !== null) {
                     if ($min !== null && $sale < $min) {
                         $v->errors()->add(
@@ -291,7 +982,7 @@ class InventoryMovementController extends Controller
     }
 
     /**
-     * حفظ التفاصيل
+     * حفظ تفاصيل الحركة اليدوية
      */
     private function saveDetails(InventoryMovement $movement, array $details): void
     {
@@ -318,7 +1009,7 @@ class InventoryMovementController extends Controller
     }
 
     /**
-     * إعادة حساب إجمالي الحركة
+     * إعادة حساب إجمالي الحركة اليدوية
      */
     private function recalculateTotal(InventoryMovement $movement): void
     {

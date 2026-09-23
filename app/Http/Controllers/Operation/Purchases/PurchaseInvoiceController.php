@@ -375,6 +375,15 @@ class PurchaseInvoiceController extends Controller
                     );
                 }
             }
+
+            $otherCost = (float) $request->input('other_cost', 0);
+            $otherDesc = trim($request->input('other_cost_description', ''));
+            if ($otherCost > 0 && $otherDesc === '') {
+                $v->errors()->add(
+                        'other_cost_description',
+                        'يجب إدخال وصف التكلفة الأخرى'
+                    );
+                }
         });
 
         return $validator;

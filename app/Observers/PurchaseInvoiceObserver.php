@@ -27,6 +27,8 @@ class PurchaseInvoiceObserver
             ->get();
 
         foreach ($movements as $movement) {
+            app(\App\Services\Inventory\InventoryService::class)
+                ->reverseMovement($movement);
             $movement->details()->delete();
             $movement->delete();
         }

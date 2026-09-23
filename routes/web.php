@@ -507,7 +507,7 @@ Route::get(
 
 Route::get(
     '/operation/accounting/receiptVouchers/currencies',
-    [\App\Http\Controllers\Operation\ReceiptVoucher\ReceiptVoucherController::class, 'currencies']
+    [ReceiptVoucherController::class, 'currencies']
 )->name('receiptVouchers.currencies');
 
 Route::get(

@@ -6,7 +6,8 @@
  * ═══════════════════════════════════════════════════════════
  */
 
-
+import '../receipt/accountPicker.js';
+    
 
 document.addEventListener('DOMContentLoaded', function () {
     console.log('🚀 بدء تهيئة صفحة سند القبض');

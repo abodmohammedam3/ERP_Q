@@ -439,7 +439,9 @@ function searchMovementItems() {
     tbody.replaceChildren();
 
     const filtered = cache.items.filter(i =>
-        !search || (i.itemName2 || '').includes(search)
+        !search ||
+        (i.itemName2 || '').includes(search) ||
+        String(i.itemID || '').includes(search)
     );
 
     filtered.forEach(item => {
@@ -464,9 +466,17 @@ function selectMovementItem(id, name) {
     setTimeout(() => activeMovementRow.querySelector('.movement-type')?.focus(), 250);
 }
 
-function movementItemInput(e) {
-    debounce(() => searchMovementItems())();
-}
+/* ============================================================
+   Debounced Search Handlers
+   ✅ إصلاح: يُعرَّف مرة واحدة — بدل إنشاء دالة جديدة كل ضغطة
+   ============================================================ */
+
+const _debouncedSearchItems = debounce(searchMovementItems, 200);
+const _debouncedSearchTypes = debounce(searchMovementTypes, 200);
+const _debouncedSearchWarehouses = debounce(searchMovementWarehouses, 200);
+const _debouncedSearchUnits = debounce(searchMovementUnits, 200);
+
+function movementItemInput(e) { _debouncedSearchItems(); }
 
 /* ============================================================
    Modal النوع
@@ -520,9 +530,7 @@ function selectMovementType(id, name) {
     setTimeout(() => activeMovementRow.querySelector('.movement-code')?.focus(), 250);
 }
 
-function movementTypeInput(e) {
-    debounce(() => searchMovementTypes())();
-}
+function movementTypeInput(e) { _debouncedSearchTypes(); }
 
 /* ============================================================
    Modal المخزن
@@ -588,9 +596,7 @@ function selectMovementWarehouse(id, name) {
     }, 250);
 }
 
-function movementWarehouseInput(e) {
-    debounce(() => searchMovementWarehouses())();
-}
+function movementWarehouseInput(e) { _debouncedSearchWarehouses(); }
 
 /* ============================================================
    Modal الوحدة
@@ -638,9 +644,7 @@ function selectMovementUnit(id, name) {
     setTimeout(() => activeMovementRow.querySelector('.movement-quantity')?.focus(), 250);
 }
 
-function movementUnitInput(e) {
-    debounce(() => searchMovementUnits())();
-}
+function movementUnitInput(e) { _debouncedSearchUnits(); }
 
 /* ============================================================
    بدء الحركات
@@ -817,6 +821,7 @@ async function loadMovement(movementId) {
         setMovementMode('view');
 
         currentMovementId = h.movement_id;
+        currentMovementType = h.movement_type;
 
         const searchResults = document.getElementById('movementSearchResults');
         if (searchResults) searchResults.classList.add('d-none');

@@ -144,6 +144,9 @@ class InventoryMovementController extends Controller
 
     /**
      * حفظ حركة جديدة
+     *
+     * ✅ إصلاح: نقل فحص (source_type + source_id) قبل try/catch
+     *    السبب: سابقًا كان الفحص بعد catch — كود ميت لا يُنفَّذ أبدًا
      */
     public function store(Request $request)
     {
@@ -154,6 +157,19 @@ class InventoryMovementController extends Controller
                 'message' => 'بيانات غير صحيحة',
                 'errors'  => $validator->errors(),
             ], 422);
+        }
+
+        // ✅ الفحص الآن قبل try/catch — يُنفَّذ فعليًا
+        if ($request->filled('source_type') && $request->filled('source_id')) {
+            $exists = InventoryMovement::where('source_type', $request->input('source_type'))
+                ->where('source_id', $request->input('source_id'))
+                ->exists();
+
+            if ($exists) {
+                return response()->json([
+                    'message' => 'توجد حركة مرتبطة بنفس المصدر مسبقًا',
+                ], 409);
+            }
         }
 
         try {

@@ -212,8 +212,16 @@ class PurchaseInvoiceService
         return $last ? ((int) $last->invoice_number + 1) : 1;
     }
 
+    /**
+     * تجهيز بيانات رأس الفاتورة
+     *
+     * ✅ إصلاح: كان الـ ternary موضوعًا في السطر الخطأ
+     *    (على transportation بدلًا من other_cost_description)
+     */
     private function headerData(Request $request): array
     {
+        $otherCost = (float) $request->input('other_cost', 0);
+
         return [
             'invoice_number'         => $request->input('invoice_number'),
             'invoice_date'           => $request->input('invoice_date'),
@@ -226,8 +234,13 @@ class PurchaseInvoiceService
             'expenses'               => $request->input('expenses', 0),
             'tax_cost'               => $request->input('tax_cost', 0),
             'transportation'         => $request->input('transportation', 0),
-            'other_cost'             => $request->input('other_cost', 0),
-            'other_cost_description' => $request->input('other_cost_description'),
+
+            // ✅ التصحيح: other_cost_description يُنظَّف فقط إذا كانت other_cost > 0
+            'other_cost'             => $otherCost,
+            'other_cost_description' => $otherCost > 0
+                ? $request->input('other_cost_description')
+                : null,
+
             'statement'              => $request->input('statement'),
             'reference'              => $request->input('reference'),
         ];

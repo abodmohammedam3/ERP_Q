@@ -14,9 +14,23 @@ class InventoryService
     /**
      * الكمية المتوفرة من الصنف في المخزن
      * محسوبة مباشرة من كل الحركات
+     *
+     * ✅ تحسين أداء: كاش محلي (static) لدورة الطلب الواحد
+     *    - يمنع تكرار نفس الاستعلامين لنفس (item, warehouse)
+     *    - مثال: فاتورة بيع بـ 50 صفًا لنفس الصنف → استعلامان بدل 100
+     *
+     * ⚠️ تحذير: الكاش لا يُبطَل تلقائيًا إذا أُنشئت حركة جديدة
+     *    في نفس الطلب. لا تستدعِ هذه الدالة بعد syncInventoryMovement.
      */
     public function availableQuantity(int $itemId, int $warehouseId): float
     {
+        static $cache = [];
+        $key = "{$itemId}:{$warehouseId}";
+
+        if (array_key_exists($key, $cache)) {
+            return $cache[$key];
+        }
+
         $in = InventoryMovementDetail::query()
             ->join(
                 'inventory_movements',
@@ -41,7 +55,7 @@ class InventoryService
             ->where('inventory_movements.direction', 'out')
             ->sum('inventory_movement_details.quantity');
 
-        return (float) $in - (float) $out;
+        return $cache[$key] = (float) $in - (float) $out;
     }
 
     /**

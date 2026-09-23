@@ -25,7 +25,7 @@ class JournalEntryService
             return null;
         }
 
-        // ⭐ حساب المدين والدائن (وليس الصافي)
+        //  حساب المدين والدائن (وليس الصافي)
         $totalDebit  = 0;
         $totalCredit = 0;
 
@@ -85,7 +85,7 @@ class JournalEntryService
         } catch (\Throwable $e) {
             DB::rollBack();
 
-            // ⚠️ مؤقت: اطبع الخطأ الحقيقي
+            //  مؤقت: اطبع الخطأ الحقيقي
             echo "❌ ERROR: " . $e->getMessage() . "\n";
             echo "File: " . $e->getFile() . " (Line " . $e->getLine() . ")\n";
 

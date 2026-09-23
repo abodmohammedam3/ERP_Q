@@ -35,7 +35,7 @@
             <div class="toast-body d-flex align-items-center">
                 <i id="systemToastIcon" class="bi bi-check-circle-fill fs-5 me-2 text-white"></i>
                 <span id="systemToastMessage">تمت العملية بنجاح</span>
-                <button type="button" class="btn-close btn-close-white me-auto" data-bs-dismiss="toast" aria-label="إغلاق"></button>
+                <button type="button" class="btn-close btn-close-white ms-auto" data-bs-dismiss="toast" aria-label="إغلاق"></button>
             </div>
         </div>
     </div>

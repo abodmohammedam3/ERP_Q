@@ -17,6 +17,8 @@ use App\Http\Controllers\Operation\Purchases\PurchaseInvoiceController;
 use App\Http\Controllers\Operation\Movements\InventoryMovementController;
 use App\Http\Controllers\Operation\Sales\SalesInvoiceController;
 use App\Http\Controllers\accounting\JournalEntryController;
+use App\Http\Controllers\Operation\ReceiptVoucher\ReceiptVoucherController;
+use App\Http\Controllers\Operation\PaymentVoucher\PaymentVoucherController;
 
 
 
@@ -430,15 +432,113 @@ Route::patch(
 // الصفحات التشغيلية
 // =====================================================
 
+// =====================================================
+// سندات الصرف
+// =====================================================
 
+Route::get(
+    '/operation/accounting/paymentVouchers',
+    [PaymentVoucherController::class, 'index']
+)->name('paymentVouchers.index');
 
-Route::get('/operation/accounting/paymentVouchers', function () {
-    return view('operation.accounting.paymentVouchers.index');
-})->name('paymentVouchers.index');
+Route::get(
+    '/operation/accounting/paymentVouchers/list',
+    [PaymentVoucherController::class, 'list']
+)->name('paymentVouchers.list');
 
-Route::get('/operation/accounting/receiptVouchers', function () {
-    return view('operation.accounting.receiptVouchers.index');
-})->name('receiptVouchers.index');
+Route::get(
+    '/operation/accounting/paymentVouchers/picker',
+    [PaymentVoucherController::class, 'picker']
+)->name('paymentVouchers.picker');
+
+Route::get(
+    '/operation/accounting/paymentVouchers/currencies',
+    [PaymentVoucherController::class, 'currencies']
+)->name('paymentVouchers.currencies');
+
+Route::get(
+    '/operation/accounting/paymentVouchers/next-number',
+    [PaymentVoucherController::class, 'nextNumber']
+)->name('paymentVouchers.nextNumber');
+
+Route::get(
+    '/operation/accounting/paymentVouchers/{id}/print',
+    [PaymentVoucherController::class, 'printView']
+)->name('paymentVouchers.print');
+
+Route::get(
+    '/operation/accounting/paymentVouchers/{id}',
+    [PaymentVoucherController::class, 'show']
+)->name('paymentVouchers.show');
+
+Route::post(
+    '/operation/accounting/paymentVouchers',
+    [PaymentVoucherController::class, 'store']
+)->name('paymentVouchers.store');
+
+Route::put(
+    '/operation/accounting/paymentVouchers/{id}',
+    [PaymentVoucherController::class, 'update']
+)->name('paymentVouchers.update');
+
+Route::delete(
+    '/operation/accounting/paymentVouchers/{id}',
+    [PaymentVoucherController::class, 'destroy']
+)->name('paymentVouchers.destroy');
+
+// =====================================================
+// سندات القبض
+// =====================================================
+
+Route::get(
+    '/operation/accounting/receiptVouchers',
+    [ReceiptVoucherController::class, 'index']
+)->name('receiptVouchers.index');
+
+Route::get(
+    '/operation/accounting/receiptVouchers/list',
+    [ReceiptVoucherController::class, 'list']
+)->name('receiptVouchers.list');
+
+Route::get(
+    '/operation/accounting/receiptVouchers/picker',
+    [ReceiptVoucherController::class, 'picker']
+)->name('receiptVouchers.picker');
+
+Route::get(
+    '/operation/accounting/receiptVouchers/currencies',
+    [\App\Http\Controllers\Operation\ReceiptVoucher\ReceiptVoucherController::class, 'currencies']
+)->name('receiptVouchers.currencies');
+
+Route::get(
+    '/operation/accounting/receiptVouchers/next-number',
+    [ReceiptVoucherController::class, 'nextNumber']
+)->name('receiptVouchers.nextNumber');
+
+Route::get(
+    '/operation/accounting/receiptVouchers/{id}/print',
+    [ReceiptVoucherController::class, 'printView']
+)->name('receiptVouchers.print');
+
+Route::get(
+    '/operation/accounting/receiptVouchers/{id}',
+    [ReceiptVoucherController::class, 'show']
+)->name('receiptVouchers.show');
+
+Route::post(
+    '/operation/accounting/receiptVouchers',
+    [ReceiptVoucherController::class, 'store']
+)->name('receiptVouchers.store');
+
+Route::put(
+    '/operation/accounting/receiptVouchers/{id}',
+    [ReceiptVoucherController::class, 'update']
+)->name('receiptVouchers.update');
+
+Route::delete(
+    '/operation/accounting/receiptVouchers/{id}',
+    [ReceiptVoucherController::class, 'destroy']
+)->name('receiptVouchers.destroy');
 
 
 

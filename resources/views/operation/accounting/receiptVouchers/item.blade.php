@@ -1,112 +1,127 @@
 <!-- =========================================================
-     بيانات سند القبض (متوافق مع المكونات العامة)
+     بيانات سند القبض - النسخة النهائية
      ========================================================= -->
 
 <div class="card mb-3">
     <div class="card-body">
         <form id="receiptVoucherForm" novalidate>
-            <div class="row g-3">
 
-                <!-- رقم السند (مخفي) -->
-                <input type="hidden" id="ReceiptVoucherNumber" name="voucherNumber" value="">
+            <!-- رقم السند (مخفي) -->
+            <input type="hidden" id="ReceiptVoucherNumber" name="voucherNumber" value="">
+            <input type="hidden" id="ReceiptVoucherDate" name="voucherDate" value="">
 
-                <!-- التاريخ (مخفي) -->
-                <input type="hidden" id="ReceiptVoucherDate" name="voucherDate" value="">
+            <!-- ═══════════════════════════════════════════════ -->
+            <!--  الصف الأول: الحساب الدائن + طريقة الدفع + الحساب المدين -->
+            <!-- ═══════════════════════════════════════════════ -->
+            <div class="row g-3 mb-3">
 
-                <!-- العميل -->
-                <div class="col-md-4">
-                    <label for="CustomerName" class="form-label">العميل <span class="text-danger">*</span></label>
-                    <input type="hidden" id="CustomerID" name="customerID">
-                    <input type="text" class="form-control" id="CustomerName" name="customerName"
-                           placeholder="اكتب اسم العميل أو رقمه المحاسبي" autocomplete="off"
-                           disabled
-                           onkeydown="Customer.keyDown(event)" onblur="Customer.blur()">
-                    <div class="invalid-feedback">يرجى اختيار العميل.</div>
+                <div class="col-md-6">
+                    <label for="CreditAccountName" class="form-label">
+                        الحساب الدائن (العميل) <span class="text-danger">*</span>
+                    </label>
+                    <input type="hidden" id="CreditAccountID" name="creditAccountID">
+                    <input type="text"
+                           class="form-control"
+                           id="CreditAccountName"
+                           name="creditAccountName"
+                           placeholder="اضغط لاختيار الحساب الدائن..."
+                           autocomplete="off"
+                           readonly
+                           disabled>
+                    <div class="invalid-feedback">يرجى اختيار الحساب الدائن.</div>
                 </div>
 
-                <!-- المبلغ -->
                 <div class="col-md-3">
-                    <label for="Amount" class="form-label">المبلغ <span class="text-danger">*</span></label>
-                    <input type="number" class="form-control" id="Amount" name="amount"
-                           placeholder="0.00" step="0.01" min="0" required
-                           disabled oninput="updateSummary()">
-                    <div class="invalid-feedback">المبلغ مطلوب وقيمته يجب أن تكون أكبر من صفر.</div>
-                </div>
-
-                <!-- العملة -->
-                <div class="col-md-3">
-                    <label for="CurrencyName" class="form-label">العملة</label>
-                    <input type="hidden" id="CoinsID" name="coinsID">
-                    <input type="text" class="form-control" id="CurrencyName" name="currencyName"
-                           placeholder="اختر العملة" autocomplete="off"
-                           disabled
-                           onkeydown="Currency.keyDown(event)" onblur="Currency.blur()">
-                </div>
-
-                <!-- سعر الصرف -->
-                <div class="col-md-2">
-                    <label for="ExchangeRate" class="form-label">سعر الصرف</label>
-                    <input type="number" step="0.000001" class="form-control" id="ExchangeRate" name="exchangeRate"
-                           disabled oninput="updateSummary()">
-                </div>
-
-                <!-- طريقة الدفع -->
-                <div class="col-md-3">
-                    <label for="PaymentMethod" class="form-label">طريقة الدفع <span class="text-danger">*</span></label>
+                    <label for="PaymentMethod" class="form-label">
+                        طريقة الدفع <span class="text-danger">*</span>
+                    </label>
                     <select class="form-select" id="PaymentMethod" name="paymentMethod" disabled>
                         <option value="">اختر طريقة الدفع</option>
                         <option value="cash">نقد</option>
-                        <option value="cheque">شيك</option>
                         <option value="bank">تحويل بنكي</option>
-                        <option value="network">عبر شبكة</option>
                     </select>
                     <div class="invalid-feedback">يرجى اختيار طريقة الدفع.</div>
                 </div>
 
-                <!-- الصندوق (نقد) -->
-                <div class="col-md-3 d-none" id="cashAccountContainer">
-                    <label for="CashAccount" class="form-label">الصندوق</label>
-                    <select class="form-select" id="CashAccount" name="cashAccount" disabled>
-                        <option value="">اختر الصندوق</option>
-                        <option value="main">الصندوق الرئيسي</option>
-                    </select>
-                </div>
-
-                <!-- رقم الشيك -->
-                <div class="col-md-3 d-none" id="chequeAccountContainer">
-                    <label for="ChequeAccount" class="form-label">رقم الشيك</label>
-                    <input type="text" class="form-control" id="ChequeAccount" name="chequeAccount"
-                           placeholder="رقم الشيك" disabled>
-                </div>
-
-                <!-- الحساب البنكي -->
-                <div class="col-md-3 d-none" id="bankAccountContainer">
-                    <label for="BankAccount" class="form-label">حساب البنك</label>
-                    <select class="form-select" id="BankAccount" name="bankAccount" disabled>
-                        <option value="">اختر الحساب البنكي</option>
-                        <option value="main-bank">الحساب البنكي الرئيسي</option>
-                    </select>
-                </div>
-
-                <!-- حساب الشبكة -->
-                <div class="col-md-3 d-none" id="walletAccountContainer">
-                    <label for="WalletAccount" class="form-label">حساب المحفظة</label>
-                    <select class="form-select" id="WalletAccount" name="walletAccount" disabled>
-                        <option value="">اختر حساب المحفظة</option>
-                        <option value="main-wallet">المحفظة الرئيسية</option>
-                    </select>
-                </div>
-
-                
-
-                <!-- البيان / الملاحظات -->
-                <div class="col-12">
-                    <label for="Notes" class="form-label">البيان / الملاحظات</label>
-                    <input type="text" class="form-control" id="Notes" name="notes"
-                           placeholder="سبب القبض أو وصف العملية" disabled>
+                <div class="col-md-3 d-none" id="debitAccountContainer">
+                    <label for="DebitAccountName" class="form-label">
+                        <span id="debitAccountLabel">الحساب المدين</span>
+                        <span class="text-danger">*</span>
+                    </label>
+                    <input type="hidden" id="DebitAccountID" name="debitAccountID">
+                    <input type="text"
+                           class="form-control"
+                           id="DebitAccountName"
+                           name="debitAccountName"
+                           placeholder="اضغط لاختيار الحساب المدين..."
+                           autocomplete="off"
+                           readonly
+                           disabled>
+                    <div class="invalid-feedback">يرجى اختيار الحساب المدين.</div>
                 </div>
 
             </div>
+
+            <!-- ═══════════════════════════════════════════════ -->
+            <!--  الصف الثاني: العملة + سعر الصرف + المبلغ -->
+            <!-- ═══════════════════════════════════════════════ -->
+            <div class="row g-3 mb-3">
+
+                <div class="col-md-3">
+                    <label for="CoinsID" class="form-label">العملة <span class="text-danger">*</span></label>
+                    <select class="form-select" id="CoinsID" name="coinsID" disabled>
+                        <option value="">اختر العملة</option>
+                    </select>
+                    <div class="invalid-feedback">يرجى اختيار العملة.</div>
+                </div>
+
+                <div class="col-md-3">
+                    <label for="ExchangeRate" class="form-label">سعر الصرف</label>
+                    <input type="number"
+                           step="0.000001"
+                           class="form-control"
+                           id="ExchangeRate"
+                           name="exchangeRate"
+                           disabled
+                           oninput="updateSummary()">
+                </div>
+
+                <div class="col-md-3">
+                    <label for="Amount" class="form-label">
+                        المبلغ <span class="text-danger">*</span>
+                    </label>
+                    <input type="number"
+                           class="form-control"
+                           id="Amount"
+                           name="amount"
+                           placeholder="0.00"
+                           step="0.01"
+                           min="0"
+                           required
+                           disabled
+                           oninput="updateSummary()">
+                    <div class="invalid-feedback">المبلغ مطلوب وقيمته يجب أن تكون أكبر من صفر.</div>
+                </div>
+
+            </div>
+
+            <!-- ═══════════════════════════════════════════════ -->
+            <!--  الصف الثالث: البيان / الملاحظات -->
+            <!-- ═══════════════════════════════════════════════ -->
+            <div class="row g-3">
+
+                <div class="col-12">
+                    <label for="Notes" class="form-label">البيان / الملاحظات</label>
+                    <input type="text"
+                           class="form-control"
+                           id="Notes"
+                           name="notes"
+                           placeholder="سبب القبض أو وصف العملية"
+                           disabled>
+                </div>
+
+            </div>
+
         </form>
     </div>
 </div>
@@ -117,17 +132,19 @@
      ========================================================= -->
 
 <div class="row g-3">
-    <!-- المبلغ كتابة -->
     <div class="col-md-8">
         <div class="card h-100">
             <div class="card-body">
                 <label class="form-label" for="AmountWords">المبلغ كتابة</label>
-                <input type="text" class="form-control amount-words" id="AmountWords" name="amountWords" readonly>
+                <input type="text"
+                       class="form-control amount-words"
+                       id="AmountWords"
+                       name="amountWords"
+                       readonly>
             </div>
         </div>
     </div>
 
-    <!-- ملخص الرصيد -->
     <div class="col-md-4">
         <div class="card h-100 summary-card">
             <div class="card-body d-flex flex-column justify-content-center">
@@ -147,8 +164,3 @@
         </div>
     </div>
 </div>
-
-
-<!-- =========================================================
-     مودالات (سيتم تضمينها من index.blade.php)
-     ========================================================= -->

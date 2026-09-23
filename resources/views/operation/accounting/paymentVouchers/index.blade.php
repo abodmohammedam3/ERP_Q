@@ -6,25 +6,26 @@
 
 <div dir="rtl" class="container-fluid p-3">
 
-    <!-- رأس الشاشة -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!--  رأس الشاشة -->
+    <!-- ══════════════════════════════════════════════════════════ -->
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
         <div class="d-flex align-items-center gap-2">
             <h4 class="mb-0">
-                <i class="bi bi-receipt-cutoff text-primary me-1"></i>
+                <i class="bi bi-cash-coin text-danger me-1"></i>
                 سند الصرف
             </h4>
-            <span class="badge bg-secondary" id="VoucherNumberDisplay">
+            <span class="badge bg-secondary" id="PaymentVoucherNumberDisplay">
                 رقم السند: --
             </span>
-            <span class="badge bg-info text-dark status-bar" id="VoucherDateDisplay">
+            <span class="badge bg-info text-dark status-bar" id="PaymentVoucherDateDisplay">
                 <i class="bi bi-calendar3 me-1"></i>
                 --
             </span>
         </div>
 
-        <!-- أزرار الإجراءات -->
         <div class="btn-group" role="group">
-            <button type="button" class="btn btn-primary" id="btnNewPaymentVoucher">
+            <button type="button" class="btn btn-success" id="btnNewPaymentVoucher">
                 <i class="bi bi-plus-lg"></i> إضافة سند
             </button>
             <button type="button" class="btn btn-outline-secondary" id="btnSearchPaymentVoucher">
@@ -33,10 +34,14 @@
         </div>
     </div>
 
-    <!-- بيانات السند -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!--  بيانات السند -->
+    <!-- ══════════════════════════════════════════════════════════ -->
     @include('operation.accounting.paymentVouchers.item')
 
-    <!-- أزرار العمليات -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!--  أزرار العمليات -->
+    <!-- ══════════════════════════════════════════════════════════ -->
     <div class="d-flex justify-content-end gap-2 mt-3 flex-wrap">
         <button type="button" class="btn btn-outline-secondary d-none" id="btnCancelPaymentVoucher">
             <i class="bi bi-x-lg"></i> إلغاء
@@ -57,16 +62,15 @@
 
 </div>
 
-
-<!-- النوافذ المنبثقة -->
-@include('operation.model.suppliers')
-@include('operation.model.currency')
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  النوافذ المنبثقة -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+@include('operation.accounting.paymentVouchers.accountPickerModal')
 @include('operation.accounting.paymentVouchers.paymentSearch')
 
 @endsection
 
 
 @push('scripts')
-      @vite(['resources/js/pages/payment-voucher.js'])
-
+    @vite(['resources/js/payment/payment.js'])
 @endpush

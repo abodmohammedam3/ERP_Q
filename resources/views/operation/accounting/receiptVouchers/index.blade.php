@@ -22,7 +22,6 @@
             </span>
         </div>
 
-        <!-- أزرار الإجراءات السريعة -->
         <div class="btn-group" role="group">
             <button type="button" class="btn btn-success" id="btnNewReceiptVoucher">
                 <i class="bi bi-plus-lg"></i> إضافة سند
@@ -58,14 +57,12 @@
 </div>
 
 <!-- ====== النوافذ المنبثقة ====== -->
-@include('operation.model.customer')                 <!-- العميل -->
-@include('operation.model.currency')
-@include('operation.accounting.receiptVouchers.receiptSearch')    <!-- بحث سندات القبض -->
+@include('operation.accounting.receiptVouchers.accountPickerModal')
+@include('operation.accounting.receiptVouchers.receiptSearch')
 
 @endsection
 
 
 @push('scripts')
-    <!-- المكونات العامة -->
- @vite(['resources/js/pages/receipt-voucher.js'])
+    @vite(['resources/js/receipt/receipt.js'])
 @endpush

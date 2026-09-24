@@ -8,12 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('payment_vouchers', function (Blueprint $table) {
-
+        Schema::create('receipt_vouchers', function (Blueprint $table) {
             // ══════════════════════════════════════════════════════
             //  المفتاح الأساسي
             // ══════════════════════════════════════════════════════
-            $table->id('paymentID');
+            $table->id('receiptID');
 
             // ══════════════════════════════════════════════════════
             //  بيانات السند الأساسية
@@ -25,10 +24,10 @@ return new class extends Migration
                 ->comment('تاريخ السند');
 
             // ══════════════════════════════════════════════════════
-            //  الحساب الدائن (الصندوق/البنك) — النقدية تخرج منه
+            //  الحساب الدائن (العميل / الحساب المحاسبي)
             // ══════════════════════════════════════════════════════
             $table->unsignedBigInteger('creditAccountID')
-                ->comment('الحساب الدائن (الصندوق/البنك) من دليل الحسابات');
+                ->comment('الحساب الدائن (العميل) من دليل الحسابات');
 
             $table->foreign('creditAccountID')
                 ->references('accountID')
@@ -36,10 +35,10 @@ return new class extends Migration
                 ->cascadeOnDelete();
 
             // ══════════════════════════════════════════════════════
-            //  الحساب المدين (المورد) — النقدية تدخل إليه
+            //  الحساب المدين (الصندوق / البنك / المحفظة)
             // ══════════════════════════════════════════════════════
             $table->unsignedBigInteger('debitAccountID')
-                ->comment('الحساب المدين (المورد) من دليل الحسابات');
+                ->comment('الحساب المدين (الصندوق/البنك) من دليل الحسابات');
 
             $table->foreign('debitAccountID')
                 ->references('accountID')
@@ -70,16 +69,24 @@ return new class extends Migration
                 ->comment('المبلغ بالعملة المحلية');
 
             // ══════════════════════════════════════════════════════
-            //  طريقة الدفع
+            //  طريقة الدفع (للتوضيح فقط)
             // ══════════════════════════════════════════════════════
             $table->string('paymentMethod', 20)->nullable()
-                ->comment('طريقة الدفع: cash, bank');
+                ->comment('طريقة الدفع: cash, cheque, bank (للتوضيح)');
+
+            $table->string('chequeNumber', 50)->nullable()
+                ->comment('رقم الشيك (اختياري)');
 
             // ══════════════════════════════════════════════════════
             //  الملاحظات
             // ══════════════════════════════════════════════════════
             $table->text('notes')->nullable()
                 ->comment('ملاحظات إضافية');
+
+            // ══════════════════════════════════════════════════════
+            //  ⚠️ تم إلغاء timestamps() بناءً على طلبك
+            // ══════════════════════════════════════════════════════
+            // $table->timestamps();  // ← معطّل
 
             // ══════════════════════════════════════════════════════
             //  الفهارس (Indexes) لتسريع البحث
@@ -93,6 +100,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('payment_vouchers');
+        Schema::dropIfExists('receipt_vouchers');
     }
 };

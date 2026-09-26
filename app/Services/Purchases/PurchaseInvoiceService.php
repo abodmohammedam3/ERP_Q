@@ -11,20 +11,14 @@ use Illuminate\Support\Facades\DB;
 
 class PurchaseInvoiceService
 {
-    /**
-     * إنشاء فاتورة شراء جديدة
-     */
     public function create(Request $request): PurchaseInvoice
     {
         return DB::transaction(function () use ($request) {
-
             $nextNumber = $this->nextInvoiceNumber();
-
             $data = $this->headerData($request);
             $data['invoice_number'] = (string) $nextNumber;
 
             $invoice = PurchaseInvoice::create($data);
-
             $this->saveDetails($invoice, $request->input('details', []));
             $this->recalculateTotals($invoice);
 
@@ -35,15 +29,10 @@ class PurchaseInvoiceService
         });
     }
 
-    /**
-     * تحديث فاتورة شراء
-     */
     public function update(int $id, Request $request): PurchaseInvoice
     {
         return DB::transaction(function () use ($id, $request) {
-
             $invoice = PurchaseInvoice::findOrFail($id);
-
             $data = $this->headerData($request);
             unset($data['invoice_number']);
             $invoice->update($data);
@@ -59,32 +48,23 @@ class PurchaseInvoiceService
         });
     }
 
-    /**
-     * حذف فاتورة شراء
-     */
     public function delete(int $id): void
     {
         DB::transaction(function () use ($id) {
-
             $invoice = PurchaseInvoice::findOrFail($id);
-
             $this->deleteInventoryMovement($invoice);
-
             $invoice->details()->delete();
             $invoice->delete();
         });
     }
 
-    // =====================================================
-    // المزامنة مع المخزون
-    // =====================================================
-
     /**
-     * إنشاء / إعادة إنشاء حركة المخزون المرتبطة بالفاتورة
+     * ✅ إنشاء حركة المخزون + إضافة min/max/sale تلقائيًا
      *
-     * ملاحظة: التكاليف الإضافية (نفقات، ضرائب، نقل، أخرى) تُوزَّع
-     *         على تكلفة الوحدة كـ Landed Cost في المخزون
-     *         مع عدم إضافتها لإجمالي الفاتورة
+     * القواعد:
+     *   min_price  = unit_cost
+     *   max_price  = unit_cost × 2
+     *   sale_price = unit_cost × 1.5
      */
     public function syncInventoryMovement(PurchaseInvoice $invoice): void
     {
@@ -151,6 +131,11 @@ class PurchaseInvoiceService
             $unitCostBC  = $unitCostFC * $rate;
             $lineTotalBC = $landedFC   * $rate;
 
+            // ✅ حساب min/max/sale تلقائيًا
+            $minPrice  = round($unitCostBC, 6);
+            $maxPrice  = round($unitCostBC * 2, 6);
+            $salePrice = round($unitCostBC * 1.5, 6);
+
             InventoryMovementDetail::create([
                 'movement_id'  => $movement->movement_id,
                 'item_id'      => $detail->item_id,
@@ -160,9 +145,9 @@ class PurchaseInvoiceService
                 'warehouse_id' => $invoice->warehouse_id,
                 'quantity'     => $quantity,
                 'unit_cost'    => $unitCostBC,
-                'min_price'    => null,
-                'max_price'    => null,
-                'sale_price'   => null,
+                'min_price'    => $minPrice,
+                'max_price'    => $maxPrice,
+                'sale_price'   => $salePrice,
                 'total'        => $lineTotalBC,
             ]);
 
@@ -173,9 +158,6 @@ class PurchaseInvoiceService
         $movement->save();
     }
 
-    /**
-     * حذف حركة المخزون المرتبطة بفاتورة
-     */
     public function deleteInventoryMovement(PurchaseInvoice $invoice): void
     {
         $movements = InventoryMovement::where(
@@ -191,10 +173,6 @@ class PurchaseInvoiceService
         }
     }
 
-    // =====================================================
-    // دوال مساعدة داخلية
-    // =====================================================
-
     private function nextInvoiceNumber(): int
     {
         $last = PurchaseInvoice::lockForUpdate()
@@ -204,9 +182,6 @@ class PurchaseInvoiceService
         return $last ? ((int) $last->invoice_number + 1) : 1;
     }
 
-    /**
-     * تجهيز بيانات رأس الفاتورة
-     */
     private function headerData(Request $request): array
     {
         $otherCost = (float) $request->input('other_cost', 0);
@@ -254,15 +229,6 @@ class PurchaseInvoiceService
         }
     }
 
-    /**
-     * ✅ إعادة حساب الإجماليات
-     *
-     * - items_total / discount_total  → أعمدة حقيقية
-     * - total_in_invoice_currency     → Accessor (لا يُخزَّن)
-     * - total_in_base_currency        → = (items − discount) × rate
-     *
-     * ⚠️ التكاليف الإضافية لا تدخل في إجمالي الفاتورة
-     */
     private function recalculateTotals(PurchaseInvoice $invoice): void
     {
         $details = $invoice->details()->get();
@@ -282,7 +248,6 @@ class PurchaseInvoiceService
 
         $rate = (float) ($invoice->exchange_rate ?: 1);
 
-        // ✅ الإجمالي بعملة الفاتورة = (الأصناف − الخصم) فقط
         $invoice->total_in_base_currency = $net * $rate;
         $invoice->save();
     }

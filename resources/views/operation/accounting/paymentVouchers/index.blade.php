@@ -72,5 +72,5 @@
 
 
 @push('scripts')
-    @vite(['resources/js/payment/payment.js'])
+    @vite(['resources/js/pages/payment-voucher.js'])
 @endpush

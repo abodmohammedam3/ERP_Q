@@ -775,6 +775,20 @@ Route::post(
     [InventoryMovementController::class, 'reverseSort']
 )->name('movements.sort.reverse');
 
+Route::get(
+    '/operation/movements/sort/{documentNumber}/print',
+    [InventoryMovementController::class, 'printSorting']
+)->name('movements.sort.print');
+
+// -----------------------------------------------------
+// ✅ طباعة حركة مخزون
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/movements/{id}/print',
+    [InventoryMovementController::class, 'printMovementPage']
+)->name('movements.print');
+
 
 // -----------------------------------------------------
 // عرض حركة واحدة (JSON)

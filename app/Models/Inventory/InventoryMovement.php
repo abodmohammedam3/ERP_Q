@@ -39,24 +39,16 @@ class InventoryMovement extends Model
     const TYPE_PURCHASE_RETURN = 'purchase_return';
     const TYPE_SALE_RETURN     = 'sale_return';
 
+    /* ✅ جديد: أنواع الفرز */
+    const TYPE_SORTING_OUT     = 'sorting_out';   // فرز تحويل كيلو (خروج)
+    const TYPE_SORTING_IN      = 'sorting_in';    // فرز تحويل حبه (دخول)
+
     // ============================================
     // ثوابت المصدر
     // ============================================
     const SOURCE_PURCHASE_INVOICE = 'purchase_invoice';
     const SOURCE_SALES_INVOICE    = 'sales_invoice';
     const SOURCE_MANUAL           = null;
-
-    /**
-     * ✅ مصدر "فرز / تجهيز المخزون"
-     *
-     * حركات الفرز تُسجَّل كحركتين:
-     *   - OUT: movement_type = 'issue' + source_type = 'sorting'
-     *   - IN:  movement_type = 'supply' + source_type = 'sorting'
-     *
-     * ويتم ربطهما عبر:
-     *   - document_number = 'SORT-XXXXXX'
-     *   - source_id = movement_id الأصلي (اختياري)
-     */
     const SOURCE_SORTING          = 'sorting';
 
     // ============================================
@@ -72,18 +64,31 @@ class InventoryMovement extends Model
         self::TYPE_SUPPLY          => self::DIRECTION_IN,
         self::TYPE_PURCHASE        => self::DIRECTION_IN,
         self::TYPE_SALE_RETURN     => self::DIRECTION_IN,
+        self::TYPE_SORTING_IN      => self::DIRECTION_IN,
         self::TYPE_ISSUE           => self::DIRECTION_OUT,
         self::TYPE_SALE            => self::DIRECTION_OUT,
         self::TYPE_PURCHASE_RETURN => self::DIRECTION_OUT,
+        self::TYPE_SORTING_OUT     => self::DIRECTION_OUT,
+    ];
+
+    // ============================================
+    // خريطة: نوع الحركة → التسمية العربية
+    // ============================================
+    const TYPE_LABELS = [
+        self::TYPE_SUPPLY          => 'توريد مخزني',
+        self::TYPE_ISSUE           => 'صرف مخزني',
+        self::TYPE_PURCHASE        => 'توريد شراء',
+        self::TYPE_SALE            => 'صرف بيع',
+        self::TYPE_PURCHASE_RETURN => 'مرتجع شراء',
+        self::TYPE_SALE_RETURN     => 'مرتجع بيع',
+        self::TYPE_SORTING_OUT     => 'فرز تحويل كيلو',
+        self::TYPE_SORTING_IN      => 'فرز تحويل حبه',
     ];
 
     // ============================================
     // العلاقات
     // ============================================
 
-    /**
-     * المخزن الرئيسي/الافتراضي
-     */
     public function warehouse()
     {
         return $this->belongsTo(
@@ -93,9 +98,6 @@ class InventoryMovement extends Model
         );
     }
 
-    /**
-     * تفاصيل الحركة
-     */
     public function details()
     {
         return $this->hasMany(
@@ -109,17 +111,16 @@ class InventoryMovement extends Model
     // Helper Methods
     // ============================================
 
-    /**
-     * اتجاه الحركة من النوع
-     */
     public static function directionForType(string $type): string
     {
         return self::TYPE_DIRECTION_MAP[$type] ?? self::DIRECTION_IN;
     }
 
-    /**
-     * هل الحركة ناتجة عن فاتورة (غير قابلة للتعديل)؟
-     */
+    public static function labelForType(?string $type): string
+    {
+        return self::TYPE_LABELS[$type] ?? ($type ?? '—');
+    }
+
     public function isFromInvoice(): bool
     {
         return in_array($this->source_type, [
@@ -128,9 +129,6 @@ class InventoryMovement extends Model
         ], true) && !empty($this->source_id);
     }
 
-    /**
-     * ✅ هل الحركة ناتجة عن عملية فرز/تجهيز؟
-     */
     public function isFromSorting(): bool
     {
         return $this->source_type === self::SOURCE_SORTING;

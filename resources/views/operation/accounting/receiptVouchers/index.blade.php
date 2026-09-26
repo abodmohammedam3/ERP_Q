@@ -64,5 +64,5 @@
 
 
 @push('scripts')
-    @vite(['resources/js/receipt/receipt.js'])
+    @vite(['resources/js/pages/receipt-voucher.js'])
 @endpush

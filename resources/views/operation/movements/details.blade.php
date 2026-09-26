@@ -138,8 +138,8 @@
                 type="number"
                 class="form-control form-control-sm movement-quantity text-center"
                 min="0"
-                step="0.000001"
-                value="0"
+                step="0.01"
+                value="0.00"
                 oninput="calculateMovementRow(this)"
             >
         </td>
@@ -149,8 +149,8 @@
                 type="number"
                 class="form-control form-control-sm movement-unit-cost text-center"
                 min="0"
-                step="0.000001"
-                value="0"
+                step="0.01"
+                value="0.00"
                 oninput="calculateMovementRow(this)"
             >
         </td>
@@ -160,8 +160,8 @@
                 type="number"
                 class="form-control form-control-sm movement-min-price text-center"
                 min="0"
-                step="0.000001"
-                placeholder="0"
+                step="0.01"
+                placeholder="0.00"
                 oninput="validateSalePrice(this.closest('tr'))"
             >
         </td>
@@ -171,8 +171,8 @@
                 type="number"
                 class="form-control form-control-sm movement-max-price text-center"
                 min="0"
-                step="0.000001"
-                placeholder="0"
+                step="0.01"
+                placeholder="0.01"
                 oninput="validateSalePrice(this.closest('tr'))"
             >
         </td>
@@ -182,8 +182,8 @@
                 type="number"
                 class="form-control form-control-sm movement-sale-price text-center"
                 min="0"
-                step="0.000001"
-                value="0"
+                step="0.01"
+                value="0.0"
                 oninput="validateSalePrice(this.closest('tr'))"
             >
         </td>

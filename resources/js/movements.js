@@ -1,5 +1,5 @@
 /* ============================================================
-   حركات المخزون — ربط كامل بـ Laravel API
+   حركات المخزون — ربط كامل بـ Laravel API + التابات
    ============================================================ */
 
 /* ============================================================
@@ -13,12 +13,23 @@ const MOVEMENT_TYPE_LABELS = {
     sale: 'صرف بيع',
     purchase_return: 'مرتجع شراء',
     sale_return: 'مرتجع بيع',
+    sorting_out: 'فرز تحويل كيلو',
+    sorting_in: 'فرز تحويل حبه',
 };
 
 const MOVEMENT_DIRECTION_LABELS = {
     in: 'دخول',
     out: 'خروج',
 };
+
+const PIECE_UNIT_NAMES = ['الحبة', 'حبة', 'حبه', 'حب', 'قطعة', 'قطعه'];
+const DEFAULT_PROFIT_MARGIN = 0.20;
+
+/* ✅ تصدير للـ Console (للتشخيص) */
+if (typeof window !== 'undefined') {
+    window.DEFAULT_PROFIT_MARGIN = DEFAULT_PROFIT_MARGIN;
+    window.PIECE_UNIT_NAMES = PIECE_UNIT_NAMES;
+}
 
 /* ============================================================
    الحالة العامة
@@ -30,6 +41,13 @@ let currentMovementId = null;
 let activeMovementRow = null;
 let activeWarehouseTarget = null;
 let isSavingMovement = false;
+
+/* حالة التابات والأرصدة */
+let activeTab = 'movements';
+let stockBalancesCache = [];
+let balancesLoaded = false;
+let activeSortingBalance = null;
+let sortingFromBalanceModalInstance = null;
 
 /* ============================================================
    الكاش
@@ -92,7 +110,7 @@ async function apiSend(url, method, body) {
     return json;
 }
 
-function debounce(fn, ms = 50) {
+function debounce(fn, ms = 200) {
     let t;
     return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
@@ -118,27 +136,51 @@ function notify(message, type = 'info') {
     }
 }
 
+function formatMoney(v) {
+    return Number(v || 0).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+}
+
+function isKiloUnit(unitName) {
+    if (!unitName) return false;
+    const n = String(unitName).trim().toLowerCase();
+    return n.includes('كيلو') || n.includes('كجم') || n === 'kg' || n.includes('kilogram');
+}
+
+function findDefaultPieceUnit() {
+    for (const name of PIECE_UNIT_NAMES) {
+        const found = cache.units.find(u => u.UnitName === name);
+        if (found) return found;
+    }
+    return null;
+}
+
 /* ============================================================
    التهيئة
    ============================================================ */
 
 document.addEventListener('DOMContentLoaded', async () => {
 
-    const init = (id) => {
+    const initModal = (id) => {
         const el = document.getElementById(id);
         if (!el) { console.warn(`⚠️ Modal غير موجود: #${id}`); return null; }
         return new bootstrap.Modal(el);
     };
 
-    movementItemModal = init('movementItemModal');
-    movementTypeModal = init('movementTypeModal');
-    movementWarehouseModal = init('movementWarehouseModal');
-    movementUnitModal = init('movementUnitModal');
+    movementItemModal = initModal('movementItemModal');
+    movementTypeModal = initModal('movementTypeModal');
+    movementWarehouseModal = initModal('movementWarehouseModal');
+    movementUnitModal = initModal('movementUnitModal');
+    sortingFromBalanceModalInstance = initModal('sortingFromBalanceModal');
 
     await preloadAll();
 
     setMovementMode('view');
     clearMovementForm();
+
+    initTabs();
 });
 
 async function preloadAll() {
@@ -168,12 +210,39 @@ async function preloadAll() {
 }
 
 /* ============================================================
-   أوضاع الشاشة
+   ✅ التابات
+   ============================================================ */
+
+function initTabs() {
+    const tabs = document.querySelectorAll('#movementTabs .nav-link');
+    if (!tabs.length) return;
+
+    const activeInput = document.getElementById('activeMovementTab');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('shown.bs.tab', function () {
+            const tabName = this.dataset.tab || 'movements';
+            activeTab = tabName;
+
+            if (activeInput) activeInput.value = tabName;
+
+            // تحميل الأرصدة عند أول دخول
+            if (tabName === 'balances' && !balancesLoaded) {
+                loadStockBalances();
+            }
+        });
+    });
+}
+
+/* ============================================================
+   أوضاع الشاشة (حركات المخزون)
    ============================================================ */
 
 function setMovementMode(mode) {
     if (mode !== 'view' && mode !== 'add') return;
     movementMode = mode;
+
+    const hasMovement = !!currentMovementId;
 
     const editableHeaderIds = [
         'movementDate',
@@ -196,6 +265,25 @@ function setMovementMode(mode) {
     if (saveActions) {
         if (mode === 'add') saveActions.classList.remove('d-none');
         else saveActions.classList.add('d-none');
+    }
+
+    /* ✅ منطق جديد: يعتمد على وجود حركة محمَّلة */
+    const btnSupply = document.getElementById('btnAddSupplyMovement');
+    const btnIssue = document.getElementById('btnAddIssueMovement');
+    const btnPrint = document.getElementById('btnPrintMovement');
+
+    if (mode === 'add') {
+        // ✅ قيد الإضافة → تعطيل الكل
+        if (btnSupply) btnSupply.disabled = true;
+        if (btnIssue) btnIssue.disabled = true;
+        if (btnPrint) btnPrint.disabled = true;
+    } else {
+        // ✅ view mode
+        // - إذا كانت هناك حركة محمَّلة → عطِّل التوريد/الصرف، فعِّل الطباعة
+        // - إذا لا → فعِّل التوريد/الصرف، عطِّل الطباعة
+        if (btnSupply) btnSupply.disabled = hasMovement;
+        if (btnIssue) btnIssue.disabled = hasMovement;
+        if (btnPrint) btnPrint.disabled = !hasMovement;
     }
 
     document.querySelectorAll('#movementDetails .movement-detail-row').forEach(row => {
@@ -230,11 +318,15 @@ function clearMovementForm() {
     const searchResults = document.getElementById('movementSearchResults');
     if (searchResults) searchResults.classList.add('d-none');
 
+    /* ✅ تعطيل زر الطباعة (لا حركة محمَّلة) */
+    const btnPrint = document.getElementById('btnPrintMovement');
+    if (btnPrint) btnPrint.disabled = true;
+
     setMovementMode('view');
 }
 
 /* ============================================================
-   إدارة الصفوف
+   إدارة الصفوف (حركات المخزون)
    ============================================================ */
 
 function addMovementRow() {
@@ -263,10 +355,6 @@ function addMovementRow() {
 
 function enableMovementRow(row) {
     if (!row) return;
-
-    // ملاحظة: أحداث input موجودة مباشرة في القالب عبر oninput
-    // هنا نضيف فقط ما لا يمكن ربطه في القالب.
-
     applyRowMode(row);
 }
 
@@ -296,13 +384,9 @@ function renumberMovementRows() {
 }
 
 /* ============================================================
-   الحسابات
+   الحسابات (حركات المخزون)
    ============================================================ */
 
-/**
- * حساب إجمالي الصف
- * يقبل: عنصر input أو صف tr
- */
 function calculateMovementRow(element) {
     if (!element) return;
 
@@ -365,7 +449,7 @@ function validateSalePrice(row) {
 }
 
 /* ============================================================
-   KeyDown Handlers — Tab/Enter يفتح النافذة
+   KeyDown Handlers
    ============================================================ */
 
 function movementItemKeyDown(e) {
@@ -465,11 +549,6 @@ function selectMovementItem(id, name) {
     if (movementItemModal) movementItemModal.hide();
     setTimeout(() => activeMovementRow.querySelector('.movement-type')?.focus(), 250);
 }
-
-/* ============================================================
-   Debounced Search Handlers
-   ✅ إصلاح: يُعرَّف مرة واحدة — بدل إنشاء دالة جديدة كل ضغطة
-   ============================================================ */
 
 const _debouncedSearchItems = debounce(searchMovementItems, 200);
 const _debouncedSearchTypes = debounce(searchMovementTypes, 200);
@@ -659,6 +738,10 @@ async function startSupplyMovement() {
     setValue('movementDirection', MOVEMENT_DIRECTION_LABELS.in);
     setTodayDate();
 
+    /* ✅ تعطيل زر الطباعة (لا حركة محفوظة) */
+    const btnPrint = document.getElementById('btnPrintMovement');
+    if (btnPrint) btnPrint.disabled = true;
+
     const displayEl = document.getElementById('movementDisplayId');
     if (displayEl) {
         try {
@@ -682,6 +765,10 @@ async function startIssueMovement() {
     setValue('movementDirection', MOVEMENT_DIRECTION_LABELS.out);
     setTodayDate();
 
+    /* ✅ تعطيل زر الطباعة (لا حركة محفوظة) */
+    const btnPrint = document.getElementById('btnPrintMovement');
+    if (btnPrint) btnPrint.disabled = true;
+
     const displayEl = document.getElementById('movementDisplayId');
     if (displayEl) {
         try {
@@ -697,7 +784,7 @@ async function startIssueMovement() {
 }
 
 /* ============================================================
-   البحث
+   البحث عن الحركات
    ============================================================ */
 
 async function searchMovements() {
@@ -746,7 +833,7 @@ function displayMovementSearchResults(results) {
 
         [
             m.display_id,
-            MOVEMENT_TYPE_LABELS[m.movement_type] || m.movement_type,
+            m.movement_label || MOVEMENT_TYPE_LABELS[m.movement_type] || m.movement_type,
             MOVEMENT_DIRECTION_LABELS[m.direction] || m.direction,
             m.movement_date,
             m.document_number ?? '',
@@ -777,7 +864,7 @@ async function loadMovement(movementId) {
         clearMovementForm();
 
         setValue('movementDisplayId', h.display_id ?? '');
-        setValue('movementType', MOVEMENT_TYPE_LABELS[h.movement_type] || '');
+        setValue('movementType', h.movement_label || MOVEMENT_TYPE_LABELS[h.movement_type] || '');
         setValue('movementDirection', MOVEMENT_DIRECTION_LABELS[h.direction] || '');
         setValue('movementDate', h.movement_date ?? '');
         setValue('movementDocumentNumber', h.document_number ?? '');
@@ -806,10 +893,21 @@ async function loadMovement(movementId) {
             row.querySelector('.movement-unit').value = d.unit_name ?? '';
 
             row.querySelector('.movement-quantity').value = d.quantity ?? 0;
-            row.querySelector('.movement-unit-cost').value = d.unit_cost ?? 0;
-            row.querySelector('.movement-min-price').value = d.min_price ?? '';
-            row.querySelector('.movement-max-price').value = d.max_price ?? '';
-            row.querySelector('.movement-sale-price').value = d.sale_price ?? 0;
+
+            /* ✅ تنسيق unit_cost إلى منزلتين عشريتين */
+            row.querySelector('.movement-unit-cost').value = Number(d.unit_cost ?? 0).toFixed(2);
+
+            row.querySelector('.movement-min-price').value = d.min_price !== null && d.min_price !== undefined
+                ? Number(d.min_price).toFixed(2)
+                : '';
+
+            row.querySelector('.movement-max-price').value = d.max_price !== null && d.max_price !== undefined
+                ? Number(d.max_price).toFixed(2)
+                : '';
+
+            row.querySelector('.movement-sale-price').value = d.sale_price !== null && d.sale_price !== undefined
+                ? Number(d.sale_price).toFixed(2)
+                : '0.00';
 
             row.querySelector('.movement-total').value = Number(d.total).toFixed(2);
 
@@ -823,6 +921,10 @@ async function loadMovement(movementId) {
         currentMovementId = h.movement_id;
         currentMovementType = h.movement_type;
 
+        /* ✅ تفعيل زر الطباعة (تم تحميل حركة) */
+        const btnPrint = document.getElementById('btnPrintMovement');
+        if (btnPrint) btnPrint.disabled = false;
+
         const searchResults = document.getElementById('movementSearchResults');
         if (searchResults) searchResults.classList.add('d-none');
 
@@ -833,7 +935,7 @@ async function loadMovement(movementId) {
 }
 
 /* ============================================================
-   حفظ
+   حفظ حركة
    ============================================================ */
 
 async function saveMovement() {
@@ -863,6 +965,11 @@ async function saveMovement() {
 
         notify(r.message || 'تم حفظ حركة المخزون بنجاح', 'success');
         setMovementMode('view');
+
+        /* ✅ تفعيل زر الطباعة (تم الحفظ) */
+        const btnPrint = document.getElementById('btnPrintMovement');
+        if (btnPrint) btnPrint.disabled = false;
+
     } catch (e) {
         let m = e.message;
         if (e.errors) m += ' — ' + Object.values(e.errors).flat().join(' | ');
@@ -929,26 +1036,11 @@ function validateMovement() {
         const quantity = parseFloat(row.querySelector('.movement-quantity')?.value) || 0;
         const unitCost = parseFloat(row.querySelector('.movement-unit-cost')?.value) || 0;
 
-        if (!itemId) {
-            notify('يجب اختيار الصنف في جميع الصفوف.', 'warning');
-            return false;
-        }
-        if (!warehouseId) {
-            notify('يجب اختيار المخزن في جميع الصفوف.', 'warning');
-            return false;
-        }
-        if (!unitId) {
-            notify('يجب اختيار الوحدة في جميع الصفوف.', 'warning');
-            return false;
-        }
-        if (quantity <= 0) {
-            notify('الكمية يجب أن تكون أكبر من صفر.', 'warning');
-            return false;
-        }
-        if (unitCost < 0) {
-            notify('سعر التكلفة لا يمكن أن يكون سالبًا.', 'warning');
-            return false;
-        }
+        if (!itemId) { notify('يجب اختيار الصنف في جميع الصفوف.', 'warning'); return false; }
+        if (!warehouseId) { notify('يجب اختيار المخزن في جميع الصفوف.', 'warning'); return false; }
+        if (!unitId) { notify('يجب اختيار الوحدة في جميع الصفوف.', 'warning'); return false; }
+        if (quantity <= 0) { notify('الكمية يجب أن تكون أكبر من صفر.', 'warning'); return false; }
+        if (unitCost < 0) { notify('سعر التكلفة لا يمكن أن يكون سالبًا.', 'warning'); return false; }
 
         const minPrice = row.querySelector('.movement-min-price')?.value;
         const maxPrice = row.querySelector('.movement-max-price')?.value;
@@ -987,12 +1079,20 @@ function cancelMovement() {
     notify('تم إلغاء العملية', 'info');
 }
 
+/**
+ * ✅ طباعة الحركة — تفتح صفحة طباعة في نافذة جديدة
+ */
 function printMovement() {
-    if (movementMode !== 'view') {
+    if (movementMode !== 'view' || !currentMovementId) {
         notify('يجب حفظ الحركة أولاً قبل طباعتها.', 'warning');
         return;
     }
-    window.print();
+
+    window.open(
+        `/operation/movements/${currentMovementId}/print`,
+        '_blank',
+        'width=900,height=700'
+    );
 }
 
 /* ============================================================
@@ -1011,38 +1111,435 @@ function setTodayDate() {
     input.value = `${y}-${m}-${d}`;
 }
 
-/**
- * الحصول على قيمة عنصر
- */
 function getValue(id) {
     const el = document.getElementById(id);
     return el ? (el.value || '') : '';
 }
 
-/**
- * تعيين قيمة عنصر — يدعم input و textarea و select و عناصر HTML العادية
- */
 function setValue(id, value) {
     const el = document.getElementById(id);
     if (!el) return;
 
     const safeValue = value ?? '';
 
-    if (
-        el.tagName === 'INPUT' ||
-        el.tagName === 'TEXTAREA' ||
-        el.tagName === 'SELECT'
-    ) {
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
         el.value = safeValue;
     } else {
         el.textContent = safeValue;
     }
 }
+
+/* =========================================================================
+   ✅ قسم أرصدة المخزون (التاب 2)
+   ========================================================================= */
+
+async function loadStockBalances() {
+    const tbody = document.getElementById('balancesTableBody');
+    if (tbody) {
+        tbody.replaceChildren();
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 11;
+        td.className = 'text-center text-muted py-4';
+        td.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري التحميل...';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+    }
+
+    try {
+        const res = await apiGet('/operation/movements/helpers/stock-balances');
+        stockBalancesCache = Array.isArray(res.data) ? res.data : [];
+        balancesLoaded = true;
+
+        filterStockBalances();
+    } catch (e) {
+        console.error(e);
+        notify('فشل تحميل الأرصدة', 'danger');
+        if (tbody) {
+            tbody.replaceChildren();
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 11;
+            td.className = 'text-center text-danger py-4';
+            td.textContent = 'فشل تحميل الأرصدة';
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+        }
+    }
+}
+
+function filterStockBalances() {
+    const search = (document.getElementById('balancesSearchInput')?.value || '').trim().toLowerCase();
+
+    if (!search) {
+        renderStockBalances(stockBalancesCache);
+        return;
+    }
+
+    const filtered = stockBalancesCache.filter(row => {
+        return (
+            (row.item_name || '').toLowerCase().includes(search) ||
+            (row.type_name || '').toLowerCase().includes(search) ||
+            (row.code || '').toLowerCase().includes(search) ||
+            (row.warehouse_name || '').toLowerCase().includes(search) ||
+            (row.unit_name || '').toLowerCase().includes(search)
+        );
+    });
+
+    renderStockBalances(filtered);
+}
+
+function renderStockBalances(rows) {
+    const tbody = document.getElementById('balancesTableBody');
+    const hint = document.getElementById('balancesCountHint');
+    if (!tbody) return;
+
+    tbody.replaceChildren();
+
+    if (hint) hint.textContent = `عدد النتائج: ${rows.length}`;
+
+    if (!rows.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 11;
+        td.className = 'text-center text-muted py-4';
+        td.textContent = 'لا توجد أرصدة متاحة';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    rows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.className = 'text-center';
+
+        if (isKiloUnit(row.unit_name)) {
+            tr.classList.add('row-kilo');
+        }
+
+        // الصنف
+        const tdItem = document.createElement('td');
+        tdItem.className = 'text-start';
+        tdItem.textContent = row.item_name || '—';
+        tr.appendChild(tdItem);
+
+        // النوع
+        const tdType = document.createElement('td');
+        tdType.textContent = row.type_name || '—';
+        tr.appendChild(tdType);
+
+        // الرمز
+        const tdCode = document.createElement('td');
+        tdCode.textContent = row.code || '—';
+        tr.appendChild(tdCode);
+
+        // المخزن
+        const tdWh = document.createElement('td');
+        tdWh.textContent = row.warehouse_name || '—';
+        tr.appendChild(tdWh);
+
+        // الوحدة
+        const tdUnit = document.createElement('td');
+        tdUnit.textContent = row.unit_name || '—';
+        tr.appendChild(tdUnit);
+
+        // الكمية
+        const tdQty = document.createElement('td');
+        tdQty.className = 'balance-qty';
+        const qty = Number(row.quantity) || 0;
+        tdQty.textContent = Number.isInteger(qty) ? qty : qty.toFixed(2);
+        tr.appendChild(tdQty);
+
+        // التكلفة
+        const tdCost = document.createElement('td');
+        tdCost.className = 'balance-cost';
+        tdCost.textContent = formatMoney(row.unit_cost);
+        tr.appendChild(tdCost);
+
+        // سعر البيع
+        const tdSale = document.createElement('td');
+        const saleInput = document.createElement('input');
+        saleInput.type = 'number';
+        saleInput.className = 'form-control form-control-sm price-input';
+        saleInput.value = row.sale_price || 0;
+        saleInput.step = '0.01';
+        saleInput.min = '0';
+        saleInput.addEventListener('change', () => {
+            updatePricingInline(row, { sale_price: parseFloat(saleInput.value) || 0 });
+        });
+        tdSale.appendChild(saleInput);
+        tr.appendChild(tdSale);
+
+        // الحد الأدنى
+        const tdMin = document.createElement('td');
+        const minInput = document.createElement('input');
+        minInput.type = 'number';
+        minInput.className = 'form-control form-control-sm price-input';
+        minInput.value = row.min_price || 0;
+        minInput.step = '0.01';
+        minInput.min = '0';
+        minInput.addEventListener('change', () => {
+            updatePricingInline(row, { min_price: parseFloat(minInput.value) || 0 });
+        });
+        tdMin.appendChild(minInput);
+        tr.appendChild(tdMin);
+
+        // الحد الأعلى
+        const tdMax = document.createElement('td');
+        const maxInput = document.createElement('input');
+        maxInput.type = 'number';
+        maxInput.className = 'form-control form-control-sm price-input';
+        maxInput.value = row.max_price || 0;
+        maxInput.step = '0.01';
+        maxInput.min = '0';
+        maxInput.addEventListener('change', () => {
+            updatePricingInline(row, { max_price: parseFloat(maxInput.value) || 0 });
+        });
+        tdMax.appendChild(maxInput);
+        tr.appendChild(tdMax);
+
+        // الإجراءات
+        const tdActions = document.createElement('td');
+        const actionsWrap = document.createElement('div');
+        actionsWrap.className = 'd-flex gap-1 justify-content-center';
+
+        // زر فرز (للكيلو فقط)
+        if (isKiloUnit(row.unit_name)) {
+            const btnSort = document.createElement('button');
+            btnSort.type = 'button';
+            btnSort.className = 'btn btn-warning btn-action';
+            btnSort.innerHTML = '<i class="bi bi-scissors"></i> فرز';
+            btnSort.title = 'فرز الدفعة';
+            btnSort.addEventListener('click', () => openSortingFromBalance(row));
+            actionsWrap.appendChild(btnSort);
+        }
+
+        tdActions.appendChild(actionsWrap);
+        tr.appendChild(tdActions);
+
+        fragment.appendChild(tr);
+    });
+
+    tbody.appendChild(fragment);
+}
+
+async function updatePricingInline(rowData, changes) {
+    const toNullable = (v) => {
+        const n = Number(v);
+        return (v === '' || v === null || v === undefined || isNaN(n) || n <= 0) ? null : n;
+    };
+
+    const saleValue = changes.sale_price !== undefined ? changes.sale_price : rowData.sale_price;
+    const minValue = changes.min_price !== undefined ? changes.min_price : rowData.min_price;
+    const maxValue = changes.max_price !== undefined ? changes.max_price : rowData.max_price;
+
+    const payload = {
+        item_id: rowData.item_id,
+        warehouse_id: rowData.warehouse_id,
+        unit_id: rowData.unit_id || null,
+        sale_price: toNullable(saleValue),
+        min_price: toNullable(minValue),
+        max_price: toNullable(maxValue),
+    };
+
+    const sale = payload.sale_price;
+    const min = payload.min_price;
+    const max = payload.max_price;
+
+    if (min !== null && max !== null && min > max) {
+        notify(`الحد الأدنى (${min}) أكبر من الحد الأعلى (${max})`, 'warning');
+        return;
+    }
+    if (sale !== null && min !== null && sale < min) {
+        notify(`سعر البيع (${sale}) أقل من الحد الأدنى (${min})`, 'warning');
+        return;
+    }
+    if (sale !== null && max !== null && sale > max) {
+        notify(`سعر البيع (${sale}) أكبر من الحد الأعلى (${max})`, 'warning');
+        return;
+    }
+
+    try {
+        const r = await fetch('/operation/movements/helpers/pricing', {
+            method: 'PUT',
+            headers: apiHeaders(true),
+            body: JSON.stringify(payload),
+        });
+
+        const data = await r.json().catch(() => ({}));
+
+        if (!r.ok) {
+            let errorMsg = data.message || 'فشل تحديث التسعير';
+            if (data.errors) {
+                const messages = Object.values(data.errors).flat();
+                if (messages.length) errorMsg = messages.join(' | ');
+            }
+            throw new Error(errorMsg);
+        }
+
+        rowData.sale_price = payload.sale_price ?? 0;
+        rowData.min_price = payload.min_price ?? 0;
+        rowData.max_price = payload.max_price ?? 0;
+
+        notify('تم تحديث التسعير', 'success');
+    } catch (e) {
+        console.error('updatePricingInline failed:', e);
+        notify(e.message, 'danger');
+    }
+}
+
+/* =========================================================================
+   ✅ الفرز
+   ========================================================================= */
+
+function openSortingFromBalance(rowData) {
+    activeSortingBalance = rowData;
+
+    document.getElementById('sortingItemName').textContent = rowData.item_name || '—';
+    document.getElementById('sortingTypeName').textContent = rowData.type_name || '—';
+    document.getElementById('sortingWarehouseName').textContent = rowData.warehouse_name || '—';
+    document.getElementById('sortingAvailable').textContent = formatMoney(rowData.quantity);
+    document.getElementById('sortingUnitCost').textContent = formatMoney(rowData.unit_cost);
+
+    // ✅ default الكمية = الكمية الكاملة
+    document.getElementById('sortingInputQty').value = rowData.quantity;
+    document.getElementById('sortingOutputQty').value = '';
+    document.getElementById('sortingSalePrice').value = '';
+    document.getElementById('sortingMinPrice').value = '';
+    document.getElementById('sortingMaxPrice').value = '';
+    document.getElementById('sortingResultUnitCost').textContent = '0.00';
+    document.getElementById('sortingResultTotal').textContent = '0.00';
+
+    sortingFromBalanceModalInstance?.show();
+
+    setTimeout(() => document.getElementById('sortingOutputQty')?.focus(), 400);
+}
+
+function calculateSortingFromBalance() {
+    if (!activeSortingBalance) return;
+
+    const inputQty = parseFloat(document.getElementById('sortingInputQty').value) || 0;
+    const outputQty = parseFloat(document.getElementById('sortingOutputQty').value) || 0;
+    const kgCost = parseFloat(activeSortingBalance.unit_cost) || 0;
+
+    if (inputQty <= 0 || outputQty <= 0 || kgCost <= 0) {
+        document.getElementById('sortingResultUnitCost').textContent = '0.00';
+        document.getElementById('sortingResultTotal').textContent = '0.00';
+        return;
+    }
+
+    const totalCost = inputQty * kgCost;
+    const unitCost = totalCost / outputQty;
+
+    document.getElementById('sortingResultUnitCost').textContent = formatMoney(unitCost);
+    document.getElementById('sortingResultTotal').textContent = formatMoney(totalCost);
+
+    // ✅ هامش ربح تلقائي (فقط إذا كانت الحقول فارغة)
+    const saleInput = document.getElementById('sortingSalePrice');
+    const minInput = document.getElementById('sortingMinPrice');
+    const maxInput = document.getElementById('sortingMaxPrice');
+
+    if (!saleInput.value || parseFloat(saleInput.value) <= 0) {
+        saleInput.value = (unitCost * (1 + DEFAULT_PROFIT_MARGIN)).toFixed(2);
+    }
+    if (!minInput.value || parseFloat(minInput.value) <= 0) {
+        minInput.value = unitCost.toFixed(2);
+    }
+    if (!maxInput.value || parseFloat(maxInput.value) <= 0) {
+        maxInput.value = (unitCost * (1 + DEFAULT_PROFIT_MARGIN * 2)).toFixed(2);
+    }
+}
+
+async function saveSortingFromBalance() {
+    if (!activeSortingBalance) return;
+
+    const inputQty = parseFloat(document.getElementById('sortingInputQty').value) || 0;
+    const outputQty = parseFloat(document.getElementById('sortingOutputQty').value) || 0;
+
+    if (inputQty <= 0) {
+        notify('الكمية المفرزة يجب أن تكون أكبر من صفر', 'warning');
+        return;
+    }
+    if (outputQty <= 0) {
+        notify('عدد الحبات يجب أن يكون أكبر من صفر', 'warning');
+        return;
+    }
+    if (inputQty > activeSortingBalance.quantity) {
+        notify(`الكمية المتاحة (${formatMoney(activeSortingBalance.quantity)}) أقل من المطلوب`, 'warning');
+        return;
+    }
+
+    // ✅ تحذير عند سعر < تكلفة
+    const kgCost = parseFloat(activeSortingBalance.unit_cost) || 0;
+    const unitCost = (inputQty * kgCost) / outputQty;
+    const salePrice = parseFloat(document.getElementById('sortingSalePrice').value) || 0;
+
+    if (salePrice > 0 && salePrice < unitCost) {
+        const deficit = ((unitCost - salePrice) / unitCost * 100).toFixed(1);
+        const confirmed = confirm(
+            `⚠️ تحذير: سعر البيع (${formatMoney(salePrice)}) أقل من تكلفة الحبة (${formatMoney(unitCost)}) بنسبة ${deficit}%.\n\nهل تريد المتابعة؟`
+        );
+        if (!confirmed) return;
+    }
+
+    const pieceUnit = findDefaultPieceUnit();
+    if (!pieceUnit) {
+        notify('وحدة "الحبة" غير موجودة في النظام', 'danger');
+        return;
+    }
+
+    const payload = {
+        item_id: activeSortingBalance.item_id,
+        type_id: activeSortingBalance.type_id,
+        warehouse_id: activeSortingBalance.warehouse_id,
+        input_unit_id: activeSortingBalance.unit_id,
+        output_unit_id: pieceUnit.UnitID,
+        input_quantity: inputQty,
+        output_quantity: outputQty,
+        code: activeSortingBalance.code || null,
+        sale_price: parseFloat(document.getElementById('sortingSalePrice').value) || null,
+        min_price: parseFloat(document.getElementById('sortingMinPrice').value) || null,
+        max_price: parseFloat(document.getElementById('sortingMaxPrice').value) || null,
+    };
+
+    const btn = document.getElementById('btnSaveSorting');
+    if (btn) btn.disabled = true;
+
+    try {
+        const r = await fetch('/operation/movements/sort', {
+            method: 'POST',
+            headers: apiHeaders(true),
+            body: JSON.stringify(payload),
+        });
+        const data = await r.json();
+
+        if (!r.ok) {
+            throw new Error(data.message || 'فشل الفرز');
+        }
+
+        notify('تم الفرز بنجاح', 'success');
+
+        sortingFromBalanceModalInstance?.hide();
+
+        // إعادة تحميل الأرصدة
+        balancesLoaded = false;
+        setTimeout(() => loadStockBalances(), 400);
+
+    } catch (e) {
+        notify(e.message, 'danger');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
 /* ═══════════════════════════════════════════════════════════
-   تصدير الدوال للنطاق العام
+   تصدير الدوال
    ═══════════════════════════════════════════════════════════ */
+
 Object.assign(window, {
-    // الأزرار الرئيسية
+    // الحركات
     startSupplyMovement,
     startIssueMovement,
     searchMovements,
@@ -1054,39 +1551,50 @@ Object.assign(window, {
     calculateMovementTotal,
     validateSalePrice,
 
-    // أحداث keydown
+    // keydown
     movementItemKeyDown,
     movementTypeKeyDown,
     movementWarehouseRowKeyDown,
     movementWarehouseHeaderKeyDown,
     movementUnitKeyDown,
 
-    // أحداث input
+    // input
     movementItemInput,
     movementTypeInput,
     movementWarehouseInput,
     movementUnitInput,
 
-    // المودالات
+    // modals
     openMovementItemModal,
     openMovementTypeModal,
     openMovementWarehouseModal,
     openMovementUnitModal,
 
-    // البحث داخل المودالات
     searchMovementItems,
     searchMovementTypes,
     searchMovementWarehouses,
     searchMovementUnits,
 
-    // الاختيار
     selectMovementItem,
     selectMovementType,
     selectMovementWarehouse,
     selectMovementUnit,
 
-    // الحركات
     loadMovement,
     clearMovementForm,
     setMovementMode,
+
+    // ✅ الأرصدة
+    loadStockBalances,
+    filterStockBalances,
+    renderStockBalances,
+    updatePricingInline,
+
+    // ✅ الفرز
+    openSortingFromBalance,
+    calculateSortingFromBalance,
+    saveSortingFromBalance,
+
+    findDefaultPieceUnit,
+    isKiloUnit,
 });

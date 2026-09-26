@@ -52,8 +52,7 @@
                     <option value="">اختر طريقة الدفع</option>
                     <option value="credit">أجل</option>
                     <option value="cash">نقد</option>
-                    <option value="bank">تحويل بنكي</option>
-                    <option value="network">عبر شبكة</option>
+                    <option value="network">تحويل بنكي / شبكة</option>
                 </select>
             </div>
 
@@ -137,7 +136,8 @@
                 <label for="PuInExchangeRate2" class="form-label">سعر الصرف</label>
                 <input
                     type="number"
-                    step="0.000001"
+                    step="0.01"
+                    min="0"
                     class="form-control"
                     id="PuInExchangeRate2"
                     name="PuInExchangeRate2"

@@ -57,6 +57,16 @@
     .amount-words {
         font-size: 0.85rem;
     }
+
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    input[type="number"] {
+        -moz-appearance: textfield;
+        appearance: textfield;
+    }
 </style>
 
 
@@ -97,7 +107,7 @@
                     <th style="width: 10%;">النوع</th>
                     <th style="width: 9%;">الرمز</th>
                     <th style="width: 11%;">الوحدة</th>
-                    <th style="width: 11%;">عدد</th>
+                    <th style="width: 11%;">الكمية</th>
                     <th style="width: 10%;">سعر الوحدة</th>
                     <th style="width: 9%;">الخصم</th>
                     <th style="width: 12%;">الإجمالي</th>
@@ -113,13 +123,11 @@
                 </tr>
             </tbody>
 
-            <!-- الإجماليات -->
-           <tfoot>
+            <tfoot>
                 <tr>
                     <td colspan="10" class="p-3 bg-light">
                         <div class="row g-3 align-items-center">
-            
-                            {{-- المبلغ كتابة — أوسع الآن --}}
+
                             <div class="col-md-6">
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-text bg-white fw-bold text-secondary text-nowrap">
@@ -136,28 +144,25 @@
                                     >
                                 </div>
                             </div>
-            
-                            {{-- الإجماليات بخليتين فقط --}}
+
                             <div class="col-md-6">
                                 <div class="totals-box">
-            
-                                    {{-- إجمالي الخصم --}}
+
                                     <div class="totals-item discount">
                                         <span class="totals-label">إجمالي الخصم</span>
                                         <div class="amount-foreign" id="totalDiscountForeign">0.00</div>
                                         <div class="amount-local"   id="totalDiscountLocal">0.00</div>
                                     </div>
-            
-                                    {{-- إجمالي الفاتورة --}}
+
                                     <div class="totals-item total">
                                         <span class="totals-label">إجمالي الفاتورة</span>
                                         <div class="amount-foreign" id="invoiceTotalForeign">0.00</div>
                                         <div class="amount-local"   id="invoiceTotalLocal">0.00</div>
                                     </div>
-            
+
                                 </div>
                             </div>
-            
+
                         </div>
                     </td>
                 </tr>
@@ -226,25 +231,14 @@
     <div class="card-body">
         <div class="row g-3">
 
-            <div class="col-md-3">
-                <label for="PuInExpenses" class="form-label">النفقات</label>
-                <input
-                    type="number"
-                    step="0.000001"
-                    min="0"
-                    class="form-control"
-                    id="PuInExpenses"
-                    name="PuInExpenses"
-                    disabled
-                    oninput="calculateTotals()"
-                >
-            </div>
+            {{-- ✅ #3: تم حذف حقل النفقات من الواجهة --}}
+            <input type="hidden" id="PuInExpenses" name="PuInExpenses" value="0">
 
-            <div class="col-md-3">
+            <div class="col-md-4">
                 <label for="PuInTaxCost" class="form-label">تكلفة الضريبة</label>
                 <input
                     type="number"
-                    step="0.000001"
+                    step="0.01"
                     min="0"
                     class="form-control"
                     id="PuInTaxCost"
@@ -254,11 +248,11 @@
                 >
             </div>
 
-            <div class="col-md-3">
+            <div class="col-md-4">
                 <label for="PuInTransportation" class="form-label">تكلفة النقل</label>
                 <input
                     type="number"
-                    step="0.000001"
+                    step="0.01"
                     min="0"
                     class="form-control"
                     id="PuInTransportation"
@@ -268,11 +262,11 @@
                 >
             </div>
 
-            <div class="col-md-3">
+            <div class="col-md-4">
                 <label for="PuInOtherCost" class="form-label">تكاليف أخرى</label>
                 <input
                     type="number"
-                    step="0.000001"
+                    step="0.01"
                     min="0"
                     class="form-control"
                     id="PuInOtherCost"
@@ -292,6 +286,19 @@
                     placeholder="أدخل وصف التكلفة الأخرى"
                     disabled
                 >
+            </div>
+
+            {{-- مجموع التكاليف الإضافية --}}
+            <div class="col-md-12">
+                <div class="d-flex justify-content-end">
+                    <div class="d-flex align-items-center gap-2 border rounded-3 bg-white p-2 px-3">
+                        <span class="text-primary small fw-bold">
+                            <i class="bi bi-plus-circle me-1"></i>
+                            مجموع التكاليف الإضافية
+                        </span>
+                        <strong class="text-primary fs-5" id="extraCostsTotal">0.00</strong>
+                    </div>
+                </div>
             </div>
 
         </div>
@@ -363,7 +370,7 @@
 
 
 {{-- ===================================================== --}}
-{{-- قالب صف تفاصيل الفاتورة (يُستخدم بواسطة JS) --}}
+{{-- قالب صف تفاصيل الفاتورة --}}
 {{-- ===================================================== --}}
 <template id="invoiceRowTemplate">
     <tr class="purchase-detail-row">
@@ -411,7 +418,7 @@
             <input
                 type="number"
                 class="form-control form-control-sm row-weight"
-                placeholder="العدد"
+                placeholder="الكمية"
                 min="0"
                 step="0.001"
                 disabled

@@ -2,43 +2,37 @@
    فاتورة الشراء — يعتمد على النظام الموحّد للنوافذ
    ========================================================= */
 
-/* =========================================================
-   إعدادات العملة الأساسية (تُمرَّر من Blade)
-   ========================================================= */
 const SYSTEM_CURRENCY_ID = window.PURCHASE_SYSTEM_CURRENCY_ID || null;
 const SYSTEM_CURRENCY_CODE = window.PURCHASE_SYSTEM_CURRENCY_CODE || '';
 
-/* ─────────────────────────────────────────────────────
-   هل عملة الفاتورة = العملة الأساسية؟
-   ───────────────────────────────────────────────────── */
+/* ✅ الوحدة الافتراضية */
+const DEFAULT_PURCHASE_UNIT_NAMES = ['كيلو', 'كجم', 'كيلوجرام', 'KG'];
+
 function isInvoiceInSystemCurrency() {
     const coinId = document.getElementById('coinsID')?.value || '';
     if (!SYSTEM_CURRENCY_ID || !coinId) return false;
-
     return String(coinId) === String(SYSTEM_CURRENCY_ID);
 }
 
-/* =========================================================
-   الخرائط الثابتة
-   ========================================================= */
+function findDefaultKiloUnit() {
+    const units = (typeof lookupCache !== 'undefined' && lookupCache.units) || [];
+    for (const name of DEFAULT_PURCHASE_UNIT_NAMES) {
+        const found = units.find(u => u.UnitName === name);
+        if (found) return found;
+    }
+    return null;
+}
 
-const PAYMENT_METHOD_TO_INT = { credit: 1, cash: 2, bank: 3, network: 4 };
-const PAYMENT_METHOD_TO_STR = { 1: 'credit', 2: 'cash', 3: 'bank', 4: 'network' };
-
-/* =========================================================
-   الحالة العامة
-   ========================================================= */
+const PAYMENT_METHOD_TO_INT = { credit: 1, cash: 2, network: 4 };
+const PAYMENT_METHOD_TO_STR = { 1: 'credit', 2: 'cash', 3: 'network', 4: 'network' };
 
 let invoiceMode = 'view';
 let currentInvoiceId = null;
 let isSavingInvoice = false;
 let editSnapshot = null;
+let invoiceSearchTimer = null;
 
 const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
-
-/* =========================================================
-   Helpers
-   ========================================================= */
 
 function apiHeaders(json = false) {
     const h = { 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF_TOKEN };
@@ -87,21 +81,31 @@ function formatMoney(v) {
     });
 }
 
-/* =========================================================
-   إدارة حالة حقل سعر الصرف (مركزية)
-   =========================================================
-   - إذا كانت العملة = العملة الأساسية → القيمة 1 + معطَّل دائمًا
-   - إذا كانت العملة أجنبية → مفعَّل في add/edit، معطَّل في view
-   ========================================================= */
-
+/**
+ * ✅ #2: سعر الصرف
+ * - إذا لم تُختَر عملة → فارغ
+ * - إذا كانت العملة الأساسية → 1.00 + معطَّل
+ * - إذا كانت عملة أجنبية → مفعَّل
+ */
 function applyExchangeRateState() {
     const rateEl = document.getElementById('PuInExchangeRate2');
     if (!rateEl) return;
 
+    const coinId = document.getElementById('coinsID')?.value || '';
+
+    // لا توجد عملة مختارة بعد → اترك الحقل فارغًا
+    if (!coinId) {
+        rateEl.value = '';
+        rateEl.disabled = (invoiceMode === 'view');
+        rateEl.readOnly = false;
+        rateEl.classList.remove('bg-light');
+        return;
+    }
+
     const isSys = isInvoiceInSystemCurrency();
 
     if (isSys) {
-        rateEl.value = 1;
+        rateEl.value = '1.00';
         rateEl.disabled = true;
         rateEl.readOnly = true;
         rateEl.classList.add('bg-light');
@@ -112,10 +116,6 @@ function applyExchangeRateState() {
     }
 }
 
-/* =========================================================
-   خطافات النظام الموحّد (LookupConfigs)
-   ========================================================= */
-
 function registerCurrencyLookupHook() {
     if (typeof LookupConfigs === 'undefined') return;
 
@@ -123,18 +123,15 @@ function registerCurrencyLookupHook() {
         const rateEl = document.getElementById('PuInExchangeRate2');
         const codeEl = document.getElementById('currencyCode');
 
-        // ✅ حفظ رمز العملة
         if (codeEl) codeEl.value = row.coinsCode ?? '';
 
-        // ✅ تعيين سعر الصرف الافتراضي (قبل تطبيق الحالة)
         if (rateEl) {
             const isSys = String(row.coinsID) === String(SYSTEM_CURRENCY_ID);
-            rateEl.value = isSys ? 1 : (row.coinsExchangeRate ?? 1);
+            const rate = isSys ? 1 : (row.coinsExchangeRate ?? 1);
+            rateEl.value = Number(rate).toFixed(2);
         }
 
-        // ✅ تطبيق حالة الحقل (تعطيل/تفعيل)
         applyExchangeRateState();
-
         calculateTotals();
     };
 }
@@ -161,10 +158,6 @@ function registerTypeLookupHook() {
     };
 }
 
-/* =========================================================
-   تهيئة
-   ========================================================= */
-
 document.addEventListener('DOMContentLoaded', () => {
     registerCurrencyLookupHook();
     registerItemLookupHook();
@@ -174,28 +167,31 @@ document.addEventListener('DOMContentLoaded', () => {
     clearInvoiceForm();
 });
 
-/* =========================================================
-   أوضاع الشاشة
-   ========================================================= */
-
+/**
+ * ✅ #4: تعطيل زر البحث عند add/edit
+ */
 function setInvoiceMode(mode) {
     invoiceMode = mode;
 
     document.querySelectorAll(
         '#PurchaseInvoicesON2, #PurchaseInvoicesDate2, #PuInPaymentMethod2, ' +
         '#paymentAccount, #supplierName, #currencyName, ' +
-        '#warehouseName, #PuInStatement2, #invoiceReference, #PuInExpenses, ' +
+        '#warehouseName, #PuInStatement2, #invoiceReference, ' +
         '#PuInTaxCost, #PuInTransportation, #PuInOtherCost, #otherCostDescription'
     ).forEach(el => { el.disabled = (mode === 'view'); });
-
-    // ✅ ملاحظة: تم إزالة #PuInExchangeRate2 من القائمة أعلاه
-    //    لأن حالته تُدار مركزياً عبر applyExchangeRateState()
 
     document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row')
         .forEach(row => enableRow(row));
 
     const addBtn = document.getElementById('btnAddInvoiceRow');
     if (addBtn) addBtn.disabled = (mode === 'view');
+
+    const newBtn = document.getElementById('btnNewInvoice');
+    if (newBtn) newBtn.disabled = (mode !== 'view');
+
+    // ✅ #4: تعطيل زر البحث عند add/edit
+    const searchBtn = document.getElementById('btnSearchInvoice');
+    if (searchBtn) searchBtn.disabled = (mode !== 'view');
 
     const saveBtn = document.getElementById('btnSaveInvoice');
     const saveNewBtn = document.getElementById('btnSaveAndNew');
@@ -224,13 +220,8 @@ function setInvoiceMode(mode) {
         paymentMethodChanged();
     }
 
-    // ✅ تطبيق حالة سعر الصرف في نهاية كل تغيير للوضع
     applyExchangeRateState();
 }
-
-/* =========================================================
-   Reset / Clear
-   ========================================================= */
 
 async function resetInvoice() {
     clearInvoiceForm();
@@ -262,7 +253,7 @@ function clearInvoiceForm() {
     document.querySelectorAll(
         '#PurchaseInvoicesON2, #PurchaseInvoicesDate2, #PuInPaymentMethod2, ' +
         '#paymentAccount, #supplierName, #currencyName, ' +
-        '#warehouseName, #PuInStatement2, #invoiceReference, #PuInExpenses, ' +
+        '#warehouseName, #PuInStatement2, #invoiceReference, ' +
         '#PuInTaxCost, #PuInTransportation, #PuInOtherCost, #otherCostDescription'
     ).forEach(el => {
         if (el.tagName === 'SELECT') el.selectedIndex = 0;
@@ -273,16 +264,23 @@ function clearInvoiceForm() {
         'paymentAccountId', 'AmountWords']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
 
-    // ✅ إعادة تعيين سعر الصرف إلى 1 (بدل فارغ)
+    // ✅ #2: اترك سعر الصرف فارغًا عند الدخول
     const rateEl = document.getElementById('PuInExchangeRate2');
     if (rateEl) {
-        rateEl.value = 1;
+        rateEl.value = '';
         rateEl.readOnly = false;
+        rateEl.classList.remove('bg-light');
     }
+
+    // تصفير حقل النفقات المخفي
+    const expEl = document.getElementById('PuInExpenses');
+    if (expEl) expEl.value = '0';
+
+    const extraEl = document.getElementById('extraCostsTotal');
+    if (extraEl) extraEl.textContent = '0.00';
 
     setEmptyDetailsMessage();
 
-    // تصفير خلايا الإجماليات الأربع
     const zeroTargets = [
         'totalDiscountForeign',
         'totalDiscountLocal',
@@ -328,10 +326,9 @@ function setEmptyDetailsMessage() {
     tbody.appendChild(tr);
 }
 
-/* =========================================================
-   صفوف التفاصيل
-   ========================================================= */
-
+/**
+ * ✅ #1: الوحدة الافتراضية = كيلو
+ */
 function addInvoiceRow() {
     if (invoiceMode === 'view') return;
 
@@ -362,6 +359,12 @@ function addInvoiceRow() {
             opt.textContent = u.UnitName;
             unitSelect.appendChild(opt);
         });
+
+        // ✅ #1: تعيين "كيلو" كافتراضي
+        const kiloUnit = findDefaultKiloUnit();
+        if (kiloUnit) {
+            unitSelect.value = String(kiloUnit.UnitID);
+        }
     }
 
     tbody.appendChild(row);
@@ -402,10 +405,6 @@ function renumberRows() {
         });
 }
 
-/* =========================================================
-   الحسابات
-   ========================================================= */
-
 function calculateRow(input) {
     const row = input.closest('tr');
     if (!row) return;
@@ -420,6 +419,10 @@ function calculateRow(input) {
     calculateTotals();
 }
 
+/**
+ * الإجمالي = الأصناف − الخصم فقط
+ * (التكاليف الإضافية منفصلة، ولا تدخل في الإجمالي)
+ */
 function calculateTotals() {
     let itemsTotal = 0, discountTotal = 0;
 
@@ -436,18 +439,18 @@ function calculateTotals() {
     const trans = parseFloat(document.getElementById('PuInTransportation')?.value) || 0;
     const other = parseFloat(document.getElementById('PuInOtherCost')?.value) || 0;
 
+    const extraCosts = expenses + tax + trans + other;
+    const extraEl = document.getElementById('extraCostsTotal');
+    if (extraEl) extraEl.textContent = formatMoney(extraCosts);
+
     const net = Math.max(0, itemsTotal - discountTotal);
-    const totalFC = net + expenses + tax + trans + other;
+    const totalFC = net;
 
     const isSystemCurrency = isInvoiceInSystemCurrency();
-
-    // ✅ سعر الصرف الفعّال: 1 للعملة الأساسية، القيمة المُدخلة لغيرها
     const rate = parseFloat(document.getElementById('PuInExchangeRate2')?.value) || 1;
     const effectiveRate = isSystemCurrency ? 1 : rate;
-
     const totalBC = totalFC * effectiveRate;
 
-    // خلية الخصم
     renderAmountDisplay(
         document.getElementById('totalDiscountForeign'),
         document.getElementById('totalDiscountLocal'),
@@ -456,7 +459,6 @@ function calculateTotals() {
         isSystemCurrency
     );
 
-    // خلية إجمالي الفاتورة
     renderAmountDisplay(
         document.getElementById('invoiceTotalForeign'),
         document.getElementById('invoiceTotalLocal'),
@@ -468,9 +470,6 @@ function calculateTotals() {
     updateAmountWords(totalFC);
 }
 
-/* ─────────────────────────────────────────────────────
-   تحديث خلية مزدوجة (foreign + local)
-   ───────────────────────────────────────────────────── */
 function renderAmountDisplay(foreignEl, localEl, amountFC, amountBC, isSystemCurrency) {
     if (!foreignEl || !localEl) return;
 
@@ -478,19 +477,15 @@ function renderAmountDisplay(foreignEl, localEl, amountFC, amountBC, isSystemCur
     const bcCode = SYSTEM_CURRENCY_CODE || '';
 
     if (isSystemCurrency) {
-        // العملة نفسها → سطر واحد فقط
         foreignEl.style.display = 'none';
         foreignEl.textContent = '';
-
         localEl.textContent = `${formatMoney(amountFC)} ${fcCode}`.trim();
         localEl.className = 'amount-single';
         return;
     }
 
-    // عملتان مختلفتان → سطران
     foreignEl.style.display = '';
     foreignEl.textContent = `${formatMoney(amountFC)} ${fcCode}`.trim();
-
     localEl.textContent = `${formatMoney(amountBC)} ${bcCode}`.trim();
     localEl.className = 'amount-local';
 }
@@ -511,10 +506,6 @@ function updateAmountWords(total) {
 }
 
 function exchangeRateChanged() { calculateTotals(); }
-
-/* =========================================================
-   Payment method
-   ========================================================= */
 
 function paymentMethodChanged(clearPrevious = false) {
     if (clearPrevious) {
@@ -546,15 +537,17 @@ function paymentMethodChanged(clearPrevious = false) {
     container.classList.remove('d-none');
     input.disabled = (invoiceMode === 'view');
 
-    if (method === 'bank') {
-        input.dataset.lookup = 'bank';
+    if (method === 'network') {
+        input.dataset.lookup = 'bank_network';
         input.dataset.lookupDisplayField = 'bankName';
+        input.dataset.lookupIdField = 'accountID';
     } else {
         input.dataset.lookup = 'box';
         input.dataset.lookupDisplayField = 'boxName';
+        input.dataset.lookupIdField = 'accountID';
     }
 
-    const labels = { cash: 'الصندوق', bank: 'الحساب البنكي', network: 'حساب المحفظة' };
+    const labels = { cash: 'الصندوق', network: 'حساب البنك / الشبكة' };
     const lbl = container.querySelector('label');
     if (lbl) lbl.textContent = labels[method] || 'الحساب';
 }
@@ -563,10 +556,6 @@ function hidePaymentAccounts() {
     const el = document.getElementById('paymentAccountContainer');
     if (el) el.classList.add('d-none');
 }
-
-/* =========================================================
-   Other cost
-   ========================================================= */
 
 function otherCostChanged() {
     const v = parseFloat(document.getElementById('PuInOtherCost').value) || 0;
@@ -583,15 +572,13 @@ function otherCostChanged() {
     calculateTotals();
 }
 
-/* =========================================================
-   البحث عن فاتورة
-   ========================================================= */
-
 function searchInvoice() {
     const modalEl = document.getElementById('invoiceSearchModal');
     if (!modalEl) return;
 
-    document.getElementById('invoiceSearchInput').value = '';
+    const searchInput = document.getElementById('invoiceSearchInput');
+    if (searchInput) searchInput.value = '';
+
     const tb = document.getElementById('invoiceSearchResults');
     tb.replaceChildren();
 
@@ -599,12 +586,21 @@ function searchInvoice() {
     const td = document.createElement('td');
     td.colSpan = 7;
     td.className = 'text-center text-muted py-4';
-    td.textContent = 'أدخل بيانات البحث ثم اضغط بحث';
+    td.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري التحميل...';
     tr.appendChild(td);
     tb.appendChild(tr);
 
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
-    setTimeout(() => document.getElementById('invoiceSearchInput').focus(), 200);
+
+    setTimeout(() => {
+        searchInput?.focus();
+        performInvoiceSearch();
+    }, 250);
+}
+
+function debouncedInvoiceSearch() {
+    clearTimeout(invoiceSearchTimer);
+    invoiceSearchTimer = setTimeout(performInvoiceSearch, 350);
 }
 
 async function performInvoiceSearch() {
@@ -615,7 +611,18 @@ async function performInvoiceSearch() {
     try {
         const raw = await apiGet(`/operation/purchases/invoicesPurch/list?search=${encodeURIComponent(search)}`);
         const rows = Array.isArray(raw) ? raw : (raw.data || []);
-        const labels = { 1: 'أجل', 2: 'نقد', 3: 'بنك', 4: 'شبكة' };
+        const labels = { 1: 'أجل', 2: 'نقد', 3: 'تحويل بنكي / شبكة', 4: 'تحويل بنكي / شبكة' };
+
+        if (rows.length === 0) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 7;
+            td.className = 'text-center text-muted py-4';
+            td.textContent = 'لا توجد نتائج مطابقة';
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+            return;
+        }
 
         rows.forEach(inv => {
             const tr = document.createElement('tr');
@@ -648,10 +655,6 @@ async function performInvoiceSearch() {
     }
 }
 
-/* =========================================================
-   تحميل فاتورة
-   ========================================================= */
-
 async function loadInvoice(id) {
     try {
         const res = await apiGet(`/operation/purchases/invoicesPurch/${id}`);
@@ -667,7 +670,10 @@ async function loadInvoice(id) {
         document.getElementById('coinsID').value = h.coin_id ?? '';
         document.getElementById('currencyName').value = h.coin_name ?? '';
         document.getElementById('currencyCode').value = h.coin_code ?? '';
-        document.getElementById('PuInExchangeRate2').value = h.exchange_rate ?? 1;
+
+        const rate = parseFloat(h.exchange_rate) || 1;
+        document.getElementById('PuInExchangeRate2').value = rate.toFixed(2);
+
         document.getElementById('warehouseID').value = h.warehouse_id ?? '';
         document.getElementById('warehouseName').value = h.warehouse_name ?? '';
         document.getElementById('PuInPaymentMethod2').value =
@@ -676,7 +682,11 @@ async function loadInvoice(id) {
         document.getElementById('paymentAccount').value = h.payment_account_name ?? '';
         document.getElementById('PuInStatement2').value = h.statement ?? '';
         document.getElementById('invoiceReference').value = h.reference ?? '';
-        document.getElementById('PuInExpenses').value = h.expenses ?? 0;
+
+        // ✅ حقل النفقات مخفي - نضبطه من البيانات القادمة
+        const expEl = document.getElementById('PuInExpenses');
+        if (expEl) expEl.value = h.expenses ?? 0;
+
         document.getElementById('PuInTaxCost').value = h.tax_cost ?? 0;
         document.getElementById('PuInTransportation').value = h.transportation ?? 0;
         document.getElementById('PuInOtherCost').value = h.other_cost ?? 0;
@@ -745,10 +755,7 @@ async function loadInvoice(id) {
 
         currentInvoiceId = h.purchase_invoice_id;
         setInvoiceMode('view');
-
-        // ✅ تطبيق حالة سعر الصرف بناءً على العملة المحمَّلة
         applyExchangeRateState();
-
         editSnapshot = null;
 
         notify('تم تحميل الفاتورة بنجاح', 'success');
@@ -756,10 +763,6 @@ async function loadInvoice(id) {
         notify('فشل تحميل الفاتورة: ' + e.message, 'danger');
     }
 }
-
-/* =========================================================
-   Snapshot
-   ========================================================= */
 
 function takeSnapshot() {
     const data = {
@@ -792,13 +795,20 @@ function takeSnapshot() {
     return JSON.stringify(data);
 }
 
-/* =========================================================
-   Save / Edit / Cancel / Print
-   ========================================================= */
-
 function hasInvoiceData() {
     const el = document.getElementById('PurchaseInvoicesON2');
     return el ? el.value.trim() !== '' : false;
+}
+
+function getValue(id) {
+    const el = document.getElementById(id);
+    return el ? (el.value || '') : '';
+}
+
+function setValue(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = value ?? '';
 }
 
 function editInvoice() {
@@ -815,12 +825,9 @@ function editInvoice() {
     document.querySelectorAll(
         '#PurchaseInvoicesDate2, #PuInPaymentMethod2, #paymentAccount, #supplierName, ' +
         '#currencyName, #warehouseName, #PuInStatement2, ' +
-        '#invoiceReference, #PuInExpenses, #PuInTaxCost, #PuInTransportation, ' +
+        '#invoiceReference, #PuInTaxCost, #PuInTransportation, ' +
         '#PuInOtherCost, #otherCostDescription'
     ).forEach(el => el.disabled = false);
-
-    // ✅ ملاحظة: تم إزالة #PuInExchangeRate2 من القائمة أعلاه
-    //    لأن حالته تُدار مركزياً
 
     if (getValue('PuInPaymentMethod2') === 'credit') {
         setValue('paymentAccountId', '');
@@ -828,24 +835,19 @@ function editInvoice() {
     }
 
     paymentMethodChanged();
-
-    // ✅ تطبيق حالة سعر الصرف بعد تفعيل الحقول
     applyExchangeRateState();
-
     editSnapshot = takeSnapshot();
 }
 
 async function cancelInvoice() {
     if (!confirm('هل أنت متأكد من إلغاء العملية؟')) return;
 
-    // إذا كنا في وضع تعديل فاتورة موجودة → أعد تحميلها
     if (invoiceMode === 'edit' && currentInvoiceId) {
         await loadInvoice(currentInvoiceId);
         notify('تم التراجع عن التعديلات', 'info');
         return;
     }
 
-    // إذا كنا في وضع إضافة فاتورة جديدة → امسح النموذج
     clearInvoiceForm();
     notify('تم إلغاء العملية', 'info');
 }
@@ -914,9 +916,6 @@ async function saveInvoice() {
         }
     }
 
-    // ✅ حماية: إرسال سعر الصرف الصحيح للسيرفر
-    //    - للعملة الأساسية: 1 (حتى لو عُدِّل الحقل يدوياً)
-    //    - للعملات الأجنبية: القيمة المُدخلة (أو 1 كقيمة افتراضية)
     const isSystemCurrency = isInvoiceInSystemCurrency();
     const exchangeRate = isSystemCurrency
         ? 1
@@ -931,7 +930,7 @@ async function saveInvoice() {
         coin_id: Number(coinId),
         warehouse_id: Number(wid),
         exchange_rate: exchangeRate,
-        expenses: parseFloat(document.getElementById('PuInExpenses').value) || 0,
+        expenses: parseFloat(document.getElementById('PuInExpenses')?.value) || 0,
         tax_cost: parseFloat(document.getElementById('PuInTaxCost').value) || 0,
         transportation: parseFloat(document.getElementById('PuInTransportation').value) || 0,
         other_cost: parseFloat(document.getElementById('PuInOtherCost').value) || 0,
@@ -990,36 +989,27 @@ function printInvoice() {
     );
 }
 
-/* ═══════════════════════════════════════════════════════════
-   تصدير الدوال للنطاق العام
-   ═══════════════════════════════════════════════════════════ */
 Object.assign(window, {
-    // الأزرار الرئيسية
     resetInvoice,
     searchInvoice,
     performInvoiceSearch,
+    debouncedInvoiceSearch,
     saveInvoice,
     saveAndNewInvoice,
     editInvoice,
     cancelInvoice,
     printInvoice,
     loadInvoice,
-
-    // صفوف التفاصيل
     addInvoiceRow,
     removeRow,
     calculateRow,
     calculateTotals,
     renumberRows,
-
-    // الحقول
     exchangeRateChanged,
     paymentMethodChanged,
     otherCostChanged,
     hidePaymentAccounts,
     applyExchangeRateState,
-
-    // الأوضاع
     setInvoiceMode,
     clearInvoiceForm,
 });

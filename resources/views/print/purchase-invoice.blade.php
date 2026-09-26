@@ -6,9 +6,7 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        html, body {
-            height: 100%;
-        }
+        html, body { height: 100%; }
 
         body {
             font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
@@ -17,12 +15,9 @@
             color: #000;
             background: #fff;
             padding: 15px;
-            padding-bottom: 60px;  /* مساحة للفوتر الثابت */
+            padding-bottom: 60px;
         }
 
-        /* ============================================================
-           Header
-           ============================================================ */
         .header {
             display: flex;
             justify-content: space-between;
@@ -51,9 +46,6 @@
             font-weight: 600;
         }
 
-        /* ============================================================
-           Info Grid
-           ============================================================ */
         .info-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -77,9 +69,35 @@
             color: #000;
         }
 
-        /* ============================================================
-           Items Table
-           ============================================================ */
+        /* ✅ صندوق بيانات البنك */
+        .bank-box {
+            border: 1px solid #0d6efd;
+            background: #f0f7ff;
+            padding: 8px 12px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+        .bank-box-title {
+            font-size: 10pt;
+            font-weight: 700;
+            color: #0d6efd;
+            margin-bottom: 4px;
+            display: block;
+        }
+        .bank-box-content {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            font-size: 10pt;
+            font-weight: 600;
+        }
+        .bank-box-content span {
+            color: #000;
+        }
+        .bank-box-content span strong {
+            color: #0d6efd;
+        }
+
         .items-table {
             width: 100%;
             border-collapse: collapse;
@@ -104,7 +122,6 @@
         }
         .items-table tbody td.text-start { text-align: right; }
 
-        /* عمود الإجمالي — أحمر */
         .items-table tbody td.col-total {
             color: #dc3545;
             font-weight: 700;
@@ -112,9 +129,6 @@
 
         .items-table tbody tr:nth-child(even) { background: #f8f9fa; }
 
-        /* ============================================================
-           Totals
-           ============================================================ */
         .totals {
             width: 100%;
             border-collapse: collapse;
@@ -136,19 +150,16 @@
             width: 25%;
         }
 
-        /* إجمالي الأصناف — أحمر */
         .totals .row-items .label,
         .totals .row-items .value {
             color: #dc3545;
         }
 
-        /* إجمالي الخصم — أخضر */
         .totals .row-discount .label,
         .totals .row-discount .value {
             color: #198754;
         }
 
-        /* إجمالي الفاتورة — أحمر بارز */
         .totals .row-grand .label,
         .totals .row-grand .value {
             background: #e7f1ff;
@@ -157,9 +168,6 @@
             font-weight: 700;
         }
 
-        /* ============================================================
-           Amount in words
-           ============================================================ */
         .amount-words {
             border: 1px solid #dee2e6;
             padding: 10px 12px;
@@ -178,9 +186,6 @@
             font-weight: 700;
         }
 
-        /* ============================================================
-           Signatures
-           ============================================================ */
         .signatures {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -204,9 +209,6 @@
             border-top: 1px dotted #999;
         }
 
-        /* ============================================================
-           Footer — ثابت أسفل الصفحة
-           ============================================================ */
         .footer {
             position: fixed;
             bottom: 0;
@@ -239,19 +241,12 @@
             flex: 1;
         }
 
-        /* ============================================================
-           Print
-           ============================================================ */
         @media print {
-            html, body {
-                height: auto;
-            }
-
+            html, body { height: auto; }
             body {
                 padding: 0;
-                padding-bottom: 40px; /* مساحة للفوتر الثابت */
+                padding-bottom: 40px;
             }
-
             .footer {
                 position: fixed;
                 bottom: 0;
@@ -261,7 +256,6 @@
                 border-top: 1px solid #dee2e6;
                 background: #fff;
             }
-
             .no-print { display: none !important; }
 
             @page {
@@ -282,14 +276,22 @@
         $currencyName
     );
 
-    // استبدال "فقط لا غير" بـ span أزرق
     $totalWordsHtml = str_replace(
         'فقط لا غير',
         '<span class="only-text">فقط لا غير</span>',
         e($totalWords)
     );
 
-    $paymentLabels = [1 => 'أجل', 2 => 'نقد', 3 => 'بنك', 4 => 'شبكة'];
+    // ✅ خريطة طرق الدفع المحدّثة
+    $paymentLabels = [
+        1 => 'أجل',
+        2 => 'نقد',
+        3 => 'تحويل بنكي / شبكة',   // ← متوافق مع الفواتير القديمة
+        4 => 'تحويل بنكي / شبكة',
+    ];
+
+    // ✅ هل الفاتورة بحساب بنكي؟
+    $showBank = isset($bank) && $bank && in_array((int) $invoice->payment_method, [3, 4]);
 @endphp
 
 {{-- Header --}}
@@ -332,6 +334,37 @@
         <span class="info-value">{{ $paymentLabels[$invoice->payment_method] ?? '—' }}</span>
     </div>
 </div>
+
+{{-- ✅ بيانات البنك (فقط عند الدفع بنكي/شبكة) --}}
+@if($showBank)
+    <div class="bank-box">
+        <span class="bank-box-title">
+            <i>💳</i> تفاصيل الحساب البنكي
+        </span>
+        <div class="bank-box-content">
+            <span>
+                <strong>اسم البنك:</strong>
+                {{ $bank->bankName ?? '—' }}
+            </span>
+            @if(!empty($bank->accountNumber))
+                <span>
+                    <strong>رقم الحساب:</strong>
+                    {{ $bank->accountNumber }}
+                </span>
+            @endif
+            @if($bank->coin)
+                <span>
+                    <strong>العملة:</strong>
+                    {{ $bank->coin->coinsName }}
+                </span>
+                <span>
+                    <strong>سعر الصرف:</strong>
+                    {{ number_format((float) $bank->coin->coinsExchangeRate, 2) }}
+                </span>
+            @endif
+        </div>
+    </div>
+@endif
 
 {{-- Items Table --}}
 <table class="items-table">
@@ -387,6 +420,18 @@
         <td colspan="3" class="label">إجمالي الفاتورة</td>
         <td class="value">{{ number_format((float) $invoice->total_in_invoice_currency, 2) }}</td>
     </tr>
+
+    {{-- ✅ التكاليف الإضافية (منفصلة - اختيارية) --}}
+    @if((float) $invoice->extra_costs_total > 0)
+        <tr>
+            <td colspan="2" class="label" style="color: #0d6efd; background: #f0f7ff;">
+                مجموع التكاليف الإضافية
+            </td>
+            <td colspan="2" class="value" style="color: #0d6efd; background: #f0f7ff;">
+                {{ number_format((float) $invoice->extra_costs_total, 2) }}
+            </td>
+        </tr>
+    @endif
 </table>
 
 {{-- Amount in Words --}}
@@ -402,14 +447,14 @@
     <div class="signature">المالية</div>
 </div>
 
-{{-- Footer — ثابت أسفل الصفحة --}}
+{{-- Footer --}}
 <div class="footer">
     <span class="footer-left">جميع الحقوق محفوظة لشركة بيتاسيس ©</span>
     <span class="footer-center">رقم الصفحة: 1</span>
     <span class="footer-right">المستخدم: مدير النظام</span>
 </div>
 
-{{-- Print Buttons (لا تُطبع) --}}
+{{-- Print Buttons --}}
 <div class="no-print" style="text-align: center; margin-top: 40px;">
     <button onclick="window.print()" style="
         padding: 10px 30px;

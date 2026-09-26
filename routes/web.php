@@ -598,6 +598,15 @@ Route::get(
     [PurchaseInvoiceController::class, 'nextNumber']
 )->name('invoicesPurch.nextNumber');
 
+// -----------------------------------------------------
+// ✅ #11: قائمة البنوك مع البيانات الكاملة
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/purchases/banks/list-full',
+    [PurchaseInvoiceController::class, 'listBanksFull']
+)->name('purchases.banks.listFull');
+
 
 // -----------------------------------------------------
 // قائمة الفواتير (JSON) — لنافذة البحث

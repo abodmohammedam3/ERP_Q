@@ -4,68 +4,84 @@ namespace App\Http\Controllers\Operation\Purchases;
 
 use App\Http\Controllers\Controller;
 use App\Models\Purchases\PurchaseInvoice;
+use App\Models\Accounting\Coin;
+use App\Models\Accounting\Bank;
 use App\Services\Purchases\PurchaseInvoiceService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
-use App\Models\Accounting\Coin;
 
 class PurchaseInvoiceController extends Controller
 {
-    /**
-     * @var PurchaseInvoiceService
-     */
     protected PurchaseInvoiceService $service;
 
-    /**
-     * Constructor Injection
-     */
     public function __construct(PurchaseInvoiceService $service)
     {
         $this->service = $service;
     }
 
-    /**
-     * عرض شاشة فواتير الشراء
-     */
+    public function index()
+    {
+        session()->save();
 
-     public function index()
-        {
-            session()->save();
-        
-            $systemCurrency = Coin::where('coinsSystem', 1)
-                ->first(['coinsID', 'coinsCode']);
-        
-            return view('operation.purchases.invoicesPurch.index', [
-                'systemCurrencyId'   => $systemCurrency->coinsID ?? null,
-                'systemCurrencyCode' => $systemCurrency->coinsCode ?? '',
-            ]);
-        }
+        $systemCurrency = Coin::where('coinsSystem', 1)
+            ->first(['coinsID', 'coinsCode']);
+
+        return view('operation.purchases.invoicesPurch.index', [
+            'systemCurrencyId'   => $systemCurrency->coinsID ?? null,
+            'systemCurrencyCode' => $systemCurrency->coinsCode ?? '',
+        ]);
+    }
 
     /**
-     * قائمة الفواتير (JSON) — تُستخدم في نافذة البحث
+     * ✅ قائمة الفواتير (JSON) — بحث موسّع + ترتيب تصاعدي
      */
     public function list(Request $request)
     {
         $search = trim($request->input('search', ''));
 
         $query = PurchaseInvoice::query()
-            ->with(['supplierAccount', 'coin'])
-            ->orderBy('purchase_invoice_id', 'desc');
+            ->with(['supplierAccount', 'coin', 'details.item', 'details.type'])
+            ->orderBy('purchase_invoice_id', 'asc');   // ✅ تصاعدي
 
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
+                // رقم الفاتورة
                 $q->where('invoice_number', 'like', "%{$search}%")
+                  // المرجع
                   ->orWhere('reference', 'like', "%{$search}%")
+                  // البيان
+                  ->orWhere('statement', 'like', "%{$search}%")
+                  // المورد
                   ->orWhereHas('supplierAccount', function ($q2) use ($search) {
                       $q2->where('accName', 'like', "%{$search}%")
                          ->orWhere('accCode', 'like', "%{$search}%");
+                  })
+                  // الأصناف
+                  ->orWhereHas('details.item', function ($q2) use ($search) {
+                      $q2->where('itemName2', 'like', "%{$search}%");
+                  })
+                  // الأنواع
+                  ->orWhereHas('details.type', function ($q2) use ($search) {
+                      $q2->where('name', 'like', "%{$search}%");
+                  })
+                  // الرمز
+                  ->orWhereHas('details', function ($q2) use ($search) {
+                      $q2->where('code', 'like', "%{$search}%");
                   });
+
+                // طريقة الدفع (بحث نصي)
+                $paymentMap = ['أجل' => 1, 'نقد' => 2, 'بنك' => 3, 'شبكة' => 4];
+                foreach ($paymentMap as $label => $val) {
+                    if (mb_strpos($label, $search) !== false || mb_strpos($search, $label) !== false) {
+                        $q->orWhere('payment_method', $val);
+                    }
+                }
             });
         }
 
-        $invoices = $query->limit(50)->get()->map(function ($inv) {
+        $invoices = $query->limit(200)->get()->map(function ($inv) {
             return [
                 'purchase_invoice_id' => $inv->purchase_invoice_id,
                 'invoice_number'      => $inv->invoice_number,
@@ -80,9 +96,6 @@ class PurchaseInvoiceController extends Controller
         return response()->json(['data' => $invoices]);
     }
 
-    /**
-     * عرض فاتورة واحدة مع تفاصيلها (JSON)
-     */
     public function show($id)
     {
         $invoice = PurchaseInvoice::with([
@@ -146,9 +159,6 @@ class PurchaseInvoiceController extends Controller
         ]);
     }
 
-    /**
-     * رقم الفاتورة التالي (مقترح للعرض فقط)
-     */
     public function nextNumber()
     {
         $last = PurchaseInvoice::orderBy('purchase_invoice_id', 'desc')->first();
@@ -158,8 +168,28 @@ class PurchaseInvoiceController extends Controller
     }
 
     /**
-     * حفظ فاتورة جديدة
+     * ✅ قائمة البنوك الكاملة (للشبكة)
      */
+    public function listBanksFull()
+    {
+        $banks = Bank::with(['coin'])
+            ->where('is_active', 1)
+            ->get()
+            ->map(function ($b) {
+                return [
+                    'bankID'             => $b->bankID,
+                    'bankName'           => $b->bankName,
+                    'accountID'          => $b->accountID,
+                    'accountNumber'      => $b->accountNumber ?? '',
+                    'coinsID'            => $b->coinsID,
+                    'coinsName'          => $b->coin->coinsName ?? '',
+                    'coinsExchangeRate'  => $b->coin ? (float) $b->coin->coinsExchangeRate : 0,
+                ];
+            });
+
+        return response()->json(['data' => $banks]);
+    }
+
     public function store(Request $request)
     {
         $validator = $this->validateInvoice($request);
@@ -194,9 +224,6 @@ class PurchaseInvoiceController extends Controller
         }
     }
 
-    /**
-     * تحديث فاتورة
-     */
     public function update(Request $request, $id)
     {
         $validator = $this->validateInvoice($request);
@@ -234,9 +261,6 @@ class PurchaseInvoiceController extends Controller
         }
     }
 
-    /**
-     * حذف فاتورة
-     */
     public function destroy($id)
     {
         try {
@@ -263,9 +287,8 @@ class PurchaseInvoiceController extends Controller
         }
     }
 
-
-        /**
-     * طباعة فاتورة الشراء
+    /**
+     * ✅ طباعة فاتورة الشراء — مع بيانات البنك
      */
     public function print($id)
     {
@@ -276,23 +299,28 @@ class PurchaseInvoiceController extends Controller
             'supplierAccount',
             'warehouse',
             'coin',
+            'paymentAccount',
         ])->find($id);
 
         if (!$invoice) {
             abort(404, 'الفاتورة غير موجودة');
         }
 
-        return view('print.purchase-invoice', compact('invoice'));
+        // ✅ جلب بيانات البنك إن كانت طريقة الدفع بنك/شبكة
+        $bank = null;
+        if (in_array((int) $invoice->payment_method, [3, 4])) {
+            $bank = Bank::where('accountID', $invoice->payment_account_id)
+                ->with('coin')
+                ->first();
+        }
+
+        return view('print.purchase-invoice', compact('invoice', 'bank'));
     }
 
-
     // =====================================================
-    // التحقق من البيانات (يبقى في Controller — طبقة HTTP)
+    // التحقق
     // =====================================================
 
-    /**
-     * التحقق من البيانات
-     */
     private function validateInvoice(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -380,10 +408,10 @@ class PurchaseInvoiceController extends Controller
             $otherDesc = trim($request->input('other_cost_description', ''));
             if ($otherCost > 0 && $otherDesc === '') {
                 $v->errors()->add(
-                        'other_cost_description',
-                        'يجب إدخال وصف التكلفة الأخرى'
-                    );
-                }
+                    'other_cost_description',
+                    'يجب إدخال وصف التكلفة الأخرى'
+                );
+            }
         });
 
         return $validator;

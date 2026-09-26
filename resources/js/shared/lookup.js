@@ -1,12 +1,5 @@
 /* =========================================================================
    النظام الموحّد للنوافذ المنبثقة (Unified Lookup System)
-   =========================================================================
-   - تحميل قبل الإظهار (لا يبقى في "جاري التحميل")
-   - Event Delegation (أداء عالي)
-   - Preload مؤجل للوحدات
-   - Debounce للبحث (200ms)
-   - حد أقصى للعرض (300 صف)
-   - AbortController لإلغاء الطلبات القديمة
    ========================================================================= */
 
 /* =========================================================================
@@ -132,6 +125,24 @@ const LookupConfigs = {
         filter: (row, s) =>
             !s || (row.bankName || '').includes(s),
     },
+
+    /* ✅ #11: نافذة الشبكة — بيانات كاملة */
+    bank_network: {
+        title: 'اختيار بنك الشبكة',
+        icon: 'bi-credit-card-2-front',
+        columns: [
+            { key: 'bankName', label: 'اسم البنك', align: 'start' },
+            { key: 'accountNumber', label: 'رقم الحساب', align: 'center', width: '160px' },
+            { key: 'coinsName', label: 'العملة', align: 'center', width: '110px' },
+            { key: 'coinsExchangeRate', label: 'سعر الصرف', align: 'center', width: '110px' },
+        ],
+        cacheKey: 'banks_network',
+        filter: (row, s) =>
+            !s ||
+            (row.bankName || '').includes(s) ||
+            (row.accountNumber || '').includes(s) ||
+            (row.coinsName || '').includes(s),
+    },
 };
 
 /* =========================================================================
@@ -143,11 +154,13 @@ const lookupEndpointMap = {
     customer: '/setting/customers/search',
     currency: '/setting/accounting/coins/list',
     warehouse: '/setting/inventory/warehouses/list',
-    item: '/setting/inventory/items/search',      // ✅ تم التغيير من /list إلى /search
+    item: '/setting/inventory/items/search',
     type: '/setting/inventory/types/list',
     unit: '/setting/inventory/units/list',
     box: '/setting/accounting/boxes/list',
     bank: '/setting/accounting/banks/list',
+    /* ✅ #11: endpoint البنوك الكامل */
+    bank_network: '/operation/purchases/banks/list-full',
 };
 
 /* =========================================================================
@@ -164,6 +177,7 @@ const lookupCache = {
     units: [],
     boxes: [],
     banks: [],
+    banks_network: [],
 };
 
 const lookupLoadedFlags = {};
@@ -209,7 +223,7 @@ function lookupNormalize(data) {
 }
 
 /* =========================================================================
-   7) Lazy Loading — تحميل نقاط البيانات عند الطلب
+   7) Lazy Loading
    ========================================================================= */
 
 async function lookupEnsureLoaded(key) {
@@ -221,7 +235,6 @@ async function lookupEnsureLoaded(key) {
     const cacheKey = LookupConfigs[key]?.cacheKey;
     if (!cacheKey) return;
 
-    // ✅ إلغاء الطلب السابق لنفس المفتاح
     if (lookupAborts[key]) lookupAborts[key].abort();
     lookupAborts[key] = new AbortController();
 
@@ -291,7 +304,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     lookupSetupFocusTrap(modalEl);
 
-    // ✅ Preload مؤجل — لا يزاحم تحميل الصفحة
     if (!lookupShouldSkipPreload()) {
         const runPreload = () => lookupEnsureLoaded('unit');
 
@@ -304,11 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* =========================================================================
-   8) Event Delegation — لكل حقول data-lookup
-   =========================================================================
-   - Enter       → يفتح النافذة (دائمًا)
-   - Tab مع نص   → يفتح النافذة
-   - Tab فارغ    → ينتقل بشكل طبيعي
+   9) Event Delegation
    ========================================================================= */
 
 document.addEventListener('keydown', (e) => {
@@ -384,7 +392,7 @@ document.addEventListener('blur', (e) => {
 }, true);
 
 /* =========================================================================
-   9) فتح النافذة — تحميل قبل الإظهار
+   10) فتح النافذة
    ========================================================================= */
 
 async function openLookup(key, target) {
@@ -536,7 +544,6 @@ function lookupRenderRows(rows, config) {
 
     tbody.appendChild(fragment);
 
-    // ✅ تنبيه عند تجاوز الحد
     if (total > LOOKUP_MAX_RENDER) {
         const hintTr = document.createElement('tr');
         const hintTd = document.createElement('td');
@@ -563,7 +570,7 @@ function lookupFilterAndRender() {
 }
 
 /* =========================================================================
-   11) البحث داخل النافذة
+   12) البحث داخل النافذة
    ========================================================================= */
 
 function lookupSearchInput() {
@@ -637,7 +644,7 @@ function lookupSelectRow(row) {
 }
 
 /* =========================================================================
-   14) Focus Trap — حصر التركيز داخل النافذة
+   15) Focus Trap
    ========================================================================= */
 
 function lookupSetupFocusTrap(modalEl) {
@@ -680,7 +687,7 @@ function lookupSetupFocusTrap(modalEl) {
 }
 
 /* =========================================================================
-   16) تصدير الدوال العامة
+   16) تصدير الدوال
    ========================================================================= */
 
 window.openLookup = openLookup;
@@ -690,7 +697,4 @@ window.lookupCache = lookupCache;
 window.LookupConfigs = LookupConfigs;
 window.lookupEnsureLoaded = lookupEnsureLoaded;
 window.lookupLoadedFlags = lookupLoadedFlags;
-
-/* =========================================================================
-   16) نهاية الملف
-   ========================================================================= */
+window.lookupEndpointMap = lookupEndpointMap;

@@ -47,7 +47,7 @@
 
 
 <!-- ===================================================== -->
-<!-- نافذة البحث عن الفاتورة -->
+<!-- نافذة البحث عن الفاتورة — محسّنة -->
 <!-- ===================================================== -->
 
 <div
@@ -75,31 +75,30 @@
 
             <div class="modal-body">
 
-                <div class="row g-2 mb-3">
-                    <div class="col-md-10">
+                <!-- ✅ حقل بحث واحد موسّع — بحث فوري -->
+                <div class="mb-3">
+                    <div class="input-group input-group-lg">
+                        <span class="input-group-text bg-white">
+                            <i class="bi bi-search text-primary"></i>
+                        </span>
                         <input
                             type="text"
                             class="form-control"
                             id="invoiceSearchInput"
-                            placeholder="أدخل رقم الفاتورة أو اسم المورد..."
-                            onkeydown="if(event.key==='Enter') performInvoiceSearch()"
+                            placeholder="ابحث برقم الفاتورة، اسم المورد، الصنف، النوع، الرمز، طريقة الدفع..."
+                            oninput="debouncedInvoiceSearch()"
+                            autocomplete="off"
                         >
                     </div>
-                    <div class="col-md-2">
-                        <button
-                            type="button"
-                            class="btn btn-primary w-100"
-                            onclick="performInvoiceSearch()"
-                        >
-                            <i class="bi bi-search"></i>
-                            بحث
-                        </button>
-                    </div>
+                    <small class="text-muted">
+                        <i class="bi bi-info-circle"></i>
+                        النتائج تظهر تلقائيًا أثناء الكتابة
+                    </small>
                 </div>
 
-                <div class="table-responsive">
-                    <table class="table table-bordered table-hover align-middle">
-                        <thead class="table-light">
+                <div class="table-responsive" style="max-height: 450px;">
+                    <table class="table table-bordered table-hover align-middle mb-0">
+                        <thead class="table-light sticky-top">
                             <tr class="text-center">
                                 <th>رقم الفاتورة</th>
                                 <th>التاريخ</th>
@@ -113,7 +112,8 @@
                         <tbody id="invoiceSearchResults">
                             <tr>
                                 <td colspan="7" class="text-center text-muted py-4">
-                                    أدخل بيانات البحث ثم اضغط بحث
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    جاري التحميل...
                                 </td>
                             </tr>
                         </tbody>
@@ -133,6 +133,4 @@
     window.PURCHASE_SYSTEM_CURRENCY_CODE = @json($systemCurrencyCode ?? '');
 </script>
 @vite(['resources/js/pages/purchase-invoice.js'])
-
-
 @endpush

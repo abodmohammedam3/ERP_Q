@@ -26,7 +26,6 @@ class PurchaseInvoiceService
             $invoice = PurchaseInvoice::create($data);
 
             $this->saveDetails($invoice, $request->input('details', []));
-
             $this->recalculateTotals($invoice);
 
             $invoice->load('details');
@@ -51,7 +50,6 @@ class PurchaseInvoiceService
 
             $invoice->details()->delete();
             $this->saveDetails($invoice, $request->input('details', []));
-
             $this->recalculateTotals($invoice);
 
             $invoice->load('details');
@@ -83,13 +81,15 @@ class PurchaseInvoiceService
 
     /**
      * إنشاء / إعادة إنشاء حركة المخزون المرتبطة بالفاتورة
+     *
+     * ملاحظة: التكاليف الإضافية (نفقات، ضرائب، نقل، أخرى) تُوزَّع
+     *         على تكلفة الوحدة كـ Landed Cost في المخزون
+     *         مع عدم إضافتها لإجمالي الفاتورة
      */
     public function syncInventoryMovement(PurchaseInvoice $invoice): void
     {
-        // 1. حذف أي حركة قديمة
         $this->deleteInventoryMovement($invoice);
 
-        // 2. توليد رقم الحركة
         $lastMovement = InventoryMovement::lockForUpdate()
             ->orderBy('movement_id', 'desc')
             ->first();
@@ -98,7 +98,6 @@ class PurchaseInvoiceService
             ? ((int) $lastMovement->display_id + 1)
             : 1;
 
-        // 3. إنشاء رأس الحركة
         $movement = InventoryMovement::create([
             'display_id'      => (string) $nextNumber,
             'movement_type'   => InventoryMovement::TYPE_PURCHASE,
@@ -117,13 +116,11 @@ class PurchaseInvoiceService
 
         $rate = (float) ($invoice->exchange_rate ?: 1);
 
-        // 4. التكاليف الإضافية بعملة الفاتورة
         $extraCostsFC = (float) $invoice->expenses
                       + (float) $invoice->tax_cost
                       + (float) $invoice->transportation
                       + (float) $invoice->other_cost;
 
-        // 5. حساب مجموع الصافي (لقاعدة التوزيع)
         $detailsCollection = $invoice->details;
         $totalNetFC = 0;
 
@@ -136,26 +133,21 @@ class PurchaseInvoiceService
 
         $movementTotalBC = 0;
 
-        // 6. إنشاء التفاصيل
         foreach ($detailsCollection as $detail) {
             $quantity   = (float) $detail->quantity;
             $priceFC    = (float) $detail->price;
             $discountFC = (float) $detail->discount;
 
-            // الصافي بعد الخصم (بعملة الفاتورة)
             $lineNetFC = max(0, ($quantity * $priceFC) - $discountFC);
 
-            // توزيع التكاليف الإضافية نسبيًا
             $shareFC = 0;
             if ($totalNetFC > 0 && $extraCostsFC > 0) {
                 $shareFC = ($lineNetFC / $totalNetFC) * $extraCostsFC;
             }
 
-            // التكلفة الواصلة (Landed Cost) بعملة الفاتورة
             $landedFC   = $lineNetFC + $shareFC;
             $unitCostFC = $quantity > 0 ? ($landedFC / $quantity) : 0;
 
-            // التحويل إلى العملة الأساسية
             $unitCostBC  = $unitCostFC * $rate;
             $lineTotalBC = $landedFC   * $rate;
 
@@ -214,9 +206,6 @@ class PurchaseInvoiceService
 
     /**
      * تجهيز بيانات رأس الفاتورة
-     *
-     * ✅ إصلاح: كان الـ ternary موضوعًا في السطر الخطأ
-     *    (على transportation بدلًا من other_cost_description)
      */
     private function headerData(Request $request): array
     {
@@ -234,13 +223,10 @@ class PurchaseInvoiceService
             'expenses'               => $request->input('expenses', 0),
             'tax_cost'               => $request->input('tax_cost', 0),
             'transportation'         => $request->input('transportation', 0),
-
-            // ✅ التصحيح: other_cost_description يُنظَّف فقط إذا كانت other_cost > 0
             'other_cost'             => $otherCost,
             'other_cost_description' => $otherCost > 0
                 ? $request->input('other_cost_description')
                 : null,
-
             'statement'              => $request->input('statement'),
             'reference'              => $request->input('reference'),
         ];
@@ -269,11 +255,13 @@ class PurchaseInvoiceService
     }
 
     /**
-     * إعادة حساب الإجماليات من التفاصيل
+     * ✅ إعادة حساب الإجماليات
      *
      * - items_total / discount_total  → أعمدة حقيقية
      * - total_in_invoice_currency     → Accessor (لا يُخزَّن)
-     * - total_in_base_currency        → عمود حقيقي ✅
+     * - total_in_base_currency        → = (items − discount) × rate
+     *
+     * ⚠️ التكاليف الإضافية لا تدخل في إجمالي الفاتورة
      */
     private function recalculateTotals(PurchaseInvoice $invoice): void
     {
@@ -292,17 +280,10 @@ class PurchaseInvoiceService
         $invoice->items_total    = $itemsTotal;
         $invoice->discount_total = $discountTotal;
 
-        // حساب الإجمالي بعملة الفاتورة (محليًا — لا يُحفظ)
-        $totalInInvoiceCurrency = $net
-            + (float) $invoice->expenses
-            + (float) $invoice->tax_cost
-            + (float) $invoice->transportation
-            + (float) $invoice->other_cost;
-
         $rate = (float) ($invoice->exchange_rate ?: 1);
 
-        // ✅ حفظ الإجمالي بالعملة الأساسية فقط (العمود المخزَّن)
-        $invoice->total_in_base_currency = $totalInInvoiceCurrency * $rate;
+        // ✅ الإجمالي بعملة الفاتورة = (الأصناف − الخصم) فقط
+        $invoice->total_in_base_currency = $net * $rate;
         $invoice->save();
     }
 }

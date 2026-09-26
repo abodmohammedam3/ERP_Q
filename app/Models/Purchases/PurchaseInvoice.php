@@ -32,7 +32,7 @@ class PurchaseInvoice extends Model
         'other_cost_description',
         'statement',
         'reference',
-        'total_in_base_currency',   // ✅ جديد
+        'total_in_base_currency',
     ];
 
     protected $casts = [
@@ -44,7 +44,7 @@ class PurchaseInvoice extends Model
         'tax_cost'                => 'decimal:6',
         'transportation'          => 'decimal:6',
         'other_cost'              => 'decimal:6',
-        'total_in_base_currency'  => 'decimal:6',   // ✅ جديد
+        'total_in_base_currency'  => 'decimal:6',
         'payment_method'          => 'integer',
     ];
 
@@ -90,32 +90,35 @@ class PurchaseInvoice extends Model
     }
 
     // ============================================
-    // Accessors (محسوبة ديناميكيًا)
+    // Accessors
     // ============================================
 
     /**
-     * إجمالي الفاتورة بعملة الفاتورة
-     * = (items_total − discount_total)
-     *   + expenses + tax_cost + transportation + other_cost
+     * ✅ الإجمالي بعملة الفاتورة
+     * = items_total − discount_total
+     * ⚠️ التكاليف الإضافية (نفقات/ضرائب/نقل/أخرى) لا تؤثر على إجمالي الفاتورة
      */
     public function getTotalInInvoiceCurrencyAttribute(): float
     {
-        $net = (float) $this->items_total - (float) $this->discount_total;
+        return (float) $this->items_total - (float) $this->discount_total;
+    }
 
-        return $net
-            + (float) $this->expenses
+    /**
+     * ✅ مجموع التكاليف الإضافية (منفصل)
+     */
+    public function getExtraCostsTotalAttribute(): float
+    {
+        return (float) $this->expenses
             + (float) $this->tax_cost
             + (float) $this->transportation
             + (float) $this->other_cost;
     }
 
     /**
-     * الإجمالي بالعملة المحلية (Accessor احتياطي — يعتمد على العمود المخزّن)
-     * = total_in_base_currency
+     * الإجمالي بالعملة المحلية
      */
     public function getTotalInLocalCurrencyAttribute(): float
     {
-        // إن كان العمود مُخزَّنًا، نستخدمه. وإلا نحسبه ديناميكيًا.
         if (!empty($this->attributes['total_in_base_currency'])) {
             return (float) $this->attributes['total_in_base_currency'];
         }

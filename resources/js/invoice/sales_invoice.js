@@ -814,7 +814,7 @@ function filterStockBalances() {
 }
 
 /**
- * ✅ READ-ONLY: بدون حقول تعديل، بدون زر فرز
+ * ✅ READ-ONLY مع منع اختيار الصنف المُستخدم في صف آخر
  */
 function renderStockBalances(rows) {
     const tbody = document.getElementById('stockBalancesBody');
@@ -833,11 +833,25 @@ function renderStockBalances(rows) {
         return;
     }
 
+    /* ✅ جمع الأصناف المُستخدمة في الصفوف الأخرى */
+    const usedItemIds = new Set();
+    document.querySelectorAll('#salesInvoiceDetails .sales-detail-row').forEach(r => {
+        if (r === activeStockBalanceRow) return;
+        const id = r.querySelector('.row-item-id')?.value;
+        if (id) usedItemIds.add(String(id));
+    });
+
     const fragment = document.createDocumentFragment();
 
     rows.forEach(row => {
         const tr = document.createElement('tr');
         tr.className = 'text-center';
+
+        const isUsed = usedItemIds.has(String(row.item_id));
+
+        if (isUsed) {
+            tr.classList.add('opacity-50', 'bg-light');
+        }
 
         const cells = [
             { text: row.item_name || '—', className: 'text-start' },
@@ -859,13 +873,21 @@ function renderStockBalances(rows) {
             tr.appendChild(td);
         });
 
-        // زر الاختيار فقط
+        /* ✅ زر الاختيار */
         const tdActions = document.createElement('td');
         const btnSelect = document.createElement('button');
         btnSelect.type = 'button';
         btnSelect.className = 'btn btn-sm btn-primary';
         btnSelect.innerHTML = '<i class="bi bi-check-lg"></i> اختيار';
-        btnSelect.addEventListener('click', () => selectStockBalance(row));
+
+        if (isUsed) {
+            btnSelect.disabled = true;
+            btnSelect.classList.add('disabled');
+            btnSelect.title = 'هذا الصنف مضاف بالفعل في صف آخر';
+        } else {
+            btnSelect.addEventListener('click', () => selectStockBalance(row));
+        }
+
         tdActions.appendChild(btnSelect);
         tr.appendChild(tdActions);
 

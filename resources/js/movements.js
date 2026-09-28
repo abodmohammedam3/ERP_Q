@@ -1408,11 +1408,22 @@ function openSortingFromBalance(rowData) {
     delete minEl.dataset.userEdited;
     delete maxEl.dataset.userEdited;
 
-    /* ✅ إرفاق مستمعي input مرة واحدة فقط */
+    /* ✅ إرفاق المستمعات مرة واحدة فقط
+       - حقول الأسعار: تُعلَّم يدويًا عند الكتابة فيها
+       - حقول الكمية/العدد: تفكّ العلامة عند أي تغيير (دفعة جديدة = حساب جديد) */
     if (!saleEl.dataset.listenerAttached) {
         saleEl.addEventListener('input', () => saleEl.dataset.userEdited = '1');
         minEl.addEventListener('input', () => minEl.dataset.userEdited = '1');
         maxEl.addEventListener('input', () => maxEl.dataset.userEdited = '1');
+
+        const clearEditedFlags = () => {
+            delete saleEl.dataset.userEdited;
+            delete minEl.dataset.userEdited;
+            delete maxEl.dataset.userEdited;
+        };
+        inQtyEl.addEventListener('input', clearEditedFlags);
+        outQtyEl.addEventListener('input', clearEditedFlags);
+
         saleEl.dataset.listenerAttached = '1';
     }
 

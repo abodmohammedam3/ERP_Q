@@ -473,7 +473,7 @@
 
                 <button
                     type="button"
-                    class="btn-close position-absolute top-0 start-0 m-3"
+                    class="btn-close position-absolute top-0 end-0 m-3"
                     data-bs-dismiss="modal"
                     aria-label="إغلاق"
                 ></button>

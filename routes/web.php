@@ -99,6 +99,11 @@ Route::get(
 )->name('customers.search');
 
 Route::get(
+    '/setting/customers/print',
+    [CustomerController::class, 'print']
+)->name('customers.print');
+
+Route::get(
     '/setting/customers/{id}',
     [CustomerController::class, 'show']
 )->name('customers.show');
@@ -117,7 +122,6 @@ Route::delete(
     '/setting/customers/{id}',
     [CustomerController::class, 'destroy']
 )->name('customers.destroy');
-
 
 // =====================================================
 // الموردون
@@ -139,6 +143,11 @@ Route::get(
 )->name('suppliers.search');
 
 Route::get(
+    '/setting/suppliers/print',
+    [SupplierController::class, 'print']
+)->name('suppliers.print');
+
+Route::get(
     '/setting/suppliers/{id}',
     [SupplierController::class, 'show']
 )->name('suppliers.show');
@@ -157,7 +166,6 @@ Route::delete(
     '/setting/suppliers/{id}',
     [SupplierController::class, 'destroy']
 )->name('suppliers.destroy');
-
 
 // =====================================================
 // الصناديق

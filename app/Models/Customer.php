@@ -16,16 +16,24 @@ class Customer extends Model
 
     public $timestamps = false;
 
-   protected $fillable = [
-    'accountID',
-    'CustomersName2',
-    'CusPhone',
-    'CusAddress',
-    'CusIsStopeed',
-];
+    protected $fillable = [
+        'accountID',
+        'CustomersName2',
+        'CusPhone',
+        'CusAddress',
+        'is_active',
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
+    ];
 
     public function account()
     {
-        return $this->belongsTo(Accounting\CharAccount::class, 'accountID', 'accountID');
+        return $this->belongsTo(
+            Accounting\CharAccount::class,
+            'accountID',
+            'accountID'
+        );
     }
 }

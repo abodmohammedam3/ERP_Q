@@ -21,6 +21,12 @@ class SupplierObserver
             return;
         }
 
+        $changed = false;
+
+        // =================================================
+        // مزامنة اسم المورد مع اسم الحساب
+        // =================================================
+
         if (
             $account->accName !==
             $supplier->supName
@@ -28,6 +34,33 @@ class SupplierObserver
             $account->accName =
                 $supplier->supName;
 
+            $changed = true;
+        }
+
+        // =================================================
+        // مزامنة حالة المورد مع الحساب
+        //
+        // is_active:
+        // 1 = نشط
+        // 0 = غير نشط
+        // =================================================
+
+        $newIsActive =
+            (int) $supplier->is_active === 1
+                ? 1
+                : 0;
+
+        if (
+            (int) $account->IsActive !==
+            $newIsActive
+        ) {
+            $account->IsActive =
+                $newIsActive;
+
+            $changed = true;
+        }
+
+        if ($changed) {
             $account->save();
         }
     }
@@ -66,23 +99,19 @@ class SupplierObserver
         // =================================================
         // مزامنة حالة المورد مع الحساب
         //
-        // supStoped:
-        // 0 = نشط
-        // 1 = غير نشط
-        //
-        // IsActive:
+        // is_active:
         // 1 = نشط
         // 0 = غير نشط
         // =================================================
 
         if (
-            $supplier->wasChanged('supStoped')
+            $supplier->wasChanged('is_active')
         ) {
 
             $newIsActive =
-                (int) $supplier->supStoped === 1
-                    ? 0
-                    : 1;
+                (int) $supplier->is_active === 1
+                    ? 1
+                    : 0;
 
             if (
                 (int) $account->IsActive !==

@@ -2,88 +2,34 @@
 {{-- مودال تأكيد حذف الحساب --}}
 {{-- ========================================================= --}}
 
-<div
-    class="modal fade"
-    id="deleteConfirmModal"
-    tabindex="-1"
-    aria-labelledby="deleteConfirmModalLabel"
-    aria-hidden="true"
-    data-bs-backdrop="static"
-    data-bs-keyboard="false"
->
-    <div class="modal-dialog modal-dialog-centered modal-sm">
+<div class="delete-confirm-overlay" id="deleteConfirmModal">
+    <div class="delete-confirm-box">
 
-        <div class="modal-content">
+        <div class="delete-confirm-icon">
+            <i class="bi bi-trash3"></i>
+        </div>
 
-            {{-- رأس المودال --}}
-            <div class="modal-header position-relative">
+        <h3>حذف الحساب</h3>
 
-                <h5
-                    class="modal-title fw-bold text-danger"
-                    id="deleteConfirmModalLabel"
-                >
-                    تأكيد حذف الحساب
-                </h5>
+        <p>
+            هل أنت متأكد من حذف هذا الحساب؟
+            <br>
+            <span>لا يمكن التراجع عن هذه العملية بعد تنفيذها.</span>
+        </p>
 
-                <button
-                    type="button"
-                    class="btn-close position-absolute top-0 start-0 m-3"
-                    id="deleteCancelBtn"
-                    aria-label="إغلاق"
-                ></button>
+        <div class="delete-confirm-actions">
 
-            </div>
+            <button type="button"
+                    class="delete-cancel-btn"
+                    id="deleteCancelBtn">
+                إلغاء
+            </button>
 
-
-            {{-- محتوى التأكيد --}}
-            <div class="modal-body text-center">
-
-                <div class="mb-3">
-
-                    <div
-                        class="d-inline-flex align-items-center justify-content-center rounded-circle bg-danger-subtle text-danger"
-                        style="width: 64px; height: 64px;"
-                    >
-                        <i class="bi bi-trash fs-3"></i>
-                    </div>
-
-                </div>
-
-
-                <h6 class="fw-bold mb-2">
-                    هل أنت متأكد من حذف هذا الحساب؟
-                </h6>
-
-
-                <p class="text-body-secondary mb-0">
-                    لا يمكن التراجع عن عملية الحذف بعد تنفيذها.
-                </p>
-
-            </div>
-
-
-            {{-- أزرار المودال --}}
-            <div class="modal-footer justify-content-center">
-
-                <button
-                    type="button"
-                    class="btn btn-secondary"
-                    id="deleteCancelBtnFooter"
-                >
-                    <i class="bi bi-x-lg me-1"></i>
-                    إلغاء
-                </button>
-
-                <button
-                    type="button"
-                    class="btn btn-danger"
-                    id="deleteConfirmBtn"
-                >
-                    <i class="bi bi-trash me-1"></i>
-                    نعم، حذف الحساب
-                </button>
-
-            </div>
+            <button type="button"
+                    class="delete-confirm-btn"
+                    id="deleteConfirmBtn">
+                حذف الحساب
+            </button>
 
         </div>
 

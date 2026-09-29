@@ -78,10 +78,10 @@
         const analyticalEmptyTemplate = document.getElementById('analyticalEmptyTemplate');
         const analyticalErrorTemplate = document.getElementById('analyticalErrorTemplate');
 
+        // ✅ مودال الحذف الجديد (بنفس تصميم مودال العملاء - بدون Bootstrap Modal)
         const deleteConfirmModalElement = document.getElementById('deleteConfirmModal');
         const deleteConfirmBtn = document.getElementById('deleteConfirmBtn');
         const deleteCancelBtn = document.getElementById('deleteCancelBtn');
-        const deleteCancelBtnFooter = document.getElementById('deleteCancelBtnFooter');
 
         const openParentAccountSearchBtn = document.getElementById('openParentAccountSearchBtn');
         const parentAccountSearchModalElement = document.getElementById('parentAccountSearchModal');
@@ -136,9 +136,9 @@
 
         const accountModal = bootstrap.Modal.getOrCreateInstance(accountModalElement);
 
-        const deleteConfirmModal = deleteConfirmModalElement
-            ? bootstrap.Modal.getOrCreateInstance(deleteConfirmModalElement)
-            : null;
+        // ✅ مودال الحذف الجديد لا يستخدم Bootstrap Modal
+        // نتعامل معه مباشرة عبر إضافة/إزالة class "show"
+        const deleteConfirmModal = deleteConfirmModalElement;
 
         const parentAccountSearchModal = parentAccountSearchModalElement
             ? bootstrap.Modal.getOrCreateInstance(parentAccountSearchModalElement)
@@ -1477,7 +1477,9 @@
             deletingAccountId = id;
 
             if (deleteConfirmModal) {
-                deleteConfirmModal.show();
+                deleteConfirmModal.classList.add('show');
+                deleteConfirmModal.style.display = 'flex';
+                document.body.classList.add('delete-confirm-open');
             } else {
                 performDeleteAccount();
             }
@@ -1490,9 +1492,13 @@
 
         function closeDeleteModal() {
             deletingAccountId = null;
+
             if (deleteConfirmModal) {
-                deleteConfirmModal.hide();
+                deleteConfirmModal.classList.remove('show');
+                deleteConfirmModal.style.display = 'none';
             }
+
+            document.body.classList.remove('delete-confirm-open');
         }
 
 
@@ -1551,14 +1557,13 @@
                     deleteConfirmBtn.disabled = false;
                     deleteConfirmBtn.innerHTML =
                         originalText ||
-                        '<i class="bi bi-trash me-1"></i> نعم، حذف الحساب';
+                        'حذف الحساب';
                 }
             }
         }
 
         deleteConfirmBtn?.addEventListener('click', performDeleteAccount);
         deleteCancelBtn?.addEventListener('click', closeDeleteModal);
-        deleteCancelBtnFooter?.addEventListener('click', closeDeleteModal);
 
 
         // =================================================

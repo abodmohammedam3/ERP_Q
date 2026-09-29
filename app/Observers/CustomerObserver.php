@@ -13,7 +13,8 @@ class CustomerObserver
      * الحساب التحليلي يكون قد أُنشئ مسبقاً
      * من CustomerController.
      *
-     * هنا نضمن تطابق اسم الحساب مع اسم العميل.
+     * هنا نضمن تطابق اسم الحساب مع اسم العميل،
+     * وكذلك حالة النشاط.
      */
     public function created(Customer $customer)
     {
@@ -25,6 +26,12 @@ class CustomerObserver
             return;
         }
 
+        $changed = false;
+
+        // =================================================
+        // مزامنة اسم العميل مع اسم الحساب
+        // =================================================
+
         if (
             $account->accName !==
             $customer->CustomersName2
@@ -32,6 +39,33 @@ class CustomerObserver
             $account->accName =
                 $customer->CustomersName2;
 
+            $changed = true;
+        }
+
+        // =================================================
+        // مزامنة حالة العميل مع الحساب
+        //
+        // is_active:
+        // 1 = نشط
+        // 0 = غير نشط
+        // =================================================
+
+        $newIsActive =
+            (int) $customer->is_active === 1
+                ? 1
+                : 0;
+
+        if (
+            (int) $account->IsActive !==
+            $newIsActive
+        ) {
+            $account->IsActive =
+                $newIsActive;
+
+            $changed = true;
+        }
+
+        if ($changed) {
             $account->save();
         }
     }
@@ -54,9 +88,10 @@ class CustomerObserver
 
         $changed = false;
 
-        /*
-         * مزامنة اسم العميل
-         */
+        // =================================================
+        // مزامنة اسم العميل
+        // =================================================
+
         if (
             $customer->wasChanged('CustomersName2') &&
             $account->accName !==
@@ -68,26 +103,33 @@ class CustomerObserver
             $changed = true;
         }
 
-        /*
-         * مزامنة حالة العميل
-         */
-       if ($customer->wasChanged('CusIsStopeed')) {
+        // =================================================
+        // مزامنة حالة العميل
+        //
+        // is_active:
+        // 1 = نشط
+        // 0 = غير نشط
+        // =================================================
 
-    $newIsActive =
-        (int) $customer->CusIsStopeed === 1
-            ? 0
-            : 1;
+        if (
+            $customer->wasChanged('is_active')
+        ) {
 
-    if (
-        (int) $account->IsActive !==
-        $newIsActive
-    ) {
-        $account->IsActive =
-            $newIsActive;
+            $newIsActive =
+                (int) $customer->is_active === 1
+                    ? 1
+                    : 0;
 
-        $changed = true;
-    }
-}
+            if (
+                (int) $account->IsActive !==
+                $newIsActive
+            ) {
+                $account->IsActive =
+                    $newIsActive;
+
+                $changed = true;
+            }
+        }
 
         if ($changed) {
             $account->save();

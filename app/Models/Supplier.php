@@ -21,7 +21,11 @@ class Supplier extends Model
         'supName',
         'supPhone',
         'supArea',
-        'supStoped',
+        'is_active',
+    ];
+
+    protected $casts = [
+        'is_active' => 'integer',
     ];
 
     public function account()

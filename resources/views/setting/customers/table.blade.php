@@ -99,7 +99,7 @@
 
                             {{-- الحالة --}}
                             <td>
-                                @if($customer->CusIsStopeed == 0)
+                               @if($customer->is_active == 1)
 
                                     <span class="badge bg-primary">
                                         نشط

@@ -45,5 +45,13 @@ class AppServiceProvider extends ServiceProvider
         PurchaseInvoice::observe(PurchaseInvoiceObserver::class);
         SalesInvoice::observe(SalesInvoiceObserver::class);
         Coin::observe(CoinObserver::class);
+         if ($this->app->environment('testing')) {
+        $bacPath = database_path('bac');
+        if (is_dir($bacPath)) {
+            $this->loadMigrationsFrom($bacPath);
+        }
+    }
+
+        
     }
 }

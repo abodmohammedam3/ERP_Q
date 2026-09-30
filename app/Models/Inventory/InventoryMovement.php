@@ -50,6 +50,8 @@ class InventoryMovement extends Model
     const SOURCE_SALES_INVOICE    = 'sales_invoice';
     const SOURCE_MANUAL           = null;
     const SOURCE_SORTING          = 'sorting';
+    const SOURCE_SALES_RETURN     = 'sales_return';
+    const SOURCE_PURCHASE_RETURN  = 'purchase_return';
 
     // ============================================
     // ثوابت الاتجاه

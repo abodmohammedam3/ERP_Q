@@ -89,6 +89,18 @@ class PurchaseInvoice extends Model
         );
     }
 
+    /**
+     * ✅ مرتجعات هذه الفاتورة (مستندات مستقلة)
+     */
+    public function returns()
+    {
+        return $this->hasMany(
+            \App\Models\Purchases\PurchaseReturn::class,
+            'original_purchase_invoice_id',
+            'purchase_invoice_id'
+        );
+    }
+
     // ============================================
     // Accessors
     // ============================================

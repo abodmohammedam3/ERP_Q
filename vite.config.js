@@ -24,6 +24,8 @@ export default defineConfig({
                 'resources/js/pages/receipt-voucher.js',
                 'resources/js/pages/purchase-invoice.js',
                 'resources/js/pages/sales-invoice.js',
+                'resources/js/pages/sales-return.js',
+                'resources/js/pages/purchase-return.js',
                 'resources/js/pages/stocks.js',
                 'resources/js/pages/suppliers.js',
                 'resources/js/pages/types.js',

@@ -225,6 +225,7 @@
             {{-- ========================================================= --}}
             @php
                 $isOperationsActive = request()->routeIs('invoicesPurch.*') ||
+                                      request()->routeIs('purchases.returns.*') ||
                                       request()->routeIs('sales.*') ||
                                       request()->routeIs('paymentVouchers.*') ||
                                       request()->routeIs('receiptVouchers.*');
@@ -246,7 +247,8 @@
 
                     {{-- المشتريات --}}
                     @php
-                        $isPurchasesActive = request()->routeIs('invoicesPurch.*');
+                        $isPurchasesActive = request()->routeIs('invoicesPurch.*') ||
+                                             request()->routeIs('purchases.returns.*');
                     @endphp
                     <button type="button"
                             class="btn btn-dark w-100 d-flex align-items-center justify-content-between text-end rounded-2 px-3 py-2 border-0"
@@ -267,7 +269,9 @@
                                {{ request()->routeIs('invoicesPurch.*') ? 'bg-success text-white' : 'text-white-50' }}">
                                 <i class="bi bi-receipt"></i> <span>فواتير الشراء</span>
                             </a>
-                            <a href="#" class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2 text-white-50">
+                            <a href="{{ route('purchases.returns.index') }}"
+                               class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
+                               {{ request()->routeIs('purchases.returns.*') ? 'bg-success text-white' : 'text-white-50' }}">
                                 <i class="bi bi-arrow-return-right"></i> <span>مردود المشتريات</span>
                             </a>
                         </div>
@@ -296,7 +300,9 @@
                                {{ request()->routeIs('sales.invoices.*') ? 'bg-success text-white' : 'text-white-50' }}">
                                 <i class="bi bi-receipt-cutoff"></i> <span>فواتير البيع</span>
                             </a>
-                            <a href="#" class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2 text-white-50">
+                            <a href="{{ route('sales.returns.index') }}"
+                               class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
+                               {{ request()->routeIs('sales.returns.*') ? 'bg-success text-white' : 'text-white-50' }}">
                                 <i class="bi bi-arrow-return-left"></i> <span>مردود المبيعات</span>
                             </a>
                         </div>

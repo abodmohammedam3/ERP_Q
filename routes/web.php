@@ -19,6 +19,8 @@ use App\Http\Controllers\Operation\Sales\SalesInvoiceController;
 use App\Http\Controllers\accounting\JournalEntryController;
 use App\Http\Controllers\Operation\ReceiptVoucher\ReceiptVoucherController;
 use App\Http\Controllers\Operation\PaymentVoucher\PaymentVoucherController;
+use App\Http\Controllers\Operation\Sales\SalesReturnController;
+use App\Http\Controllers\Operation\Purchases\PurchaseReturnController;
 
 
 
@@ -913,3 +915,33 @@ Route::delete(
     '/operation/sales/invoices/{id}',
     [SalesInvoiceController::class, 'destroy']
 )->name('sales.invoices.destroy');
+
+
+// =====================================================
+// مرتجعات المبيعات
+// =====================================================
+
+Route::get('/operation/sales/returns', [SalesReturnController::class, 'index'])->name('sales.returns.index');
+Route::get('/operation/sales/returns/next-number', [SalesReturnController::class, 'nextNumber'])->name('sales.returns.nextNumber');
+Route::get('/operation/sales/returns/list', [SalesReturnController::class, 'list'])->name('sales.returns.list');
+Route::get('/operation/sales/returns/available-quantity', [SalesReturnController::class, 'availableQuantity'])->name('sales.returns.availableQuantity');
+Route::get('/operation/sales/returns/{id}/print', [SalesReturnController::class, 'print'])->name('sales.returns.print');
+Route::get('/operation/sales/returns/{id}', [SalesReturnController::class, 'show'])->name('sales.returns.show');
+Route::post('/operation/sales/returns', [SalesReturnController::class, 'store'])->name('sales.returns.store');
+Route::put('/operation/sales/returns/{id}', [SalesReturnController::class, 'update'])->name('sales.returns.update');
+Route::delete('/operation/sales/returns/{id}', [SalesReturnController::class, 'destroy'])->name('sales.returns.destroy');
+
+
+// =====================================================
+// مرتجعات المشتريات
+// =====================================================
+
+Route::get('/operation/purchases/returns', [PurchaseReturnController::class, 'index'])->name('purchases.returns.index');
+Route::get('/operation/purchases/returns/next-number', [PurchaseReturnController::class, 'nextNumber'])->name('purchases.returns.nextNumber');
+Route::get('/operation/purchases/returns/list', [PurchaseReturnController::class, 'list'])->name('purchases.returns.list');
+Route::get('/operation/purchases/returns/available-quantity', [PurchaseReturnController::class, 'availableQuantity'])->name('purchases.returns.availableQuantity');
+Route::get('/operation/purchases/returns/{id}/print', [PurchaseReturnController::class, 'print'])->name('purchases.returns.print');
+Route::get('/operation/purchases/returns/{id}', [PurchaseReturnController::class, 'show'])->name('purchases.returns.show');
+Route::post('/operation/purchases/returns', [PurchaseReturnController::class, 'store'])->name('purchases.returns.store');
+Route::put('/operation/purchases/returns/{id}', [PurchaseReturnController::class, 'update'])->name('purchases.returns.update');
+Route::delete('/operation/purchases/returns/{id}', [PurchaseReturnController::class, 'destroy'])->name('purchases.returns.destroy');

@@ -6,16 +6,25 @@ use Illuminate\Database\Eloquent\Model;
 use App\Models\Accounting\CharAccount;
 use App\Models\Accounting\Coin;
 
-class SalesInvoice extends Model
+/**
+ * رأس مرتجع البيع
+ * -----------------------------------------------------
+ * مستند مستقل مرتبط بالفاتورة الأصلية عبر:
+ *   original_sales_invoice_id
+ *
+ * ولا يُعدَّل أي شيء على الفاتورة الأصلية.
+ */
+class SalesReturn extends Model
 {
-    protected $table = 'sales_invoices';
-    protected $primaryKey = 'sales_invoice_id';
+    protected $table = 'sales_returns';
+    protected $primaryKey = 'sales_return_id';
     public $incrementing = true;
     protected $keyType = 'int';
 
     protected $fillable = [
-        'invoice_number',
-        'invoice_date',
+        'return_number',
+        'return_date',
+        'original_sales_invoice_id',
         'account_id',
         'payment_account_id',
         'coin_id',
@@ -28,15 +37,15 @@ class SalesInvoice extends Model
     ];
 
     protected $casts = [
-        'invoice_date'   => 'date',
-        'exchange_rate'  => 'decimal:6',
+        'return_date'     => 'date',
+        'exchange_rate'   => 'decimal:6',
         'items_total'    => 'decimal:6',
         'discount_total' => 'decimal:6',
         'payment_method' => 'integer',
     ];
 
     // ============================================
-    // ثوابت طريقة الدفع
+    // ثوابت طريقة الدفع (مطابقة للفواتير)
     // ============================================
     const PAYMENT_CREDIT  = 1;
     const PAYMENT_CASH    = 2;
@@ -46,6 +55,18 @@ class SalesInvoice extends Model
     // ============================================
     // العلاقات
     // ============================================
+
+    /**
+     * الفاتورة الأصلية
+     */
+    public function originalInvoice()
+    {
+        return $this->belongsTo(
+            SalesInvoice::class,
+            'original_sales_invoice_id',
+            'sales_invoice_id'
+        );
+    }
 
     /**
      * حساب العميل
@@ -80,38 +101,25 @@ class SalesInvoice extends Model
     }
 
     /**
-     * تفاصيل الأصناف
+     * تفاصيل المرتجع
      */
     public function details()
     {
         return $this->hasMany(
-            SalesInvoiceDetail::class,
-            'sales_invoice_id',
-            'sales_invoice_id'
-        );
-    }
-
-    /**
-     * ✅ مرتجعات هذه الفاتورة (مستندات مستقلة)
-     */
-    public function returns()
-    {
-        return $this->hasMany(
-            \App\Models\Sales\SalesReturn::class,
-            'original_sales_invoice_id',
-            'sales_invoice_id'
+            SalesReturnDetail::class,
+            'sales_return_id',
+            'sales_return_id'
         );
     }
 
     // ============================================
-    // Accessors
+    // Accessors (مطابقة لنمط الفواتير)
     // ============================================
 
     /**
-     * الإجمالي النهائي بعملة الفاتورة
-     * = items_total − discount_total
+     * الإجمالي بعملة المرتجع = items_total − discount_total
      */
-    public function getTotalInInvoiceCurrencyAttribute(): float
+    public function getTotalInReturnCurrencyAttribute(): float
     {
         return (float) $this->items_total - (float) $this->discount_total;
     }
@@ -121,7 +129,7 @@ class SalesInvoice extends Model
      */
     public function getTotalInLocalCurrencyAttribute(): float
     {
-        return $this->total_in_invoice_currency
-            * (float) $this->exchange_rate;
+        return $this->total_in_return_currency
+            * (float) ($this->exchange_rate ?: 1);
     }
 }

@@ -13,9 +13,6 @@ use Illuminate\Validation\ValidationException;
 
 class SalesInvoiceService
 {
-    /**
-     * @var InventoryService
-     */
     protected InventoryService $inventoryService;
 
     public function __construct(InventoryService $inventoryService)
@@ -31,7 +28,10 @@ class SalesInvoiceService
     {
         return DB::transaction(function () use ($request) {
 
-            $this->validateStockAvailability($request->input('details', []));
+            $details = $request->input('details', []);
+
+            $this->lockStockRows($details);
+            $this->validateStockAvailability($details);
 
             $nextNumber = $this->nextInvoiceNumber();
 
@@ -40,7 +40,7 @@ class SalesInvoiceService
 
             $invoice = SalesInvoice::create($data);
 
-            $this->saveDetails($invoice, $request->input('details', []));
+            $this->saveDetails($invoice, $details);
             $this->recalculateTotals($invoice);
 
             $invoice->load('details');
@@ -54,18 +54,21 @@ class SalesInvoiceService
     {
         return DB::transaction(function () use ($id, $request) {
 
-            $invoice = SalesInvoice::findOrFail($id);
+            $invoice = SalesInvoice::lockForUpdate()->findOrFail($id);
 
-            $this->deleteInventoryMovement($invoice);
+            $details = $request->input('details', []);
 
-            $this->validateStockAvailability($request->input('details', []));
+            $this->lockStockRows($details);
+            $this->validateStockAvailability($details);
 
             $data = $this->headerData($request);
             unset($data['invoice_number']);
             $invoice->update($data);
 
+            $this->deleteInventoryMovement($invoice);
+
             $invoice->details()->delete();
-            $this->saveDetails($invoice, $request->input('details', []));
+            $this->saveDetails($invoice, $details);
             $this->recalculateTotals($invoice);
 
             $invoice->load('details');
@@ -79,7 +82,7 @@ class SalesInvoiceService
     {
         DB::transaction(function () use ($id) {
 
-            $invoice = SalesInvoice::findOrFail($id);
+            $invoice = SalesInvoice::lockForUpdate()->findOrFail($id);
 
             $this->deleteInventoryMovement($invoice);
 
@@ -89,15 +92,53 @@ class SalesInvoiceService
     }
 
     // =====================================================
-    // المخزون
+    // قفل صفوف المخزون
     // =====================================================
 
-    /**
-     * التحقق من كفاية الرصيد
-     *
-     * ✅ unit-aware: يُمرِّر unit_id إلى availableQuantity
-     *    لضمان فحص الرصيد في الوحدة الصحيحة فقط (حبة/كيلو).
-     */
+    protected function lockStockRows(array $details): void
+    {
+        $pairs = [];
+
+        foreach ($details as $row) {
+            $itemId      = (int) ($row['item_id'] ?? 0);
+            $warehouseId = (int) ($row['warehouse_id'] ?? 0);
+            $unitId      = isset($row['unit_id']) && $row['unit_id'] !== null
+                ? (int) $row['unit_id']
+                : null;
+
+            if (!$itemId || !$warehouseId) {
+                continue;
+            }
+
+            $key = $itemId . '|' . $warehouseId . '|' . ($unitId ?? 0);
+            $pairs[$key] = [
+                'item_id'      => $itemId,
+                'warehouse_id' => $warehouseId,
+                'unit_id'      => $unitId,
+            ];
+        }
+
+        ksort($pairs);
+
+        foreach ($pairs as $pair) {
+            $query = DB::table('inventory_movement_details')
+                ->where('item_id', $pair['item_id'])
+                ->where('warehouse_id', $pair['warehouse_id']);
+
+            if ($pair['unit_id']) {
+                $query->where('unit_id', $pair['unit_id']);
+            }
+
+            $query->select('movement_detail_id')
+                  ->lockForUpdate()
+                  ->get();
+        }
+    }
+
+    // =====================================================
+    // فحص الرصيد
+    // =====================================================
+
     protected function validateStockAvailability(array $details): void
     {
         $errors = [];
@@ -113,7 +154,7 @@ class SalesInvoiceService
             $available = $this->inventoryService->availableQuantity(
                 (int) $itemId,
                 (int) $warehouseId,
-                $unitId !== null ? (int) $unitId : null   // ✅ جديد
+                $unitId !== null ? (int) $unitId : null
             );
 
             if ($available < $qty) {
@@ -126,6 +167,10 @@ class SalesInvoiceService
             throw ValidationException::withMessages($errors);
         }
     }
+
+    // =====================================================
+    // المخزون
+    // =====================================================
 
     public function syncInventoryMovement(SalesInvoice $invoice): void
     {
@@ -213,7 +258,7 @@ class SalesInvoiceService
     }
 
     // =====================================================
-    // دوال مساعدة داخلية
+    // دوال مساعدة
     // =====================================================
 
     protected function nextInvoiceNumber(): int
@@ -240,16 +285,6 @@ class SalesInvoiceService
         ];
     }
 
-    /**
-     * حفظ تفاصيل الفاتورة
-     *
-     * ✅ Option C — مقارنة ذكية لـ cost_price:
-     *   - إذا الواجهة أرسلت 0 → استخدم serverCost
-     *   - إذا serverCost = 0 → استخدم uiCost
-     *   - إذا الاثنان > 0 → قارن:
-     *       - الفرق ≤ 10% → استخدم uiCost (تعديل مقصود)
-     *       - الفرق > 10% → استخدم serverCost (حماية من التلاعب)
-     */
     protected function saveDetails(SalesInvoice $invoice, array $details): void
     {
         foreach ($details as $row) {
@@ -264,7 +299,6 @@ class SalesInvoiceService
             $discount = (float) ($row['discount'] ?? 0);
             $total    = max(0, ($quantity * $price) - $discount);
 
-            // ✅ جلب تكلفة الوحدة من السيرفر (unit-aware)
             $serverCost = $this->inventoryService->lastCost(
                 $itemId,
                 $warehouseId,
@@ -273,7 +307,6 @@ class SalesInvoiceService
 
             $uiCost = (float) ($row['cost_price'] ?? 0);
 
-            // ✅ Option C — مقارنة ذكية
             if ($uiCost <= 0) {
                 $costPrice = $serverCost;
             } elseif ($serverCost <= 0) {

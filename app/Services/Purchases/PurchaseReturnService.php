@@ -15,9 +15,6 @@ use Illuminate\Validation\ValidationException;
 
 class PurchaseReturnService
 {
-    /**
-     * @var InventoryService
-     */
     protected InventoryService $inventoryService;
 
     public function __construct(InventoryService $inventoryService)
@@ -25,13 +22,6 @@ class PurchaseReturnService
         $this->inventoryService = $inventoryService;
     }
 
-    // =====================================================
-    // الكمية المتاحة للإرجاع
-    // =====================================================
-
-    /**
-     * حساب الكمية المتبقية القابلة للإرجاع لسطر فاتورة شراء محدد
-     */
     public function availableForReturn(int $invoiceDetailId, ?int $exceptReturnId = null): float
     {
         $invoiceDetail = PurchaseInvoiceDetail::find($invoiceDetailId);
@@ -49,22 +39,32 @@ class PurchaseReturnService
         return max(0.0, (float) $invoiceDetail->quantity - (float) $alreadyReturned);
     }
 
-    // =====================================================
-    // CRUD
-    // =====================================================
-
     public function create(Request $request): PurchaseReturn
     {
         return DB::transaction(function () use ($request) {
 
-            // ✅ التحقق الأمني: تطابق حساب المورد مع الفاتورة الأصلية
-            $this->validateAccountMatchesInvoice(
-                (int) $request->input('original_purchase_invoice_id'),
-                (int) $request->input('account_id')
+            $originalInvoiceId = (int) $request->input('original_purchase_invoice_id');
+
+            $this->lockAndValidateInvoice(
+                $originalInvoiceId,
+                $request->input('account_id'),
+                $request->input('coin_id'),
+                $request->input('warehouse_id')
             );
 
             $details = $request->input('details', []);
-            $this->validateReturnQuantities($details);
+
+            $this->validateReturnQuantities($originalInvoiceId, $details);
+
+            $this->lockStockRows(
+                $details,
+                $request->input('warehouse_id')
+            );
+
+            $this->validateStockAvailability(
+                $details,
+                $request->input('warehouse_id')
+            );
 
             $nextNumber = $this->nextReturnNumber();
 
@@ -87,19 +87,31 @@ class PurchaseReturnService
     {
         return DB::transaction(function () use ($id, $request) {
 
-            $purchaseReturn = PurchaseReturn::findOrFail($id);
+            $originalInvoiceId = (int) $request->input('original_purchase_invoice_id');
 
-            // ⚠️ ملاحظة: لم نعد نستدعي deleteInventoryMovement هنا
-            // لأن syncInventoryMovement يستدعيها داخلياً.
-
-            // ✅ التحقق الأمني
-            $this->validateAccountMatchesInvoice(
-                (int) $request->input('original_purchase_invoice_id'),
-                (int) $request->input('account_id')
+            $this->lockAndValidateInvoice(
+                $originalInvoiceId,
+                $request->input('account_id'),
+                $request->input('coin_id'),
+                $request->input('warehouse_id')
             );
 
+            $purchaseReturn = PurchaseReturn::lockForUpdate()->findOrFail($id);
+
             $details = $request->input('details', []);
-            $this->validateReturnQuantities($details, $purchaseReturn->purchase_return_id);
+
+            $this->validateReturnQuantities($originalInvoiceId, $details, $purchaseReturn->purchase_return_id);
+
+            $this->lockStockRows(
+                $details,
+                $request->input('warehouse_id')
+            );
+
+            $this->validateStockAvailability(
+                $details,
+                $request->input('warehouse_id'),
+                $purchaseReturn->purchase_return_id
+            );
 
             $data = $this->headerData($request);
             unset($data['return_number']);
@@ -119,8 +131,7 @@ class PurchaseReturnService
     public function delete(int $id): void
     {
         DB::transaction(function () use ($id) {
-
-            $purchaseReturn = PurchaseReturn::findOrFail($id);
+            $purchaseReturn = PurchaseReturn::lockForUpdate()->findOrFail($id);
 
             $this->deleteInventoryMovement($purchaseReturn);
 
@@ -130,45 +141,199 @@ class PurchaseReturnService
     }
 
     // =====================================================
-    // التحقق الأمني
+    // القفل + التحقق من الرأس
     // =====================================================
 
-    /**
-     * التحقق من تطابق حساب المورد مع الفاتورة الأصلية
-     * يمنع تحميل مرتجع على حساب مورد مختلف عن مورد الفاتورة
-     */
-    protected function validateAccountMatchesInvoice(int $invoiceId, int $accountId): void
-    {
-        $invoice = PurchaseInvoice::findOrFail($invoiceId);
+    protected function lockAndValidateInvoice(
+        int $invoiceId,
+        $accountId,
+        $coinId,
+        $warehouseId = null
+    ): void {
+        $invoice = PurchaseInvoice::lockForUpdate()->findOrFail($invoiceId);
 
-        if ($accountId !== (int) $invoice->account_id) {
+        if ((int) $accountId !== (int) $invoice->account_id) {
             throw ValidationException::withMessages([
                 'account_id' => 'حساب المورد لا يطابق الفاتورة الأصلية',
+            ]);
+        }
+
+        if ((int) $coinId !== (int) $invoice->coin_id) {
+            throw ValidationException::withMessages([
+                'coin_id' => 'العملة لا تطابق الفاتورة الأصلية',
+            ]);
+        }
+
+        if ($warehouseId !== null && (int) $warehouseId !== (int) $invoice->warehouse_id) {
+            throw ValidationException::withMessages([
+                'warehouse_id' => 'المستودع لا يطابق المستودع الأصلي للفاتورة',
             ]);
         }
     }
 
     // =====================================================
-    // التحقق من الكميات
+    // التحقق من التفاصيل
     // =====================================================
 
-    protected function validateReturnQuantities(array $details, ?int $exceptReturnId = null): void
-    {
+    protected function validateReturnQuantities(
+        int $originalInvoiceId,
+        array $details,
+        ?int $exceptReturnId = null
+    ): void {
         $errors = [];
 
         foreach ($details as $i => $row) {
-            $invoiceDetailId = $row['purchase_invoice_detail_id'] ?? null;
-            $qty             = (float) ($row['quantity'] ?? 0);
+            $detailId = (int) ($row['purchase_invoice_detail_id'] ?? 0);
+            $qty      = (float) ($row['quantity'] ?? 0);
 
-            if (!$invoiceDetailId || $qty <= 0) {
+            if ($detailId <= 0 || $qty <= 0) {
                 continue;
             }
 
-            $available = $this->availableForReturn((int) $invoiceDetailId, $exceptReturnId);
+            $detail = PurchaseInvoiceDetail::find($detailId);
 
-            if ($qty > $available) {
-                $errors["details.{$i}.quantity"] =
-                    "الكمية المراد إرجاعها ({$qty}) أكبر من الكمية المتبقية القابلة للإرجاع ({$available})";
+            if (!$detail) {
+                $errors["details.{$i}.purchase_invoice_detail_id"] = "سطر الفاتورة #{$detailId} غير موجود";
+                continue;
+            }
+
+            if ((int) $detail->purchase_invoice_id !== $originalInvoiceId) {
+                $errors["details.{$i}.purchase_invoice_detail_id"] =
+                    "سطر الفاتورة #{$detailId} لا ينتمي للفاتورة الأصلية";
+            }
+        }
+
+        if (!empty($errors)) {
+            throw ValidationException::withMessages($errors);
+        }
+
+        $grouped = [];
+        foreach ($details as $row) {
+            $detailId = (int) ($row['purchase_invoice_detail_id'] ?? 0);
+            $qty      = (float) ($row['quantity'] ?? 0);
+
+            if ($detailId <= 0 || $qty <= 0) {
+                continue;
+            }
+
+            $grouped[$detailId] = ($grouped[$detailId] ?? 0) + $qty;
+        }
+
+        foreach ($grouped as $detailId => $totalQty) {
+            $available = $this->availableForReturn($detailId, $exceptReturnId);
+
+            if ($totalQty > $available) {
+                $errors["details"] =
+                    "الكمية الإجمالية للسطر #{$detailId} ({$totalQty}) أكبر من المتاح ({$available})";
+            }
+        }
+
+        if (!empty($errors)) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
+    // =====================================================
+    // قفل صفوف المخزون
+    // =====================================================
+
+    protected function lockStockRows(array $details, $warehouseId): void
+    {
+        if (!$warehouseId) {
+            return;
+        }
+
+        $pairs = [];
+        foreach ($details as $row) {
+            $detailId = (int) ($row['purchase_invoice_detail_id'] ?? 0);
+            if ($detailId <= 0) continue;
+
+            $detail = PurchaseInvoiceDetail::find($detailId);
+            if (!$detail) continue;
+
+            $key = $detail->item_id . '|' . ($detail->unit_id ?? 0);
+            $pairs[$key] = [
+                'item_id' => (int) $detail->item_id,
+                'unit_id' => $detail->unit_id ? (int) $detail->unit_id : null,
+            ];
+        }
+
+        ksort($pairs);
+
+        foreach ($pairs as $pair) {
+            $query = DB::table('inventory_movement_details')
+                ->where('item_id', $pair['item_id'])
+                ->where('warehouse_id', (int) $warehouseId);
+
+            if ($pair['unit_id']) {
+                $query->where('unit_id', $pair['unit_id']);
+            }
+
+            $query->select('movement_detail_id')
+                  ->lockForUpdate()
+                  ->get();
+        }
+    }
+
+    // =====================================================
+    // فحص الرصيد الفعلي
+    // =====================================================
+
+    protected function validateStockAvailability(
+        array $details,
+        $warehouseId,
+        ?int $exceptReturnId = null
+    ): void {
+        if (!$warehouseId) {
+            return;
+        }
+
+        $errors = [];
+        $stockNeeds = [];
+
+        foreach ($details as $row) {
+            $detailId = (int) ($row['purchase_invoice_detail_id'] ?? 0);
+            $qty      = (float) ($row['quantity'] ?? 0);
+
+            if ($detailId <= 0 || $qty <= 0) {
+                continue;
+            }
+
+            $detail = PurchaseInvoiceDetail::find($detailId);
+            if (!$detail) {
+                continue;
+            }
+
+            $key = $detail->item_id . '|' . ($detail->unit_id ?? 0);
+            $stockNeeds[$key] = ($stockNeeds[$key] ?? 0) + $qty;
+        }
+
+        foreach ($stockNeeds as $key => $neededQty) {
+            [$itemId, $unitId] = explode('|', $key);
+            $itemId = (int) $itemId;
+            $unitId = (int) $unitId;
+
+            $stock = $this->inventoryService->availableQuantity(
+                $itemId,
+                (int) $warehouseId,
+                $unitId > 0 ? $unitId : null
+            );
+
+            if ($exceptReturnId) {
+                $currentReturnedQty = PurchaseReturnDetail::where('purchase_return_id', $exceptReturnId)
+                    ->where('item_id', $itemId)
+                    ->where('warehouse_id', (int) $warehouseId)
+                    ->when($unitId > 0, function ($q) use ($unitId) {
+                        $q->where('unit_id', $unitId);
+                    })
+                    ->sum('quantity');
+
+                $stock += (float) $currentReturnedQty;
+            }
+
+            if ($neededQty > $stock) {
+                $errors["details"] =
+                    "الكمية المطلوبة للصنف #{$itemId} ({$neededQty}) أكبر من الرصيد الفعلي ({$stock})";
             }
         }
 
@@ -268,7 +433,7 @@ class PurchaseReturnService
     }
 
     // =====================================================
-    // دوال مساعدة داخلية
+    // دوال مساعدة
     // =====================================================
 
     protected function nextReturnNumber(): int
@@ -308,7 +473,6 @@ class PurchaseReturnService
             $discount = (float) ($row['discount'] ?? 0);
             $total    = max(0, ($quantity * $price) - $discount);
 
-            // ✅ التكلفة الفعلية (Landed Cost) من حركة الشراء الأصلية
             $unitCost = $this->getLandedCostFromMovement($invoiceDetail);
 
             PurchaseReturnDetail::create([
@@ -328,10 +492,6 @@ class PurchaseReturnService
         }
     }
 
-    /**
-     * ✅ جلب التكلفة الفعلية (Landed Cost) لسطر فاتورة شراء
-     * من inventory_movement_details المرتبطة بحركة الشراء الأصلية.
-     */
     protected function getLandedCostFromMovement(PurchaseInvoiceDetail $invoiceDetail): float
     {
         $unitCost = DB::table('inventory_movement_details')
@@ -353,7 +513,6 @@ class PurchaseReturnService
             ->orderBy('inventory_movement_details.movement_detail_id', 'desc')
             ->value('inventory_movement_details.unit_cost');
 
-        // fallback: إذا لم نجد الحركة (فاتورة قديمة)، نستخدم سعر الفاتورة
         return (float) ($unitCost !== null && $unitCost > 0
             ? $unitCost
             : $invoiceDetail->price);

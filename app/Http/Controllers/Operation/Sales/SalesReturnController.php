@@ -320,7 +320,7 @@ class SalesReturnController extends Controller
             'account_id'                => ['required', 'exists:characcount,accountID'],
             'payment_method'            => ['required', 'integer', 'in:1,2,3,4'],
             'coin_id'                   => ['required', 'exists:coins,coinsID'],
-            'exchange_rate'             => ['nullable', 'numeric', 'min:0'],
+            'exchange_rate'             => ['nullable', 'numeric', 'gt:0'],
             'payment_account_id'        => ['nullable', 'exists:characcount,accountID'],
             'statement'                 => ['nullable', 'string'],
             'reference'                 => ['nullable', 'string'],
@@ -338,11 +338,32 @@ class SalesReturnController extends Controller
             'account_id.required'                => 'يجب اختيار العميل',
             'payment_method.required'            => 'طريقة الدفع مطلوبة',
             'coin_id.required'                   => 'يجب اختيار العملة',
+            'exchange_rate.gt'                   => 'سعر الصرف يجب أن يكون أكبر من صفر',
             'details.required'                   => 'يجب إضافة صنف واحد على الأقل للمرتجع',
             'details.min'                        => 'يجب إضافة صنف واحد على الأقل للمرتجع',
             'details.*.sales_invoice_detail_id.required' => 'سطر الفاتورة الأصلية مطلوب في كل الصفوف',
             'details.*.quantity.gt'              => 'الكمية المراد إرجاعها يجب أن تكون أكبر من صفر',
         ]);
+
+        // ✅ التحقق من منطق طريقة الدفع (نفس منطق الفواتير)
+        $validator->after(function ($v) use ($request) {
+            $method    = (int) $request->input('payment_method');
+            $accountId = $request->input('payment_account_id');
+
+            if ($method === 1 && !empty($accountId)) {
+                $v->errors()->add(
+                    'payment_account_id',
+                    'طريقة الدفع "أجل" لا تحتاج إلى حساب دفع'
+                );
+            }
+
+            if (in_array($method, [2, 3, 4]) && empty($accountId)) {
+                $v->errors()->add(
+                    'payment_account_id',
+                    'يجب اختيار حساب الدفع'
+                );
+            }
+        });
 
         return $validator;
     }

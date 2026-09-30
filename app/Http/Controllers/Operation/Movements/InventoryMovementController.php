@@ -20,17 +20,11 @@ class InventoryMovementController extends Controller
         $this->inventoryService = $inventoryService;
     }
 
-    /**
-     * عرض شاشة حركات المخزون (مع Tabs)
-     */
     public function index()
     {
         return view('operation.movements.index');
     }
 
-    /**
-     * ✅ قائمة الحركات (JSON) — ترتيب تصاعدي
-     */
     public function list(Request $request)
     {
         $search         = trim($request->input('search', ''));
@@ -41,7 +35,7 @@ class InventoryMovementController extends Controller
 
         $query = InventoryMovement::query()
             ->with('warehouse')
-            ->orderBy('movement_id', 'asc');   // ✅ تصاعدي
+            ->orderBy('movement_id', 'asc');
 
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
@@ -86,9 +80,6 @@ class InventoryMovementController extends Controller
         return response()->json(['data' => $movements]);
     }
 
-    /**
-     * عرض حركة واحدة مع تفاصيلها (JSON)
-     */
     public function show($id)
     {
         $movement = InventoryMovement::with([
@@ -142,9 +133,6 @@ class InventoryMovementController extends Controller
         ]);
     }
 
-    /**
-     * رقم الحركة التالي
-     */
     public function nextNumber()
     {
         $last = InventoryMovement::orderBy('movement_id', 'desc')->first();
@@ -153,9 +141,6 @@ class InventoryMovementController extends Controller
         return response()->json(['next_number' => (string) $next]);
     }
 
-    /**
-     * حفظ حركة يدوية
-     */
     public function store(Request $request)
     {
         $validator = $this->validateMovement($request);
@@ -228,10 +213,6 @@ class InventoryMovementController extends Controller
     // الفرز / التجهيز
     // =====================================================
 
-    /**
-     * ✅ تنفيذ عملية فرز
-     * يستخدم أنواع جديدة: sorting_out (كيلو) + sorting_in (حبة)
-     */
     public function sort(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -334,136 +315,154 @@ class InventoryMovementController extends Controller
 
     /**
      * عكس عملية فرز
+     *
+     * ✅ الإصلاحات:
+     *  1. فحص الرصيد أصبح داخل الـ Transaction
+     *  2. قفل صفوف المخزون قبل الفحص
      */
     public function reverseSort(Request $request, string $documentNumber)
     {
-        $movements = InventoryMovement::with('details')
-            ->where('document_number', $documentNumber)
-            ->where('source_type', InventoryMovement::SOURCE_SORTING)
-            ->orderBy('movement_id')
-            ->get();
-
-        if ($movements->count() < 2) {
-            return response()->json([
-                'message' => 'لم يتم العثور على عملية فرز صالحة بهذا الرقم',
-            ], 404);
-        }
-
-        $reversalDoc = 'REV-' . $documentNumber;
-
-        $alreadyReversed = InventoryMovement::where('document_number', $reversalDoc)->exists();
-
-        if ($alreadyReversed) {
-            return response()->json([
-                'message' => 'تم عكس هذه العملية مسبقًا',
-            ], 409);
-        }
-
-        $outMovement = $movements->firstWhere('direction', 'out');
-        $inMovement  = $movements->firstWhere('direction', 'in');
-
-        if (!$outMovement || !$inMovement) {
-            return response()->json([
-                'message' => 'بيانات عملية الفرز غير مكتملة',
-            ], 422);
-        }
-
-        $outDetail = $outMovement->details->first();
-        $inDetail  = $inMovement->details->first();
-
-        if (!$outDetail || !$inDetail) {
-            return response()->json([
-                'message' => 'تفاصيل عملية الفرز غير مكتملة',
-            ], 422);
-        }
-
-        $availableOutput = $this->inventoryService->availableQuantity(
-            (int) $inDetail->item_id,
-            (int) $inDetail->warehouse_id,
-            (int) $inDetail->unit_id
-        );
-
-        if ($availableOutput < (float) $inDetail->quantity) {
-            return response()->json([
-                'message' => "لا يمكن عكس العملية — الرصيد الحالي ({$availableOutput}) أقل من المطلوب ({$inDetail->quantity})",
-            ], 422);
-        }
-
         try {
-            DB::beginTransaction();
+            return DB::transaction(function () use ($documentNumber) {
 
-            $lastMovement = InventoryMovement::lockForUpdate()
-                ->orderByDesc('movement_id')
-                ->first();
+                $movements = InventoryMovement::with('details')
+                    ->where('document_number', $documentNumber)
+                    ->where('source_type', InventoryMovement::SOURCE_SORTING)
+                    ->orderBy('movement_id')
+                    ->get();
 
-            $nextDisplayId = $lastMovement ? ((int) $lastMovement->display_id + 1) : 1;
+                if ($movements->count() < 2) {
+                    return response()->json([
+                        'message' => 'لم يتم العثور على عملية فرز صالحة بهذا الرقم',
+                    ], 404);
+                }
 
-            $reverseOutMovement = InventoryMovement::create([
-                'display_id'      => (string) $nextDisplayId,
-                'movement_type'   => InventoryMovement::TYPE_SORTING_OUT,
-                'direction'       => InventoryMovement::DIRECTION_OUT,
-                'movement_date'   => now()->format('Y-m-d'),
-                'document_number' => $reversalDoc,
-                'warehouse_id'    => $inDetail->warehouse_id,
-                'statement'       => "عكس فرز {$documentNumber}",
-                'source_type'     => InventoryMovement::SOURCE_SORTING,
-                'source_id'       => $outMovement->movement_id,
-                'total'           => $inDetail->total,
-            ]);
+                $reversalDoc = 'REV-' . $documentNumber;
 
-            InventoryMovementDetail::create([
-                'movement_id'  => $reverseOutMovement->movement_id,
-                'item_id'      => $inDetail->item_id,
-                'type_id'      => $inDetail->type_id,
-                'unit_id'      => $inDetail->unit_id,
-                'code'         => $inDetail->code,
-                'warehouse_id' => $inDetail->warehouse_id,
-                'quantity'     => $inDetail->quantity,
-                'unit_cost'    => $inDetail->unit_cost,
-                'total'        => $inDetail->total,
-            ]);
+                $alreadyReversed = InventoryMovement::where('document_number', $reversalDoc)->exists();
 
-            $nextDisplayId++;
+                if ($alreadyReversed) {
+                    return response()->json([
+                        'message' => 'تم عكس هذه العملية مسبقًا',
+                    ], 409);
+                }
 
-            $reverseInMovement = InventoryMovement::create([
-                'display_id'      => (string) $nextDisplayId,
-                'movement_type'   => InventoryMovement::TYPE_SORTING_IN,
-                'direction'       => InventoryMovement::DIRECTION_IN,
-                'movement_date'   => now()->format('Y-m-d'),
-                'document_number' => $reversalDoc,
-                'warehouse_id'    => $outDetail->warehouse_id,
-                'statement'       => "عكس فرز {$documentNumber}",
-                'source_type'     => InventoryMovement::SOURCE_SORTING,
-                'source_id'       => $outMovement->movement_id,
-                'total'           => $outDetail->total,
-            ]);
+                $outMovement = $movements->firstWhere('direction', 'out');
+                $inMovement  = $movements->firstWhere('direction', 'in');
 
-            InventoryMovementDetail::create([
-                'movement_id'  => $reverseInMovement->movement_id,
-                'item_id'      => $outDetail->item_id,
-                'type_id'      => $outDetail->type_id,
-                'unit_id'      => $outDetail->unit_id,
-                'code'         => $outDetail->code,
-                'warehouse_id' => $outDetail->warehouse_id,
-                'quantity'     => $outDetail->quantity,
-                'unit_cost'    => $outDetail->unit_cost,
-                'total'        => $outDetail->total,
-            ]);
+                if (!$outMovement || !$inMovement) {
+                    return response()->json([
+                        'message' => 'بيانات عملية الفرز غير مكتملة',
+                    ], 422);
+                }
 
-            DB::commit();
+                $outDetail = $outMovement->details->first();
+                $inDetail  = $inMovement->details->first();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'تم عكس الفرز بنجاح',
-                'data'    => [
-                    'reversal_document_number' => $reversalDoc,
-                    'out_movement_id'          => $reverseOutMovement->movement_id,
-                    'in_movement_id'           => $reverseInMovement->movement_id,
-                ],
-            ], 201);
+                if (!$outDetail || !$inDetail) {
+                    return response()->json([
+                        'message' => 'تفاصيل عملية الفرز غير مكتملة',
+                    ], 422);
+                }
+
+                // ✅ 1) قفل صفوف المخزون قبل الفحص
+                $this->inventoryService->lockStockRows([
+                    [
+                        'item_id'      => (int) $inDetail->item_id,
+                        'warehouse_id' => (int) $inDetail->warehouse_id,
+                        'unit_id'      => (int) $inDetail->unit_id,
+                    ],
+                ]);
+
+                // ✅ 2) الآن فحص الرصيد موثوق (داخل Transaction + مع قفل)
+                $availableOutput = $this->inventoryService->availableQuantity(
+                    (int) $inDetail->item_id,
+                    (int) $inDetail->warehouse_id,
+                    (int) $inDetail->unit_id
+                );
+
+                if ($availableOutput < (float) $inDetail->quantity) {
+                    return response()->json([
+                        'message' => "لا يمكن عكس العملية — الرصيد الحالي ({$availableOutput}) أقل من المطلوب ({$inDetail->quantity})",
+                    ], 422);
+                }
+
+                $lastMovement = InventoryMovement::lockForUpdate()
+                    ->orderByDesc('movement_id')
+                    ->first();
+
+                $nextDisplayId = $lastMovement ? ((int) $lastMovement->display_id + 1) : 1;
+
+                $reverseOutMovement = InventoryMovement::create([
+                    'display_id'      => (string) $nextDisplayId,
+                    'movement_type'   => InventoryMovement::TYPE_SORTING_OUT,
+                    'direction'       => InventoryMovement::DIRECTION_OUT,
+                    'movement_date'   => now()->format('Y-m-d'),
+                    'document_number' => $reversalDoc,
+                    'warehouse_id'    => $inDetail->warehouse_id,
+                    'statement'       => "عكس فرز {$documentNumber}",
+                    'source_type'     => InventoryMovement::SOURCE_SORTING,
+                    'source_id'       => $outMovement->movement_id,
+                    'total'           => $inDetail->total,
+                ]);
+
+                InventoryMovementDetail::create([
+                    'movement_id'  => $reverseOutMovement->movement_id,
+                    'item_id'      => $inDetail->item_id,
+                    'type_id'      => $inDetail->type_id,
+                    'unit_id'      => $inDetail->unit_id,
+                    'code'         => $inDetail->code,
+                    'warehouse_id' => $inDetail->warehouse_id,
+                    'quantity'     => $inDetail->quantity,
+                    'unit_cost'    => $inDetail->unit_cost,
+                    'total'        => $inDetail->total,
+                ]);
+
+                $nextDisplayId++;
+
+                $reverseInMovement = InventoryMovement::create([
+                    'display_id'      => (string) $nextDisplayId,
+                    'movement_type'   => InventoryMovement::TYPE_SORTING_IN,
+                    'direction'       => InventoryMovement::DIRECTION_IN,
+                    'movement_date'   => now()->format('Y-m-d'),
+                    'document_number' => $reversalDoc,
+                    'warehouse_id'    => $outDetail->warehouse_id,
+                    'statement'       => "عكس فرز {$documentNumber}",
+                    'source_type'     => InventoryMovement::SOURCE_SORTING,
+                    'source_id'       => $outMovement->movement_id,
+                    'total'           => $outDetail->total,
+                ]);
+
+                InventoryMovementDetail::create([
+                    'movement_id'  => $reverseInMovement->movement_id,
+                    'item_id'      => $outDetail->item_id,
+                    'type_id'      => $outDetail->type_id,
+                    'unit_id'      => $outDetail->unit_id,
+                    'code'         => $outDetail->code,
+                    'warehouse_id' => $outDetail->warehouse_id,
+                    'quantity'     => $outDetail->quantity,
+                    'unit_cost'    => $outDetail->unit_cost,
+                    'total'        => $outDetail->total,
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'تم عكس الفرز بنجاح',
+                    'data'    => [
+                        'reversal_document_number' => $reversalDoc,
+                        'out_movement_id'          => $reverseOutMovement->movement_id,
+                        'in_movement_id'           => $reverseInMovement->movement_id,
+                    ],
+                ], 201);
+            });
 
         } catch (\Throwable $e) {
-            DB::rollBack();
+            Log::error('Reverse sort failed', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+            ]);
+
             return response()->json([
                 'message' => 'فشل عكس الفرز',
                 'error'   => config('app.debug') ? $e->getMessage() : null,
@@ -471,12 +470,6 @@ class InventoryMovementController extends Controller
         }
     }
 
-
-        /**
-     * ✅ طباعة عملية فرز
-     *
-     * GET /operation/movements/sort/{documentNumber}/print
-     */
     public function printSorting(string $documentNumber)
     {
         $movements = InventoryMovement::with([
@@ -508,11 +501,6 @@ class InventoryMovementController extends Controller
         ));
     }
 
-        /**
-     * ✅ طباعة حركة مخزون (أي نوع)
-     *
-     * GET /operation/movements/{id}/print
-     */
     public function printMovementPage($id)
     {
         $movement = InventoryMovement::with([
@@ -801,7 +789,7 @@ class InventoryMovementController extends Controller
     }
 
     // =====================================================
-    // دوال مساعدة داخلية
+    // دوال مساعدة
     // =====================================================
 
     private function validateMovement(Request $request)

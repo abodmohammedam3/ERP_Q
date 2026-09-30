@@ -10,20 +10,63 @@ use Illuminate\Validation\ValidationException;
 class InventoryService
 {
     // =====================================================
-    // القراءة — قراءة الأرصدة
+    // ✅ قفل صفوف المخزون (يمنع Race Conditions)
     // =====================================================
 
     /**
-     * الكمية المتوفرة من الصنف في المخزن
+     * يقفل صفوف inventory_movement_details المرتبطة بـ (item + warehouse + unit).
      *
-     * ✅ unit-aware: إذا تم تمرير $unitId، يُحسب الرصيد
-     *    لهذه الوحدة فقط. هذا ضروري لأن الصنف الواحد قد
-     *    يكون له رصيد بوحدات مختلفة (كيلو / حبة).
+     * يستخدم SELECT ... FOR UPDATE لضمان أن أي Transaction آخر
+     * لا يمكنه تعديل الرصيد حتى ننتهي من العمليات الحساسة.
      *
-     * ⚠️ تحذير: الكاش لا يُبطَل تلقائيًا إذا أُنشئت حركة
-     *    جديدة في نفس الطلب. لا تستدعِ هذه الدالة بعد
-     *    إنشاء حركة جديدة في نفس الطلب.
+     * ترتيب الفحص ثابت (ksort) لمنع Deadlocks بين طلبات متزامنة.
+     *
+     * @param array $combinations  مصفوفة من عناصر: { item_id, warehouse_id, unit_id? }
      */
+    public function lockStockRows(array $combinations): void
+    {
+        $pairs = [];
+
+        foreach ($combinations as $c) {
+            $itemId      = (int) ($c['item_id'] ?? 0);
+            $warehouseId = (int) ($c['warehouse_id'] ?? 0);
+            $unitId      = isset($c['unit_id']) && $c['unit_id'] !== null
+                ? (int) $c['unit_id']
+                : null;
+
+            if (!$itemId || !$warehouseId) {
+                continue;
+            }
+
+            $key = $itemId . '|' . $warehouseId . '|' . ($unitId ?? 0);
+            $pairs[$key] = [
+                'item_id'      => $itemId,
+                'warehouse_id' => $warehouseId,
+                'unit_id'      => $unitId,
+            ];
+        }
+
+        ksort($pairs);
+
+        foreach ($pairs as $pair) {
+            $query = DB::table('inventory_movement_details')
+                ->where('item_id', $pair['item_id'])
+                ->where('warehouse_id', $pair['warehouse_id']);
+
+            if ($pair['unit_id']) {
+                $query->where('unit_id', $pair['unit_id']);
+            }
+
+            $query->select('movement_detail_id')
+                  ->lockForUpdate()
+                  ->get();
+        }
+    }
+
+    // =====================================================
+    // القراءة — قراءة الأرصدة
+    // =====================================================
+
     public function availableQuantity(
         int $itemId,
         int $warehouseId,
@@ -69,9 +112,6 @@ class InventoryService
         return $cache[$key] = (float) $in - (float) $out;
     }
 
-    /**
-     * هل الكمية المطلوبة متوفرة؟
-     */
     public function isAvailable(
         int $itemId,
         int $warehouseId,
@@ -81,13 +121,6 @@ class InventoryService
         return $this->availableQuantity($itemId, $warehouseId, $unitId) >= $qty;
     }
 
-    /**
-     * آخر تكلفة توريد للصنف في المخزن
-     * (من آخر حركة 'in' — توريد أو شراء)
-     *
-     * ✅ unit-aware: إذا تم تمرير $unitId، يُرجع التكلفة
-     *    لهذه الوحدة فقط.
-     */
     public function lastCost(
         int $itemId,
         int $warehouseId,
@@ -113,17 +146,6 @@ class InventoryService
         return $detail ? (float) $detail->unit_cost : 0;
     }
 
-    /**
-     * ✅ تكلفة الوحدة الحالية لسياق محدد
-     *
-     * تُستخدم قبل الفرز لمعرفة تكلفة الكيلو الحالية.
-     *
-     * الفرق عن lastCost:
-     *   - تدعم فلترة النوع (type_id) اختياريًا
-     *   - تُرجع فقط حركات "in" (توريد/شراء)
-     *   - تتجاهل حركات الفرز لتفادي الحلقة الدائرية
-     *     (لأن الفرز نفسه قد يُنشئ حركة "in" للحبات)
-     */
     public function currentUnitCost(
         int $itemId,
         ?int $typeId,
@@ -141,7 +163,6 @@ class InventoryService
             ->where('inventory_movement_details.warehouse_id', $warehouseId)
             ->where('inventory_movement_details.unit_id', $unitId)
             ->where('inventory_movements.direction', 'in')
-            // ✅ استثناء حركات الفرز لتفادي الحلقة الدائرية
             ->where(function ($q) {
                 $q->whereNull('inventory_movements.source_type')
                   ->orWhere(
@@ -163,12 +184,6 @@ class InventoryService
         return $detail ? (float) $detail->unit_cost : 0;
     }
 
-    /**
-     * ✅ آخر تسعير مسجَّل لصنف في مخزن بوحدة معينة
-     *
-     * يُرجع: sale_price, min_price, max_price
-     * (من آخر حركة "in" تحتوي على سعر بيع فعلي)
-     */
     public function lastPricing(
         int $itemId,
         int $warehouseId,
@@ -209,46 +224,11 @@ class InventoryService
     // الفرز / التجهيز
     // =====================================================
 
-    /**
-     * ✅ تنفيذ عملية فرز / تجهيز
-     *
-     * يحوّل كمية من وحدة (مثلًا كيلو) إلى وحدة أخرى (مثلًا حبة)
-     * مع الحفاظ على القيمة الإجمالية.
-     *
-     * @param array $data {
-     *     @type int         item_id
-     *     @type int|null    type_id
-     *     @type int         warehouse_id
-     *     @type int         input_unit_id     الوحدة الأصلية (كيلو)
-     *     @type int         output_unit_id    الوحدة الناتجة (حبة)
-     *     @type float       input_quantity    كمية الوحدة الأصلية
-     *     @type float       output_quantity   عدد الوحدات الناتجة
-     *     @type string|null code
-     *     @type float|null  sale_price
-     *     @type float|null  min_price
-     *     @type float|null  max_price
-     *     @type string|null movement_date
-     * }
-     *
-     * @return array {
-     *     @type string document_number
-     *     @type int    out_movement_id
-     *     @type int    in_movement_id
-     *     @type float  input_quantity
-     *     @type float  output_quantity
-     *     @type float  input_value
-     *     @type float  output_unit_cost
-     * }
-     *
-     * @throws ValidationException
-     */
     public function sortInventory(array $data): array
     {
         return DB::transaction(function () use ($data) {
 
-            // ─────────────────────────────────────────────
-            // 1. استخراج المدخلات
-            // ─────────────────────────────────────────────
+            // 1) استخراج المدخلات
             $itemId       = (int) $data['item_id'];
             $typeId       = isset($data['type_id']) && $data['type_id'] !== null
                 ? (int) $data['type_id']
@@ -260,9 +240,7 @@ class InventoryService
             $outputQty    = (float) $data['output_quantity'];
             $movementDate = $data['movement_date'] ?? now()->format('Y-m-d');
 
-            // ─────────────────────────────────────────────
-            // 2. التحقق
-            // ─────────────────────────────────────────────
+            // 2) التحقق
             if ($inputQty <= 0) {
                 throw ValidationException::withMessages([
                     'input_quantity' => 'الكمية المفرزة يجب أن تكون أكبر من صفر',
@@ -281,7 +259,13 @@ class InventoryService
                 ]);
             }
 
-            // ✅ قراءة الرصيد داخل الـ Transaction (منع Race Condition)
+            // ✅ 3) قفل صفوف المخزون (يمنع Race مع بيع/شراء/مرتجع متزامن)
+            $this->lockStockRows([
+                ['item_id' => $itemId, 'warehouse_id' => $warehouseId, 'unit_id' => $inputUnitId],
+                ['item_id' => $itemId, 'warehouse_id' => $warehouseId, 'unit_id' => $outputUnitId],
+            ]);
+
+            // ✅ 4) الآن فحص الرصيد موثوق (لا يمكن لـ Transaction آخر تعديله)
             $available = $this->availableQuantity($itemId, $warehouseId, $inputUnitId);
             if ($available < $inputQty) {
                 throw ValidationException::withMessages([
@@ -303,23 +287,17 @@ class InventoryService
                 ]);
             }
 
-            // ─────────────────────────────────────────────
-            // 3. الحساب
-            // ─────────────────────────────────────────────
+            // 5) الحساب
             $inputTotal = round($inputQty * $unitCostInput, 6);
 
             $unitCostOutput = $outputQty > 0
                 ? round($inputTotal / $outputQty, 6)
                 : 0;
 
-            // ─────────────────────────────────────────────
-            // 4. توليد رقم العملية (SORT-XXXXXX)
-            // ─────────────────────────────────────────────
+            // 6) توليد رقم العملية
             $documentNumber = $this->generateSortingNumber();
 
-            // ─────────────────────────────────────────────
-            // 5. توليد display_id تسلسلي
-            // ─────────────────────────────────────────────
+            // 7) display_id
             $lastMovement = InventoryMovement::lockForUpdate()
                 ->orderByDesc('movement_id')
                 ->first();
@@ -328,9 +306,7 @@ class InventoryService
                 ? ((int) $lastMovement->display_id + 1)
                 : 1;
 
-            // ─────────────────────────────────────────────
-            // 6. إنشاء حركة OUT (الوحدة الأصلية — كيلو)
-            // ─────────────────────────────────────────────
+            // 8) OUT (الوحدة الأصلية)
             $outMovement = InventoryMovement::create([
                 'display_id'      => (string) $nextDisplayId,
                 'movement_type'   => InventoryMovement::TYPE_ISSUE,
@@ -340,7 +316,7 @@ class InventoryService
                 'warehouse_id'    => $warehouseId,
                 'statement'       => "فرز - {$documentNumber} - صرف الكمية الأصلية",
                 'source_type'     => InventoryMovement::SOURCE_SORTING,
-                'source_id'       => null, // OUT هو الأصل
+                'source_id'       => null,
                 'total'           => $inputTotal,
             ]);
 
@@ -359,9 +335,7 @@ class InventoryService
                 'total'        => $inputTotal,
             ]);
 
-            // ─────────────────────────────────────────────
-            // 7. إنشاء حركة IN (الوحدة الناتجة — حبة)
-            // ─────────────────────────────────────────────
+            // 9) IN (الوحدة الناتجة)
             $nextDisplayId++;
 
             $inMovement = InventoryMovement::create([
@@ -373,7 +347,7 @@ class InventoryService
                 'warehouse_id'    => $warehouseId,
                 'statement'       => "فرز - {$documentNumber} - إضافة الوحدات الناتجة",
                 'source_type'     => InventoryMovement::SOURCE_SORTING,
-                'source_id'       => $outMovement->movement_id, // ربط بالحركة الأصلية
+                'source_id'       => $outMovement->movement_id,
                 'total'           => $inputTotal,
             ]);
 
@@ -392,15 +366,11 @@ class InventoryService
                 'total'        => $inputTotal,
             ]);
 
-            // ─────────────────────────────────────────────
-            // 8. تطبيق الحركتين (no-op حاليًا — للتوافق المستقبلي)
-            // ─────────────────────────────────────────────
+            // 10) تطبيق
             $this->applyMovement($outMovement);
             $this->applyMovement($inMovement);
 
-            // ─────────────────────────────────────────────
-            // 9. النتيجة
-            // ─────────────────────────────────────────────
+            // 11) النتيجة
             return [
                 'document_number'   => $documentNumber,
                 'out_movement_id'   => $outMovement->movement_id,
@@ -413,14 +383,6 @@ class InventoryService
         });
     }
 
-    /**
-     * ✅ توليد رقم عملية فرز تسلسلي
-     *
-     * التنسيق: SORT-000001, SORT-000002, ...
-     *
-     * يعتمد على آخر رقم موجود في document_number
-     * للحركات التي source_type = 'sorting'.
-     */
     public function generateSortingNumber(): string
     {
         $lastDoc = InventoryMovement::where(
@@ -440,15 +402,8 @@ class InventoryService
     }
 
     // =====================================================
-    // الكتابة (no-op حالياً)
+    // الكتابة (no-op)
     // =====================================================
-    //
-    // الأرصدة تُحسب مباشرة من الحركات (availableQuantity).
-    // لا يوجد جدول أرصدة منفصل.
-    //
-    // عند إضافة جدول inventory_balances مستقبلًا،
-    // ستُصبح هاتان الدالتان مسؤولتين عن تحديث الرصيد.
-    //
 
     public function applyMovement(InventoryMovement $movement): void
     {

@@ -4,6 +4,7 @@ namespace App\Observers;
 
 use App\Models\Supplier;
 use App\Models\Accounting\CharAccount;
+use App\Http\Controllers\accounting\OpeningBalanceController;
 
 class SupplierObserver
 {
@@ -13,9 +14,10 @@ class SupplierObserver
 
     public function created(Supplier $supplier)
     {
-        $account = CharAccount::find(
-            $supplier->accountID
-        );
+        // ✅ امسح كاش الأرصدة الافتتاحية
+        OpeningBalanceController::forgetAllCache();
+
+        $account = CharAccount::find($supplier->accountID);
 
         if (!$account) {
             return;
@@ -23,40 +25,17 @@ class SupplierObserver
 
         $changed = false;
 
-        // =================================================
         // مزامنة اسم المورد مع اسم الحساب
-        // =================================================
-
-        if (
-            $account->accName !==
-            $supplier->supName
-        ) {
-            $account->accName =
-                $supplier->supName;
-
+        if ($account->accName !== $supplier->supName) {
+            $account->accName = $supplier->supName;
             $changed = true;
         }
 
-        // =================================================
         // مزامنة حالة المورد مع الحساب
-        //
-        // is_active:
-        // 1 = نشط
-        // 0 = غير نشط
-        // =================================================
+        $newIsActive = (int) $supplier->is_active === 1 ? 1 : 0;
 
-        $newIsActive =
-            (int) $supplier->is_active === 1
-                ? 1
-                : 0;
-
-        if (
-            (int) $account->IsActive !==
-            $newIsActive
-        ) {
-            $account->IsActive =
-                $newIsActive;
-
+        if ((int) $account->IsActive !== $newIsActive) {
+            $account->IsActive = $newIsActive;
             $changed = true;
         }
 
@@ -71,9 +50,10 @@ class SupplierObserver
 
     public function updated(Supplier $supplier)
     {
-        $account = CharAccount::find(
-            $supplier->accountID
-        );
+        // ✅ امسح كاش الأرصدة الافتتاحية
+        OpeningBalanceController::forgetAllCache();
+
+        $account = CharAccount::find($supplier->accountID);
 
         if (!$account) {
             return;
@@ -81,52 +61,24 @@ class SupplierObserver
 
         $changed = false;
 
-        // =================================================
-        // مزامنة اسم المورد مع اسم الحساب
-        // =================================================
-
+        // مزامنة اسم المورد
         if (
             $supplier->wasChanged('supName') &&
-            $account->accName !==
-                $supplier->supName
+            $account->accName !== $supplier->supName
         ) {
-            $account->accName =
-                $supplier->supName;
-
+            $account->accName = $supplier->supName;
             $changed = true;
         }
 
-        // =================================================
-        // مزامنة حالة المورد مع الحساب
-        //
-        // is_active:
-        // 1 = نشط
-        // 0 = غير نشط
-        // =================================================
+        // مزامنة حالة المورد
+        if ($supplier->wasChanged('is_active')) {
+            $newIsActive = (int) $supplier->is_active === 1 ? 1 : 0;
 
-        if (
-            $supplier->wasChanged('is_active')
-        ) {
-
-            $newIsActive =
-                (int) $supplier->is_active === 1
-                    ? 1
-                    : 0;
-
-            if (
-                (int) $account->IsActive !==
-                $newIsActive
-            ) {
-                $account->IsActive =
-                    $newIsActive;
-
+            if ((int) $account->IsActive !== $newIsActive) {
+                $account->IsActive = $newIsActive;
                 $changed = true;
             }
         }
-
-        // =================================================
-        // حفظ الحساب إذا حدث تغيير
-        // =================================================
 
         if ($changed) {
             $account->save();
@@ -139,6 +91,9 @@ class SupplierObserver
 
     public function deleted(Supplier $supplier)
     {
+        // ✅ امسح كاش الأرصدة الافتتاحية
+        OpeningBalanceController::forgetAllCache();
+
         // تتم معالجة الحساب المرتبط في SupplierController
     }
 }

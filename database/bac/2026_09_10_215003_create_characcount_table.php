@@ -29,8 +29,8 @@ return new class extends Migration
             $table->unsignedBigInteger('accTypeID')->nullable();
 
             // طبيعة الحساب
-            // 1 = مدين
-            // 2 = دائن
+            // 0 = مدين
+            // 1 = دائن
             $table->tinyInteger('nature')->default(1);
 
             // قابل للترحيل

@@ -9,7 +9,7 @@
                     إضافة رصيد افتتاحي
                 </h5>
                 <button type="button"
-                        class="btn-close position-absolute top-0 start-0 m-3"
+                        class="btn-close position-absolute top-0 end-0 m-3"
                         data-bs-dismiss="modal">
                 </button>
             </div>
@@ -39,13 +39,11 @@
                             <thead class="table-light sticky-top">
                                 <tr>
                                     <th width="40">الرقم</th>
-                                    <th width="110">النوع</th>
-                                    <th width="200">الحساب</th>
-                                    <th width="120">العملة</th>
-                                    <th width="100">سعر الصرف</th>
-                                    <th width="120">مدين</th>
-                                    <th width="120">دائن</th>
-                                    <th>ملاحظات</th>
+                                    <th width="350">الحساب</th>
+                                    <th width="180">العملة</th>
+                                    <th width="120">سعر الصرف</th>
+                                    <th width="140">مدين</th>
+                                    <th width="140">دائن</th>
                                     <th width="60"></th>
                                 </tr>
                             </thead>
@@ -73,25 +71,18 @@
     </div>
 
     {{-- ═══════════════════════════════════════════════════════ --}}
-    {{--  قالب السطر (يُستخدم من الجافاسكربت)                    --}}
+    {{--  قالب السطر                                        --}}
     {{-- ═══════════════════════════════════════════════════════ --}}
     <template id="lineRowTemplate">
         <tr>
 
+            {{-- الرقم --}}
             <td class="line-number"></td>
-
-            {{-- النوع --}}
-            <td>
-                <select class="form-select form-select-sm line-type" required>
-                    <option value="CASH">صندوق</option>
-                    <option value="BANK">بنك</option>
-                    <option value="CUSTOMER">عميل</option>
-                    <option value="SUPPLIER">مورد</option>
-                </select>
-            </td>
 
             {{-- الحساب --}}
             <td>
+                <input type="hidden" class="line-type" value="">
+
                 <input type="text"
                        class="form-control form-control-sm line-account-display"
                        placeholder="اضغط للاختيار..."
@@ -109,21 +100,25 @@
                     @isset($currencies)
                         @foreach($currencies as $currency)
                             <option value="{{ $currency->coinsID }}"
-                                    data-rate="{{ $currency->coinsExchangeRate ?? 1 }}">
-                                {{ $currency->coinsName }}
+                                    data-rate="{{ $currency->coinsExchangeRate ?? 1 }}"
+                                    @if(($currency->coinsSystem ?? 0) == 1) data-system="1" @endif>
+                                {{ $currency->coinsName }}@if(($currency->coinsSystem ?? 0) == 1) (النظام)@endif
                             </option>
                         @endforeach
                     @endisset
                 </select>
             </td>
 
-            {{-- سعر الصرف --}}
+            {{-- سعر الصرف (للعرض فقط) --}}
             <td>
                 <input type="number"
                        step="0.01"
                        min="0.01"
                        class="form-control form-control-sm line-rate"
-                       value="1.00">
+                       value="1.00"
+                       readonly
+                       tabindex="-1"
+                       style="background-color: var(--bs-tertiary-bg); cursor: not-allowed;">
             </td>
 
             {{-- مدين --}}
@@ -142,12 +137,6 @@
                        min="0"
                        class="form-control form-control-sm line-credit"
                        value="0">
-            </td>
-
-            {{-- ملاحظات --}}
-            <td>
-                <input type="text"
-                       class="form-control form-control-sm line-notes">
             </td>
 
             {{-- حذف --}}

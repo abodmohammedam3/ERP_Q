@@ -10,12 +10,14 @@ use App\Models\Accounting\Coin;
 use App\Models\Accounting\OpeningBalance;
 use App\Models\Customer;
 use App\Models\Supplier;
+use App\Models\Inventory\Stock;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use App\Services\JournalEntryService;
+use App\Services\AccountBalanceService;
 
 class OpeningBalanceController extends Controller
 {
@@ -24,10 +26,11 @@ class OpeningBalanceController extends Controller
     // ══════════════════════════════════════════════════════════
 
     private const SYSTEM_KEYS = [
-        'CASH'     => ['cash'],
-        'BANK'     => ['banks', 'bank'],
-        'CUSTOMER' => ['customers', 'customer'],
-        'SUPPLIER' => ['suppliers', 'supplier'],
+        'CASH'      => ['cash'],
+        'BANK'      => ['banks', 'bank'],
+        'CUSTOMER'  => ['customers', 'customer'],
+        'SUPPLIER'  => ['suppliers', 'supplier'],
+        'INVENTORY' => ['inventory', 'stock'],
     ];
 
     private const TYPE_BY_KEY = [
@@ -38,10 +41,15 @@ class OpeningBalanceController extends Controller
         'customer'  => 'CUSTOMER',
         'suppliers' => 'SUPPLIER',
         'supplier'  => 'SUPPLIER',
+        'inventory' => 'INVENTORY',
+        'stock'     => 'INVENTORY',
     ];
 
-    private const PICKER_LIMIT = 100;
-    private const CACHE_TTL    = 60;
+    private const PICKER_LIMIT          = 100;
+    private const CACHE_TTL             = 300;     // 5 دقائق
+    private const PARENT_CACHE_TTL      = 86400;   // يوم
+    private const DESCENDANTS_CACHE_TTL = 1800;    // 30 دقيقة
+    private const VERSION_TTL           = 86400;   // يوم — لمفاتيح version
 
     // ══════════════════════════════════════════════════════════
     //  Cache داخل الطلب
@@ -82,14 +90,51 @@ class OpeningBalanceController extends Controller
     {
         session()->save();
 
+        $type    = $request->input('type', 'CASH');
+        $search  = trim($request->input('search', ''));
+        $page    = max(1, (int) $request->input('page', 1));
+        $perPage = min(100, max(1, (int) $request->input('per_page', 10)));
+
+        $cacheKey = $this->buildListCacheKey($type, $search, $page, $perPage);
+
+        return $this->ok(
+            cache()->remember(
+                $cacheKey,
+                self::CACHE_TTL,
+                fn() => $this->buildPaginatedList($type, $search, $page, $perPage)
+            )
+        );
+    }
+
+    public function print(Request $request)
+    {
+        session()->save();
+
         $type   = $request->input('type', 'CASH');
         $search = trim($request->input('search', ''));
 
-        $cacheKey = "ob_list_{$type}_" . md5($search);
+        $data = $this->buildFullList($type, $search);
 
-        return $this->ok(
-            cache()->remember($cacheKey, self::CACHE_TTL, fn() => $this->buildList($type, $search))
-        );
+        $systemCurrency = Coin::where('coinsSystem', 1)->first(['coinsCode']);
+
+        $typeLabels = [
+            'CASH'      => 'الصناديق',
+            'BANK'      => 'البنوك',
+            'CUSTOMER'  => 'العملاء',
+            'SUPPLIER'  => 'الموردين',
+            'INVENTORY' => 'المخازن',
+        ];
+
+        return view('setting.accounting.openingBalances.print', [
+            'rows'               => $data['rows']   ?? [],
+            'totals'             => $data['totals'] ?? [],
+            'typeLabel'          => $typeLabels[$type] ?? 'الأرصدة',
+            'typeCode'           => $type,
+            'systemCurrencyCode' => $systemCurrency->coinsCode ?? '',
+            'companyName'        => config('app.name', 'نظام ERP'),
+            'userName'           => auth()->user()->name ?? '—',
+            'printDate'          => now(),
+        ]);
     }
 
     public function edit(int $id): JsonResponse
@@ -115,10 +160,8 @@ class OpeningBalanceController extends Controller
     {
         session()->save();
 
-        // 1) احذف القيد المرتبط (قبل حذف الرصيد)
         JournalEntryService::deleteByDocNumber('OB-' . $id);
 
-        // 2) احذف الرصيد
         if (!OpeningBalance::where('openingBalancesID', $id)->delete()) {
             return $this->fail('الرصيد غير موجود.', 404);
         }
@@ -146,6 +189,53 @@ class OpeningBalanceController extends Controller
     }
 
     // ══════════════════════════════════════════════════════════
+    //  Empty Responses
+    // ══════════════════════════════════════════════════════════
+
+    /**
+     * ✅ استجابة فارغة مع ترقيم
+     */
+    private function emptyPaginatedResponse(int $page, int $perPage): array
+    {
+        return [
+            'rows'       => [],
+            'totals'     => $this->emptyTotals(),
+            'pagination' => [
+                'current_page' => $page,
+                'per_page'     => $perPage,
+                'total'        => 0,
+                'last_page'    => 1,
+            ],
+        ];
+    }
+
+    /**
+     * ✅ استجابة فارغة بدون ترقيم (للطباعة)
+     */
+    private function emptyList(): array
+    {
+        return [
+            'rows'   => [],
+            'totals' => $this->emptyTotals(),
+        ];
+    }
+
+    /**
+     * ✅ إجماليات صفرية
+     */
+    private function emptyTotals(): array
+    {
+        return [
+            'debit'        => 0,
+            'credit'       => 0,
+            'net'          => 0,
+            'local_debit'  => 0,
+            'local_credit' => 0,
+            'local_net'    => 0,
+        ];
+    }
+
+    // ══════════════════════════════════════════════════════════
     //  Account Hierarchy
     // ══════════════════════════════════════════════════════════
 
@@ -155,8 +245,9 @@ class OpeningBalanceController extends Controller
             return $this->parentCache[$type];
         }
 
-        return $this->parentCache[$type] = cache()->rememberForever(
+        return $this->parentCache[$type] = cache()->remember(
             "ob_parent_{$type}",
+            self::PARENT_CACHE_TTL,
             fn() => $this->resolveParentId($type)
         );
     }
@@ -167,13 +258,6 @@ class OpeningBalanceController extends Controller
 
         foreach ($patterns as $pattern) {
             $id = CharAccount::whereRaw('LOWER(system_key) = ?', [strtolower($pattern)])
-                ->value('accountID');
-
-            if ($id) return $id;
-        }
-
-        foreach ($patterns as $pattern) {
-            $id = CharAccount::whereRaw('LOWER(system_key) LIKE ?', ['%' . strtolower($pattern) . '%'])
                 ->value('accountID');
 
             if ($id) return $id;
@@ -202,29 +286,26 @@ class OpeningBalanceController extends Controller
             return $this->descendantsCache[$parentId];
         }
 
-        return $this->descendantsCache[$parentId] = cache()->rememberForever(
+        return $this->descendantsCache[$parentId] = cache()->remember(
             "ob_desc_{$parentId}",
+            self::DESCENDANTS_CACHE_TTL,
             fn() => $this->buildDescendantIds($parentId)
         );
     }
 
+    /**
+     * ✅ بناء أبناء الحساب مستوى بمستوى
+     */
     private function buildDescendantIds(int $parentId): array
     {
-        $byParent = CharAccount::where('IsActive', 1)
-            ->get(['accountID', 'accParent'])
-            ->groupBy('accParent');
-
         $ids          = [$parentId];
         $currentLevel = [$parentId];
 
         for ($i = 0; $i < 10; $i++) {
-            $children = [];
-
-            foreach ($currentLevel as $pid) {
-                foreach ($byParent[$pid] ?? [] as $child) {
-                    $children[] = $child->accountID;
-                }
-            }
+            $children = CharAccount::whereIn('accParent', $currentLevel)
+                ->where('IsActive', 1)
+                ->pluck('accountID')
+                ->all();
 
             if (empty($children)) break;
 
@@ -236,75 +317,187 @@ class OpeningBalanceController extends Controller
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Build List
+    //  buildPaginatedList
     // ══════════════════════════════════════════════════════════
 
-    private function buildList(string $type, string $search): array
+    private function buildPaginatedList(string $type, string $search, int $page, int $perPage): array
     {
         $parentId = $this->parentIdByType($type);
 
         if (!$parentId) {
-            return $this->emptyList();
+            return $this->emptyPaginatedResponse($page, $perPage);
         }
 
-        $balances = $this->fetchBalances($parentId, $search);
-
-        if ($balances->isEmpty()) {
-            return $this->emptyList();
-        }
-
-        $accountIds = $balances->pluck('accountID')->unique()->all();
-        $entities   = $this->bulkFetchEntities($accountIds);
-
-        $result = $this->mapBalancesToRows($balances, $entities);
-
-        return [
-            'rows'   => $result['items'],
-            'totals' => $result['totals'],
-        ];
-    }
-
-    private function emptyList(): array
-    {
-        return [
-            'rows'   => [],
-            'totals' => $this->emptyTotals(),
-        ];
-    }
-
-    private function emptyTotals(): array
-    {
-        return [
-            'debit'        => 0,
-            'credit'       => 0,
-            'net'          => 0,
-            'local_debit'  => 0,
-            'local_credit' => 0,
-            'local_net'    => 0,
-        ];
-    }
-
-    private function fetchBalances(int $parentId, string $search)
-    {
         $accountIds = $this->getAllDescendantAccountIds($parentId);
 
-        $query = OpeningBalance::query()
-            ->with(['account', 'currency'])
+        if (empty($accountIds)) {
+            return $this->emptyPaginatedResponse($page, $perPage);
+        }
+
+        // ─── الاستعلام الأساسي ───
+        $baseQuery = OpeningBalance::query()
             ->whereIn('accountID', $accountIds);
 
         if ($search !== '') {
-            $query->whereHas('account', fn($q) => $q
+            $baseQuery->whereHas('account', fn($q) => $q
                 ->where('accCode', 'like', "%{$search}%")
                 ->orWhere('accName', 'like', "%{$search}%"));
         }
 
-        return $query->orderBy('openingBalancesID')->get();
+        // ─── 1) استعلام واحد: العدد + الإجماليات ───
+        $agg = (clone $baseQuery)->selectRaw('
+            COUNT(*)                                         AS total_count,
+            COALESCE(SUM(opeDebit), 0)                       AS total_debit,
+            COALESCE(SUM(opeCredit), 0)                      AS total_credit,
+            COALESCE(SUM(opeDebit  * opeExchangeRate), 0)    AS total_local_debit,
+            COALESCE(SUM(opeCredit * opeExchangeRate), 0)    AS total_local_credit
+        ')->first();
+
+        $total = (int) $agg->total_count;
+
+        // ─── 2) الصفحة الحالية ───
+        $balances = (clone $baseQuery)
+            ->orderBy('openingBalancesID')
+            ->skip(($page - 1) * $perPage)
+            ->take($perPage)
+            ->get();
+
+        if ($balances->isEmpty()) {
+            return [
+                'rows'       => [],
+                'totals'     => $this->formatTotals($agg),
+                'pagination' => [
+                    'current_page' => $page,
+                    'per_page'     => $perPage,
+                    'total'        => $total,
+                    'last_page'    => max(1, (int) ceil($total / $perPage)),
+                ],
+            ];
+        }
+
+        // ─── 3) جلب الحسابات والعملات دفعة واحدة ───
+        $pageAccountIds  = $balances->pluck('accountID')->unique()->all();
+        $pageCurrencyIds = $balances->pluck('coinsID')->filter()->unique()->all();
+
+        $accounts = CharAccount::whereIn('accountID', $pageAccountIds)
+            ->get(['accountID', 'accCode', 'accName', 'accParent', 'nature', 'system_key'])
+            ->keyBy('accountID');
+
+        $currencies = empty($pageCurrencyIds)
+            ? collect()
+            : Coin::whereIn('coinsID', $pageCurrencyIds)
+                ->pluck('coinsCode', 'coinsID');
+
+        // ─── 4) جلب الكيانات حسب النوع الموجود فقط ───
+        $entities = $this->bulkFetchEntitiesFiltered($accounts);
+
+        // ─── 5) بناء الصفوف ───
+        $rows = $this->mapRowsWithAccounts($balances, $accounts, $currencies, $entities);
+
+        return [
+            'rows'       => $rows,
+            'totals'     => $this->formatTotals($agg),
+            'pagination' => [
+                'current_page' => $page,
+                'per_page'     => $perPage,
+                'total'        => $total,
+                'last_page'    => max(1, (int) ceil($total / $perPage)),
+            ],
+        ];
     }
 
-    private function mapBalancesToRows($balances, array $entities): array
+    /**
+     * ✅ تحويل نتيجة SUM إلى مصفوفة إجماليات
+     */
+    private function formatTotals($agg): array
     {
-        $totals = $this->emptyTotals();
-        $items  = [];
+        $debit       = (float) $agg->total_debit;
+        $credit      = (float) $agg->total_credit;
+        $localDebit  = (float) $agg->total_local_debit;
+        $localCredit = (float) $agg->total_local_credit;
+
+        return [
+            'debit'        => $debit,
+            'credit'       => $credit,
+            'net'          => $debit - $credit,
+            'local_debit'  => $localDebit,
+            'local_credit' => $localCredit,
+            'local_net'    => $localDebit - $localCredit,
+        ];
+    }
+
+    /**
+     * ✅ جلب الكيانات حسب الأنواع الموجودة فقط
+     */
+    private function bulkFetchEntitiesFiltered($accounts): array
+    {
+        $byType = [];
+
+        foreach ($accounts as $acc) {
+            $type = $this->typeByParentId($acc->accParent)
+                 ?? $this->typeBySystemKey($acc->system_key);
+
+            if (!$type) continue;
+
+            $byType[$type][] = $acc->accountID;
+        }
+
+        $map = [];
+
+        if (!empty($byType['CASH'])) {
+            $this->mergeInto(
+                $map,
+                Box::whereIn('accountID', $byType['CASH'])
+                    ->get(['boxID', 'accountID', 'boxName']),
+                fn($r) => ['id' => $r->boxID, 'name' => $r->boxName]
+            );
+        }
+
+        if (!empty($byType['BANK'])) {
+            $this->mergeInto(
+                $map,
+                Bank::whereIn('accountID', $byType['BANK'])
+                    ->get(['bankID', 'accountID', 'bankName']),
+                fn($r) => ['id' => $r->bankID, 'name' => $r->bankName]
+            );
+        }
+
+        if (!empty($byType['CUSTOMER'])) {
+            $this->mergeInto(
+                $map,
+                Customer::whereIn('accountID', $byType['CUSTOMER'])
+                    ->get(['CustomersID', 'accountID', 'CustomersName2']),
+                fn($r) => ['id' => $r->CustomersID, 'name' => $r->CustomersName2]
+            );
+        }
+
+        if (!empty($byType['SUPPLIER'])) {
+            $this->mergeInto(
+                $map,
+                Supplier::whereIn('accountID', $byType['SUPPLIER'])
+                    ->get(['suplierID', 'accountID', 'supName']),
+                fn($r) => ['id' => $r->suplierID, 'name' => $r->supName]
+            );
+        }
+
+        if (!empty($byType['INVENTORY'])) {
+            $this->mergeInto(
+                $map,
+                Stock::whereIn('accountID', $byType['INVENTORY'])
+                    ->get(['StockID', 'accountID', 'StockName']),
+                fn($r) => ['id' => $r->StockID, 'name' => $r->StockName]
+            );
+        }
+
+        return $map;
+    }
+
+    /**
+     * ✅ بناء الصفوف
+     */
+    private function mapRowsWithAccounts($balances, $accounts, $currencies, $entities): array
+    {
+        $items = [];
 
         foreach ($balances as $row) {
             $debit  = (float) $row->opeDebit;
@@ -314,75 +507,99 @@ class OpeningBalanceController extends Controller
             $localDebit  = $debit  * $rate;
             $localCredit = $credit * $rate;
 
-            $totals['debit']        += $debit;
-            $totals['credit']       += $credit;
-            $totals['local_debit']  += $localDebit;
-            $totals['local_credit'] += $localCredit;
+            $account  = $accounts[$row->accountID] ?? null;
+            $entity   = $entities[$row->accountID] ?? null;
+            $currency = $row->coinsID ? ($currencies[$row->coinsID] ?? '') : '';
 
-            $entity = $entities[$row->accountID] ?? null;
+            $accountNature = (int) ($account->nature ?? 0);
+
+            $netDiff      = $debit - $credit;
+            $localNetDiff = $localDebit - $localCredit;
+
+            $netByNature      = $accountNature === 1 ? -$netDiff      : $netDiff;
+            $localNetByNature = $accountNature === 1 ? -$localNetDiff : $localNetDiff;
+
+            $balanceLabel = $netDiff >= 0 ? 'لنا' : 'علينا';
 
             $items[] = [
                 'id'             => $row->openingBalancesID,
                 'entity_id'      => $entity['id']   ?? null,
-                'entity_code'    => $entity['code'] ?? '',
-                'entity_name'    => $entity['name'] ?? '',
+                'entity_code'    => $account->accCode ?? '',
+                'entity_name'    => $entity['name'] ?? ($account->accName ?? ''),
                 'account_id'     => $row->accountID,
-                'account_code'   => $row->account->accCode ?? '',
-                'account_name'   => $row->account->accName ?? '',
+                'account_code'   => $account->accCode ?? '',
+                'account_name'   => $account->accName ?? '',
                 'currency_id'    => $row->coinsID,
-                'currency_code'  => $row->currency->coinsCode ?? '',
+                'currency_code'  => $currency,
                 'exchange_rate'  => $rate,
                 'debit'          => $debit,
                 'credit'         => $credit,
-                'net'            => $debit - $credit,
+                'net'            => $netByNature,
                 'local_debit'    => $localDebit,
                 'local_credit'   => $localCredit,
-                'local_net'      => $localDebit - $localCredit,
+                'local_net'      => $localNetByNature,
+                'balance_label'  => $balanceLabel,
             ];
         }
 
-        $totals['net']       = $totals['debit'] - $totals['credit'];
-        $totals['local_net'] = $totals['local_debit'] - $totals['local_credit'];
-
-        return ['items' => $items, 'totals' => $totals];
+        return $items;
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Entity Fetching
+    //  buildFullList (للطباعة)
     // ══════════════════════════════════════════════════════════
 
-    private function bulkFetchEntities(array $accountIds): array
+    private function buildFullList(string $type, string $search): array
     {
-        if (empty($accountIds)) return [];
+        $parentId = $this->parentIdByType($type);
 
-        $map = [];
+        if (!$parentId) return $this->emptyList();
 
-        $this->mergeInto($map, Box::with('account')->whereIn('accountID', $accountIds)->get(), fn($r) => [
-            'id'   => $r->boxID,
-            'code' => $r->account->accCode ?? '',
-            'name' => $r->boxName,
-        ]);
+        $accountIds = $this->getAllDescendantAccountIds($parentId);
 
-        $this->mergeInto($map, Bank::with('account')->whereIn('accountID', $accountIds)->get(), fn($r) => [
-            'id'   => $r->bankID,
-            'code' => $r->account->accCode ?? '',
-            'name' => $r->bankName,
-        ]);
+        if (empty($accountIds)) return $this->emptyList();
 
-        $this->mergeInto($map, Customer::with('account')->whereIn('accountID', $accountIds)->get(), fn($r) => [
-            'id'   => $r->CustomersID,
-            'code' => $r->account->accCode ?? '',
-            'name' => $r->CustomersName2,
-        ]);
+        $baseQuery = OpeningBalance::query()->whereIn('accountID', $accountIds);
 
-        $this->mergeInto($map, Supplier::with('account')->whereIn('accountID', $accountIds)->get(), fn($r) => [
-            'id'   => $r->suplierID,
-            'code' => $r->account->accCode ?? '',
-            'name' => $r->supName,
-        ]);
+        if ($search !== '') {
+            $baseQuery->whereHas('account', fn($q) => $q
+                ->where('accCode', 'like', "%{$search}%")
+                ->orWhere('accName', 'like', "%{$search}%"));
+        }
 
-        return $map;
+        $agg = (clone $baseQuery)->selectRaw('
+            COALESCE(SUM(opeDebit), 0)                    AS total_debit,
+            COALESCE(SUM(opeCredit), 0)                   AS total_credit,
+            COALESCE(SUM(opeDebit  * opeExchangeRate), 0) AS total_local_debit,
+            COALESCE(SUM(opeCredit * opeExchangeRate), 0) AS total_local_credit
+        ')->first();
+
+        $balances = $baseQuery->orderBy('openingBalancesID')->get();
+
+        $accountIds  = $balances->pluck('accountID')->unique()->all();
+        $currencyIds = $balances->pluck('coinsID')->filter()->unique()->all();
+
+        $accounts = CharAccount::whereIn('accountID', $accountIds)
+            ->get(['accountID', 'accCode', 'accName', 'accParent', 'nature', 'system_key'])
+            ->keyBy('accountID');
+
+        $currencies = empty($currencyIds)
+            ? collect()
+            : Coin::whereIn('coinsID', $currencyIds)->pluck('coinsCode', 'coinsID');
+
+        $entities = $this->bulkFetchEntitiesFiltered($accounts);
+
+        $rows = $this->mapRowsWithAccounts($balances, $accounts, $currencies, $entities);
+
+        return [
+            'rows'   => $rows,
+            'totals' => $this->formatTotals($agg),
+        ];
     }
+
+    // ══════════════════════════════════════════════════════════
+    //  Entity Fetching (لـ Picker)
+    // ══════════════════════════════════════════════════════════
 
     private function mergeInto(array &$map, $rows, callable $transform): void
     {
@@ -391,18 +608,15 @@ class OpeningBalanceController extends Controller
         }
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  Picker Data
-    // ══════════════════════════════════════════════════════════
-
     private function fetchEntities(string $type, string $search): array
     {
         return match ($type) {
-            'CASH'     => $this->fetchBoxes($search),
-            'BANK'     => $this->fetchBanks($search),
-            'CUSTOMER' => $this->fetchCustomers($search),
-            'SUPPLIER' => $this->fetchSuppliers($search),
-            default    => [],
+            'CASH'      => $this->fetchBoxes($search),
+            'BANK'      => $this->fetchBanks($search),
+            'CUSTOMER'  => $this->fetchCustomers($search),
+            'SUPPLIER'  => $this->fetchSuppliers($search),
+            'INVENTORY' => $this->fetchStocks($search),
+            default     => [],
         };
     }
 
@@ -419,6 +633,7 @@ class OpeningBalanceController extends Controller
                 'id'            => $r->boxID,
                 'code'          => $r->account->accCode ?? '',
                 'name'          => $r->boxName ?? '',
+                'phone'         => '',
                 'account_id'    => $r->accountID,
                 'account_code'  => $r->account->accCode ?? '',
                 'account_name'  => $r->account->accName ?? '',
@@ -441,6 +656,7 @@ class OpeningBalanceController extends Controller
                 'id'            => $r->bankID,
                 'code'          => $r->account->accCode ?? '',
                 'name'          => $r->bankName ?? '',
+                'phone'         => '',
                 'account_id'    => $r->accountID,
                 'account_code'  => $r->account->accCode ?? '',
                 'account_name'  => $r->account->accName ?? '',
@@ -453,7 +669,7 @@ class OpeningBalanceController extends Controller
     private function fetchCustomers(string $search): array
     {
         $q = Customer::with('account')
-            ->where('CusIsStopeed', 0)
+            ->where('is_active', 1)
             ->whereHas('account', fn($a) => $a->where('IsActive', 1));
 
         $this->applySearch($q, $search, 'CustomersName2');
@@ -463,6 +679,7 @@ class OpeningBalanceController extends Controller
                 'id'            => $r->CustomersID,
                 'code'          => $r->account->accCode ?? '',
                 'name'          => $r->CustomersName2 ?? '',
+                'phone'         => $r->CusPhone ?? '',
                 'account_id'    => $r->accountID,
                 'account_code'  => $r->account->accCode ?? '',
                 'account_name'  => $r->account->accName ?? '',
@@ -475,7 +692,7 @@ class OpeningBalanceController extends Controller
     private function fetchSuppliers(string $search): array
     {
         $q = Supplier::with('account')
-            ->where('supStoped', 0)
+            ->where('is_active', 1)
             ->whereHas('account', fn($a) => $a->where('IsActive', 1));
 
         $this->applySearch($q, $search, 'supName');
@@ -485,6 +702,30 @@ class OpeningBalanceController extends Controller
                 'id'            => $r->suplierID,
                 'code'          => $r->account->accCode ?? '',
                 'name'          => $r->supName ?? '',
+                'phone'         => $r->supPhone ?? '',
+                'account_id'    => $r->accountID,
+                'account_code'  => $r->account->accCode ?? '',
+                'account_name'  => $r->account->accName ?? '',
+                'currency_id'   => null,
+                'currency_code' => null,
+                'exchange_rate' => 1,
+            ])->all();
+    }
+
+    private function fetchStocks(string $search): array
+    {
+        $q = Stock::with('account')
+            ->where('is_active', 1)
+            ->whereHas('account', fn($a) => $a->where('IsActive', 1));
+
+        $this->applySearch($q, $search, 'StockName');
+
+        return $q->limit(self::PICKER_LIMIT)->get()
+            ->map(fn($r) => [
+                'id'            => $r->StockID,
+                'code'          => $r->account->accCode ?? '',
+                'name'          => $r->StockName ?? '',
+                'phone'         => '',
                 'account_id'    => $r->accountID,
                 'account_code'  => $r->account->accCode ?? '',
                 'account_name'  => $r->account->accName ?? '',
@@ -531,7 +772,6 @@ class OpeningBalanceController extends Controller
                 'exchange_rate' => (float) $row->opeExchangeRate,
                 'debit'         => (float) $row->opeDebit,
                 'credit'        => (float) $row->opeCredit,
-                'notes'         => '',
             ]],
         ];
     }
@@ -542,9 +782,13 @@ class OpeningBalanceController extends Controller
 
     private function persist(Request $request, ?int $id = null): JsonResponse
     {
+        $request->merge([
+            'lines' => array_values($request->input('lines', [])),
+        ]);
+
         $validator = Validator::make($request->all(), [
             'lines'                 => 'required|array|min:1|max:100',
-            'lines.*.type'          => 'required|in:CASH,BANK,CUSTOMER,SUPPLIER',
+            'lines.*.type'          => 'required|in:CASH,BANK,CUSTOMER,SUPPLIER,INVENTORY',
             'lines.*.account_id'    => 'required|exists:characcount,accountID',
             'lines.*.currency_id'   => 'nullable|exists:coins,coinsID',
             'lines.*.exchange_rate' => 'nullable|numeric|gt:0',
@@ -563,35 +807,80 @@ class OpeningBalanceController extends Controller
         DB::beginTransaction();
 
         try {
-            // عند التعديل: احذف الأرصدة القديمة والقيود المرتبطة
+            $affectedAccountIds = [];
+
             if ($id) {
-                JournalEntryService::deleteByDocNumber('OB-' . $id);
-                OpeningBalance::where('openingBalancesID', $id)->delete();
-            }
+                $balance = OpeningBalance::find($id);
 
-            // أضف الأرصدة الجديدة
-            $insertedIDs = [];
+                if (!$balance) {
+                    DB::rollBack();
+                    return $this->fail('الرصيد غير موجود.', 404);
+                }
 
-            foreach ($request->lines as $line) {
-                $row = OpeningBalance::create([
+                $oldAccountID = (int) $balance->accountID;
+
+                $line = $request->lines[0] ?? null;
+
+                if (!$line) {
+                    DB::rollBack();
+                    return $this->fail('لا يوجد سطر للتعديل.');
+                }
+
+                $balance->update([
                     'accountID'       => $line['account_id'],
                     'coinsID'         => $line['currency_id'] ?? null,
                     'opeExchangeRate' => (float) ($line['exchange_rate'] ?? 1),
                     'opeDebit'        => (float) ($line['debit']  ?? 0),
                     'opeCredit'       => (float) ($line['credit'] ?? 0),
-                    'opeFiscalYear'   => now()->startOfYear(),
-                    'opeData'         => now(),
                 ]);
 
-                $insertedIDs[] = $row->openingBalancesID;
-            }
+                if ($balance->entryID) {
+                    JournalEntryService::updateEntry($balance->entryID, [
+                        'docType'     => 'قيد افتتاحي',
+                        'entryDate'   => $balance->opeData ?? now(),
+                        'description' => 'الأرصدة الافتتاحية - ' . ($balance->account->accName ?? ''),
+                        'lines'       => $this->buildEntryLines($balance),
+                    ]);
+                } else {
+                    $entryID = $this->createEntryForBalance($balance);
+                    if ($entryID) {
+                        $balance->update(['entryID' => $entryID]);
+                    }
+                }
 
-            // ⭐ إنشاء قيد لكل رصيد مضاف
-            foreach ($insertedIDs as $balanceID) {
-                $this->createEntryForBalance($balanceID);
+                $affectedAccountIds[] = $oldAccountID;
+                $affectedAccountIds[] = (int) $balance->accountID;
+
+            } else {
+                foreach ($request->lines as $line) {
+                    $balance = OpeningBalance::create([
+                        'accountID'       => $line['account_id'],
+                        'coinsID'         => $line['currency_id'] ?? null,
+                        'entryID'         => null,
+                        'opeExchangeRate' => (float) ($line['exchange_rate'] ?? 1),
+                        'opeDebit'        => (float) ($line['debit']  ?? 0),
+                        'opeCredit'       => (float) ($line['credit'] ?? 0),
+                        'opeFiscalYear'   => now()->startOfYear(),
+                        'opeData'         => now(),
+                    ]);
+
+                    $entryID = $this->createEntryForBalance($balance);
+
+                    if ($entryID) {
+                        $balance->update(['entryID' => $entryID]);
+                    }
+
+                    $affectedAccountIds[] = (int) $balance->accountID;
+                }
             }
 
             DB::commit();
+
+            if (!empty($affectedAccountIds)) {
+                AccountBalanceService::recalculateBatch(
+                    array_unique($affectedAccountIds)
+                );
+            }
 
             $this->clearListCache();
 
@@ -609,18 +898,14 @@ class OpeningBalanceController extends Controller
     //  Journal Entry Integration
     // ══════════════════════════════════════════════════════════
 
-    /**
-     * إنشاء قيد محاسبي لرصيد افتتاحي واحد
-     */
-    private function createEntryForBalance(int $balanceID): void
+    private function buildEntryLines(OpeningBalance $balance): array
     {
-        $balance = OpeningBalance::with(['account', 'currency'])->find($balanceID);
-        if (!$balance) return;
+        $offsetAccount = CharAccount::where('system_key', 'ownerCapital')->first();
 
-        $offsetAccount = CharAccount::where('system_key', 'openingBalance')->first();
         if (!$offsetAccount) {
-            Log::warning('حساب الأرصدة الافتتاحية غير موجود (system_key = openingBalance)');
-            return;
+            throw new \RuntimeException(
+                'حساب رأس مال المالك غير موجود (system_key = ownerCapital)'
+            );
         }
 
         $rate   = (float) ($balance->opeExchangeRate ?? 1);
@@ -631,36 +916,55 @@ class OpeningBalanceController extends Controller
         $localCredit = $credit * $rate;
         $netAmount   = $localDebit - $localCredit;
 
-        if ($netAmount == 0) return;
+        return [
+            [
+                'accountID'   => $balance->accountID,
+                'coinsID'     => $balance->coinsID,
+                'exchangRate' => $rate,
+                'debit'       => $debit,
+                'credit'      => $credit,
+                'localDebit'  => $localDebit,
+                'localCredit' => $localCredit,
+            ],
+            [
+                'accountID'   => $offsetAccount->accountID,
+                'coinsID'     => null,
+                'exchangRate' => 1,
+                'debit'       => $netAmount < 0 ? abs($netAmount) : 0,
+                'credit'      => $netAmount > 0 ? $netAmount : 0,
+                'localDebit'  => $netAmount < 0 ? abs($netAmount) : 0,
+                'localCredit' => $netAmount > 0 ? $netAmount : 0,
+            ],
+        ];
+    }
 
-        // ⭐ استخدم Service المشترك
-        JournalEntryService::create([
+    private function createEntryForBalance(OpeningBalance $balance): ?int
+    {
+        try {
+            $lines = $this->buildEntryLines($balance);
+        } catch (\RuntimeException $e) {
+            Log::warning($e->getMessage());
+            return null;
+        }
+
+        $rate   = (float) ($balance->opeExchangeRate ?? 1);
+        $debit  = (float) $balance->opeDebit;
+        $credit = (float) $balance->opeCredit;
+
+        $localDebit  = $debit  * $rate;
+        $localCredit = $credit * $rate;
+        $netAmount   = $localDebit - $localCredit;
+
+        if ($netAmount == 0) {
+            return null;
+        }
+
+        return JournalEntryService::create([
             'docType'     => 'قيد افتتاحي',
-            'docNumber'   => 'OB-' . $balanceID,
+            'docNumber'   => 'OB-' . $balance->openingBalancesID,
             'entryDate'   => $balance->opeData ?? now(),
             'description' => 'الأرصدة الافتتاحية - ' . ($balance->account->accName ?? ''),
-            'lines'       => [
-                // سطر الرصيد
-                [
-                    'accountID'   => $balance->accountID,
-                    'coinsID'     => $balance->coinsID,
-                    'exchangRate' => $rate,
-                    'debit'       => $debit,
-                    'credit'      => $credit,
-                    'localDebit'  => $localDebit,
-                    'localCredit' => $localCredit,
-                ],
-                // سطر الطرف المقابل
-                [
-                    'accountID'   => $offsetAccount->accountID,
-                    'coinsID'     => null,
-                    'exchangRate' => 1,
-                    'debit'       => $netAmount < 0 ? abs($netAmount) : 0,
-                    'credit'      => $netAmount > 0 ? $netAmount : 0,
-                    'localDebit'  => $netAmount < 0 ? abs($netAmount) : 0,
-                    'localCredit' => $netAmount > 0 ? $netAmount : 0,
-                ],
-            ],
+            'lines'       => $lines,
         ]);
     }
 
@@ -744,42 +1048,65 @@ class OpeningBalanceController extends Controller
         return null;
     }
 
-    private function buildInsertData(array $lines): array
-    {
-        $now  = now();
-        $year = $now->copy()->startOfYear();
-
-        return array_map(fn($line) => [
-            'accountID'       => $line['account_id'],
-            'coinsID'         => $line['currency_id'] ?? null,
-            'opeExchangeRate' => (float) ($line['exchange_rate'] ?? 1),
-            'opeDebit'        => (float) ($line['debit']  ?? 0),
-            'opeCredit'       => (float) ($line['credit'] ?? 0),
-            'opeFiscalYear'   => $year,
-            'opeData'         => $now,
-        ], $lines);
-    }
-
     // ══════════════════════════════════════════════════════════
     //  Cache Helpers
     // ══════════════════════════════════════════════════════════
 
     public function clearCache(): void
     {
-        foreach (array_keys(self::SYSTEM_KEYS) as $type) {
-            cache()->forget("ob_parent_{$type}");
-        }
-
-        $this->clearListCache();
+        self::forgetAllCache();
 
         $this->parentCache      = [];
         $this->descendantsCache = [];
     }
 
+    /**
+     * ✅ بناء مفتاح كاش يعتمد على version
+     */
+    private function buildListCacheKey(string $type, string $search, int $page, int $perPage): string
+    {
+        $version = (int) cache()->get("ob_list_version_{$type}", 1);
+
+        return "ob_list_{$type}_v{$version}_" . md5("{$search}_{$page}_{$perPage}");
+    }
+
+    /**
+     * ✅ إبطال كاش القوائم بزيادة version لكل نوع
+     */
     private function clearListCache(): void
     {
         foreach (array_keys(self::SYSTEM_KEYS) as $type) {
-            cache()->forget("ob_list_{$type}_" . md5(''));
+            $current = (int) cache()->get("ob_list_version_{$type}", 1);
+
+            cache()->put("ob_list_version_{$type}", $current + 1, self::VERSION_TTL);
+        }
+    }
+
+    /**
+     * ✅ مسح كل الكاش المرتبط بالأرصدة الافتتاحية
+     */
+    public static function forgetAllCache(): void
+    {
+        foreach (array_keys(self::SYSTEM_KEYS) as $type) {
+            // إبطال كل نسخ القوائم
+            $current = (int) cache()->get("ob_list_version_{$type}", 1);
+            cache()->put("ob_list_version_{$type}", $current + 1, self::VERSION_TTL);
+
+            // مسح كاش الأب
+            cache()->forget("ob_parent_{$type}");
+        }
+
+        // مسح كاش الأبناء
+        foreach (['cash', 'banks', 'bank', 'customers', 'customer',
+                  'suppliers', 'supplier', 'inventory', 'stock'] as $key) {
+
+            $parent = CharAccount::whereRaw(
+                'LOWER(system_key) = ?', [strtolower($key)]
+            )->value('accountID');
+
+            if ($parent) {
+                cache()->forget("ob_desc_{$parent}");
+            }
         }
     }
 
@@ -787,11 +1114,15 @@ class OpeningBalanceController extends Controller
     //  Currency Helpers
     // ══════════════════════════════════════════════════════════
 
+    /**
+     * ✅ العملة النظامية أولاً
+     */
     private function getActiveCurrencies(): array
     {
         return Coin::where('is_active', 1)
+            ->orderByDesc('coinsSystem')    // العملة النظامية أولاً
             ->orderBy('coinsName')
-            ->get(['coinsID', 'coinsName', 'coinsCode', 'coinsExchangeRate'])
+            ->get(['coinsID', 'coinsName', 'coinsCode', 'coinsExchangeRate', 'coinsSystem'])
             ->all();
     }
 }

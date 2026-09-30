@@ -3,6 +3,7 @@
 namespace App\Models\Accounting;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class OpeningBalance extends Model
 {
@@ -15,6 +16,7 @@ class OpeningBalance extends Model
     protected $fillable = [
         'accountID',
         'coinsID',
+        'entryID',          
         'opeExchangeRate',
         'opeDebit',
         'opeCredit',
@@ -30,13 +32,23 @@ class OpeningBalance extends Model
         'opeData'         => 'datetime',
     ];
 
-    public function account()
+    public function account(): BelongsTo
     {
         return $this->belongsTo(CharAccount::class, 'accountID', 'accountID');
     }
 
-    public function currency()
+    public function currency(): BelongsTo
     {
         return $this->belongsTo(Coin::class, 'coinsID', 'coinsID');
+    }
+
+    // علاقة جديدة بالقيد
+    public function entry(): BelongsTo
+    {
+        return $this->belongsTo(
+            JournalEntry::class,
+            'entryID',
+            'entryID'
+        );
     }
 }

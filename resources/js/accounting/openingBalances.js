@@ -12,17 +12,18 @@ const State = {
     isEditMode:         false,
     originalSnapshot:   null,
     activeDisplayInput: null,
-    activePickerType:   'CASH',
+    activePickerType:   'CUSTOMER',
     pickerAccounts:     [],
     searchTimer:        null,
     pickerTimer:        null,
     listAbort:          null,
     systemCurrencyCode: '',
+    systemCurrencyId:   null,
 
-    // الترقيم
     currentPage:        1,
     perPage:            10,
     totalRows:          0,
+    lastPage:           1,
     cachedRows:         [],
     cachedTotals:       null,
 };
@@ -47,7 +48,7 @@ const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
 const El = {};
 
 // ─────────────────────────────────────────────────────────────
-//  أدوات
+//  أدوات عامة
 // ─────────────────────────────────────────────────────────────
 const formatMoney = (v) => Number(v || 0).toLocaleString('en-US', {
     minimumFractionDigits: 2,
@@ -63,16 +64,84 @@ function toast(message, type = 'info') {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  أدوات القوالب
+// ─────────────────────────────────────────────────────────────
+function cloneTemplate(template) {
+    if (!template || !template.content) return null;
+    const first = template.content.firstElementChild;
+    return first ? first.cloneNode(true) : null;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  أدوات العملة
+// ─────────────────────────────────────────────────────────────
+
+function isCurrencyLockedToAccount(type) {
+    return type === 'CASH' || type === 'BANK';
+}
+
+function findSystemCurrencyOption(select) {
+    if (!select) return null;
+
+    const byData = Array.from(select.options).find(
+        (o) => o.dataset.system === '1'
+    );
+
+    if (byData) return byData;
+
+    const sysId = State.systemCurrencyId;
+    if (sysId) {
+        const byId = Array.from(select.options).find(
+            (o) => String(o.value) === String(sysId)
+        );
+        if (byId) return byId;
+    }
+
+    return null;
+}
+
+function syncRateFromCurrency(currencySelect, rateInput) {
+    if (!currencySelect || !rateInput) return;
+
+    const opt = currencySelect.options[currencySelect.selectedIndex];
+    const rate = opt?.dataset?.rate || 1;
+
+    rateInput.value = Number(rate).toFixed(2);
+}
+
+function setCurrencyLock(currencySelect, locked) {
+    if (!currencySelect) return;
+
+    if (locked) {
+        currencySelect.style.pointerEvents = 'none';
+        currencySelect.tabIndex = -1;
+        currencySelect.setAttribute('aria-disabled', 'true');
+        currencySelect.classList.add('bg-body-secondary');
+    } else {
+        currencySelect.style.pointerEvents = '';
+        currencySelect.tabIndex = 0;
+        currencySelect.removeAttribute('aria-disabled');
+        currencySelect.classList.remove('bg-body-secondary');
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
 //  تحميل الجدول
 // ─────────────────────────────────────────────────────────────
-async function loadTable(search = '') {
+async function loadTable(search = '', page = 1) {
     abortPendingRequest();
 
     State.listAbort = new AbortController();
 
     try {
+        const params = new URLSearchParams();
+        params.set('type', El.currentType.value);
+        params.set('search', search);
+        params.set('page', page);
+        params.set('per_page', State.perPage);
+
         const response = await fetch(
-            `${API.list}?type=${El.currentType.value}&search=${encodeURIComponent(search)}`,
+            `${API.list}?${params.toString()}`,
             {
                 headers: { 'Accept': 'application/json' },
                 signal:  State.listAbort.signal,
@@ -88,8 +157,9 @@ async function loadTable(search = '') {
 
         State.cachedRows   = json.rows || [];
         State.cachedTotals = json.totals || {};
-        State.totalRows    = State.cachedRows.length;
-        State.currentPage  = 1;
+        State.currentPage  = json.pagination?.current_page || 1;
+        State.lastPage     = json.pagination?.last_page || 1;
+        State.totalRows    = json.pagination?.total || 0;
 
         renderCurrentPage();
         renderTotals(State.cachedTotals);
@@ -113,11 +183,9 @@ function abortPendingRequest() {
 //  الترقيم
 // ─────────────────────────────────────────────────────────────
 function renderCurrentPage() {
-    const start = (State.currentPage - 1) * State.perPage;
-    const end   = start + State.perPage;
-    const page  = State.cachedRows.slice(start, end);
+    const startIndex = (State.currentPage - 1) * State.perPage;
 
-    renderTable(page, start);
+    renderTable(State.cachedRows, startIndex);
 }
 
 function renderTable(rows, startIndex = 0) {
@@ -143,92 +211,120 @@ function renderPagination() {
     const container = document.getElementById('obPagination');
     if (!container) return;
 
-    const totalPages = Math.ceil(State.totalRows / State.perPage);
+    const totalPages = State.lastPage;
+    const current    = State.currentPage;
+    const total      = State.totalRows;
+    const perPage    = State.perPage;
 
     if (totalPages <= 1) {
-        container.innerHTML = '';
+        container.replaceChildren();
         return;
     }
 
-    const start = (State.currentPage - 1) * State.perPage + 1;
-    const end   = Math.min(State.currentPage * State.perPage, State.totalRows);
+    const start = (current - 1) * perPage + 1;
+    const end   = Math.min(current * perPage, total);
 
-    let buttons = '';
+    // ✅ استنساخ الغلاف
+    const wrapper = cloneTemplate(El.paginationWrapperTemplate);
+    if (!wrapper) return;
 
-    buttons += `
-        <li class="page-item ${State.currentPage === 1 ? 'disabled' : ''}">
-            <a class="page-link" href="#" data-page="${State.currentPage - 1}">
-                <i class="bi bi-chevron-right"></i>
-            </a>
-        </li>
-    `;
+    const infoEl = wrapper.querySelector('.pagination-info');
+    const listEl = wrapper.querySelector('.pagination-list');
 
+    if (infoEl) {
+        infoEl.textContent = `عرض ${start} - ${end} من ${total}`;
+    }
+
+    // ─── زر السابق ───
+    const prevLi = cloneTemplate(El.paginationPrevTemplate);
+
+    if (prevLi) {
+        const prevBtn = prevLi.querySelector('.pagination-prev');
+        prevBtn.dataset.page = current - 1;
+
+        if (current === 1) {
+            prevLi.classList.add('disabled');
+        } else {
+            prevBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                loadTable(El.searchInput?.value || '', current - 1);
+                document.getElementById('obTable')?.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start',
+                });
+            });
+        }
+
+        listEl.appendChild(prevLi);
+    }
+
+    // ─── أرقام الصفحات ───
     for (let i = 1; i <= totalPages; i++) {
-        if (
-            i === 1 ||
-            i === totalPages ||
-            (i >= State.currentPage - 2 && i <= State.currentPage + 2)
-        ) {
-            buttons += `
-                <li class="page-item ${i === State.currentPage ? 'active' : ''}">
-                    <a class="page-link" href="#" data-page="${i}">${i}</a>
-                </li>
-            `;
-        } else if (
-            i === State.currentPage - 3 ||
-            i === State.currentPage + 3
-        ) {
-            buttons += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        if (i === 1 || i === totalPages || (i >= current - 2 && i <= current + 2)) {
+
+            const pageLi = cloneTemplate(El.paginationPageTemplate);
+
+            if (pageLi) {
+                const pageBtn = pageLi.querySelector('.pagination-page');
+                pageBtn.textContent = i;
+                pageBtn.dataset.page = i;
+
+                if (i === current) {
+                    pageLi.classList.add('active');
+                } else {
+                    pageBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        loadTable(El.searchInput?.value || '', i);
+                        document.getElementById('obTable')?.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start',
+                        });
+                    });
+                }
+
+                listEl.appendChild(pageLi);
+            }
+
+        } else if (i === current - 3 || i === current + 3) {
+
+            const ellipsis = cloneTemplate(El.paginationEllipsisTemplate);
+            if (ellipsis) listEl.appendChild(ellipsis);
         }
     }
 
-    buttons += `
-        <li class="page-item ${State.currentPage === totalPages ? 'disabled' : ''}">
-            <a class="page-link" href="#" data-page="${State.currentPage + 1}">
-                <i class="bi bi-chevron-left"></i>
-            </a>
-        </li>
-    `;
+    // ─── زر التالي ───
+    const nextLi = cloneTemplate(El.paginationNextTemplate);
 
-    container.innerHTML = `
-        <div class="d-flex justify-content-between align-items-center mt-3">
-            <small class="text-muted">
-                عرض ${start} - ${end} من ${State.totalRows}
-            </small>
-            <nav>
-                <ul class="pagination pagination-sm mb-0">
-                    ${buttons}
-                </ul>
-            </nav>
-        </div>
-    `;
+    if (nextLi) {
+        const nextBtn = nextLi.querySelector('.pagination-next');
+        nextBtn.dataset.page = current + 1;
 
-    container.querySelectorAll('.page-link[data-page]').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const page = parseInt(btn.dataset.page);
-
-            if (page < 1 || page > totalPages) return;
-            if (page === State.currentPage) return;
-
-            State.currentPage = page;
-            renderCurrentPage();
-            renderPagination();
-
-            document.getElementById('obTable')?.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start',
+        if (current === totalPages) {
+            nextLi.classList.add('disabled');
+        } else {
+            nextBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                loadTable(El.searchInput?.value || '', current + 1);
+                document.getElementById('obTable')?.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start',
+                });
             });
-        });
-    });
+        }
+
+        listEl.appendChild(nextLi);
+    }
+
+    // ─── استبدال المحتوى ───
+    container.replaceChildren(wrapper);
 }
 
 // ─────────────────────────────────────────────────────────────
 //  بناء صف الجدول
 // ─────────────────────────────────────────────────────────────
 function buildTableRow(row, index) {
-    const clone = El.rowTemplate.content.cloneNode(true);
-    const tr = clone.querySelector('tr');
+    const tr = cloneTemplate(El.rowTemplate);
+    if (!tr) return null;
 
     setText(tr, '.row-index',        index + 1);
     setText(tr, '.row-account-code', row.entity_code || row.account_code);
@@ -236,26 +332,28 @@ function buildTableRow(row, index) {
     setText(tr, '.row-currency',     row.currency_code || '—');
     setText(tr, '.row-rate',         row.currency_code ? formatMoney(row.exchange_rate) : '—');
 
-    const notesCell = tr.querySelector('.row-notes');
-    notesCell.textContent = row.notes || '';
-    notesCell.title       = row.notes || '';
-
     renderAmountCell(tr.querySelector('.row-debit'),  row.debit,  row.local_debit,  row.currency_code);
     renderAmountCell(tr.querySelector('.row-credit'), row.credit, row.local_credit, row.currency_code);
-    renderAmountCell(tr.querySelector('.row-net'),    row.net,    row.local_net,    row.currency_code);
+    renderAmountCell(tr.querySelector('.row-net'),    row.net,    row.local_net,    row.currency_code, row.balance_label);
 
-    tr.querySelector('.btn-edit-row').dataset.id     = row.id;
-    tr.querySelector('.btn-delete-row').dataset.id   = row.id;
-    tr.querySelector('.btn-delete-row').dataset.name = row.entity_name || row.account_name || '';
+    const editBtn = tr.querySelector('.btn-edit-row');
+    if (editBtn) editBtn.dataset.id = row.id;
+
+    const deleteBtn = tr.querySelector('.btn-delete-row');
+    if (deleteBtn) {
+        deleteBtn.dataset.id   = row.id;
+        deleteBtn.dataset.name = row.entity_name || row.account_name || '';
+    }
 
     return tr;
 }
 
-function renderAmountCell(cell, foreign, local, currencyCode) {
+function renderAmountCell(cell, foreign, local, currencyCode, label = null) {
     if (!cell) return;
 
     const foreignDiv = cell.querySelector('.amount-foreign');
     const localDiv   = cell.querySelector('.amount-local');
+    const labelDiv   = cell.querySelector('.amount-label-small');
 
     if (!foreignDiv || !localDiv) return;
 
@@ -266,13 +364,16 @@ function renderAmountCell(cell, foreign, local, currencyCode) {
         foreignDiv.textContent   = '';
         localDiv.textContent     = formatMoney(local);
         localDiv.className       = 'amount-single';
-        return;
+    } else {
+        foreignDiv.style.display = '';
+        foreignDiv.textContent   = `${formatMoney(foreign)} ${currencyCode}`;
+        localDiv.textContent     = `${formatMoney(local)} ${State.systemCurrencyCode}`;
+        localDiv.className       = 'amount-local';
     }
 
-    foreignDiv.style.display = '';
-    foreignDiv.textContent   = `${formatMoney(foreign)} ${currencyCode}`;
-    localDiv.textContent     = `${formatMoney(local)} ${State.systemCurrencyCode}`;
-    localDiv.className       = 'amount-local';
+    if (labelDiv) {
+        labelDiv.textContent = label || '';
+    }
 }
 
 function renderTotals(totals) {
@@ -293,8 +394,8 @@ function addLine(data = {}) {
     State.linesCounter++;
 
     const n = State.linesCounter;
-    const clone = El.lineTemplate.content.cloneNode(true);
-    const tr = clone.querySelector('tr');
+    const tr = cloneTemplate(El.lineTemplate);
+    if (!tr) return;
 
     if (State.isEditMode) {
         const btn = tr.querySelector('.btn-remove-line');
@@ -307,7 +408,7 @@ function addLine(data = {}) {
     fillLineValues(tr, data);
     bindLineEvents(tr);
 
-    El.linesBody.appendChild(clone);
+    El.linesBody.appendChild(tr);
     scrollToLastLine();
 }
 
@@ -319,12 +420,17 @@ function bindLineFields(tr, n) {
     tr.querySelector('.line-rate').name       = `lines[${n}][exchange_rate]`;
     tr.querySelector('.line-debit').name      = `lines[${n}][debit]`;
     tr.querySelector('.line-credit').name     = `lines[${n}][credit]`;
-    tr.querySelector('.line-notes').name      = `lines[${n}][notes]`;
 }
 
 function fillLineValues(tr, data) {
-    const type = tr.querySelector('.line-type');
-    type.value = data.type || El.currentType.value || 'CASH';
+    const currencySelect = tr.querySelector('.line-currency');
+    const rateInput      = tr.querySelector('.line-rate');
+
+    if (data.type) {
+        tr.querySelector('.line-type').value = data.type;
+    }
+
+    const type = data.type || '';
 
     if (data.account_id) {
         tr.querySelector('.line-account-id').value   = data.account_id;
@@ -337,35 +443,55 @@ function fillLineValues(tr, data) {
             : `${data.account_code || ''} - ${data.account_name || ''}`.trim();
     }
 
-    if (data.currency_id)   tr.querySelector('.line-currency').value = data.currency_id;
-    if (data.exchange_rate) tr.querySelector('.line-rate').value = Number(data.exchange_rate).toFixed(2);
-    if (data.debit)         tr.querySelector('.line-debit').value  = data.debit;
-    if (data.credit)        tr.querySelector('.line-credit').value = data.credit;
-    if (data.notes)         tr.querySelector('.line-notes').value  = data.notes;
+    if (isCurrencyLockedToAccount(type)) {
+        setCurrencyLock(currencySelect, true);
+
+        if (data.currency_id) {
+            currencySelect.value = data.currency_id;
+        }
+    } else {
+        setCurrencyLock(currencySelect, false);
+
+        if (data.currency_id) {
+            currencySelect.value = data.currency_id;
+        } else {
+            const sysOpt = findSystemCurrencyOption(currencySelect);
+            if (sysOpt) currencySelect.value = sysOpt.value;
+        }
+    }
+
+    if (data.exchange_rate) {
+        rateInput.value = Number(data.exchange_rate).toFixed(2);
+    } else {
+        syncRateFromCurrency(currencySelect, rateInput);
+    }
+
+    if (data.debit)  tr.querySelector('.line-debit').value  = data.debit;
+    if (data.credit) tr.querySelector('.line-credit').value = data.credit;
 }
 
 function bindLineEvents(tr) {
-    tr.querySelector('.line-type').addEventListener('change', () => resetLineAccount(tr));
-    tr.querySelector('.line-account-display').addEventListener('click', (e) => openPicker(e.target));
-    tr.querySelector('.line-currency').addEventListener('change', (e) => applyCurrencyRate(e.target, tr));
-    tr.querySelector('.line-debit').addEventListener('input', (e) => zeroOther(e.target, tr.querySelector('.line-credit')));
-    tr.querySelector('.line-credit').addEventListener('input', (e) => zeroOther(e.target, tr.querySelector('.line-debit')));
-    tr.querySelector('.btn-remove-line').addEventListener('click', () => {
-        tr.remove();
-        renumberLines();
-    });
-}
+    tr.querySelector('.line-account-display')
+        .addEventListener('click', (e) => openPicker(e.target));
 
-function resetLineAccount(tr) {
-    tr.querySelector('.line-account-display').value = '';
-    tr.querySelector('.line-account-id').value      = '';
-    tr.querySelector('.line-account-code').value    = '';
-    tr.querySelector('.line-entity-id').value       = '';
-}
+    tr.querySelector('.line-currency')
+        .addEventListener('change', (e) => {
+            const select = e.target;
+            if (select.getAttribute('aria-disabled') === 'true') return;
+            syncRateFromCurrency(select, tr.querySelector('.line-rate'));
+        });
 
-function applyCurrencyRate(select, tr) {
-    const rate = select.options[select.selectedIndex]?.dataset?.rate || 1;
-    tr.querySelector('.line-rate').value = Number(rate).toFixed(2);
+    tr.querySelector('.line-debit')
+        .addEventListener('input', (e) => zeroOther(e.target, tr.querySelector('.line-credit')));
+
+    tr.querySelector('.line-credit')
+        .addEventListener('input', (e) => zeroOther(e.target, tr.querySelector('.line-debit')));
+
+    tr.querySelector('.btn-remove-line')
+        .addEventListener('click', () => {
+            tr.remove();
+            renumberLines();
+        });
 }
 
 function zeroOther(input, other) {
@@ -398,7 +524,7 @@ function scrollToLastLine() {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  فتح / إغلاق المودلات
+//  فتح / إغلاق مودال الإضافة والتعديل
 // ─────────────────────────────────────────────────────────────
 function openAddModal() {
     State.isEditMode = false;
@@ -407,7 +533,7 @@ function openAddModal() {
     El.addEditTitle.textContent = 'إضافة رصيد افتتاحي';
     El.editId.value = '';
     El.obForm.reset();
-    El.linesBody.innerHTML = '';
+    El.linesBody.replaceChildren();
     State.linesCounter = 0;
 
     El.btnAddLine.style.display = '';
@@ -433,7 +559,7 @@ async function openEditModal(id) {
         El.editId.value = json.id;
 
         El.btnAddLine.style.display = 'none';
-        El.linesBody.innerHTML = '';
+        El.linesBody.replaceChildren();
         State.linesCounter = 0;
 
         json.lines.forEach(addLine);
@@ -451,52 +577,60 @@ async function openEditModal(id) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Picker
+//  Picker (مع تبويبات)
 // ─────────────────────────────────────────────────────────────
 async function openPicker(displayInput) {
-    const row  = displayInput.closest('tr');
-    const type = row.querySelector('.line-type')?.value || 'CASH';
+    const row = displayInput.closest('tr');
+    const rowType = row.querySelector('.line-type')?.value || '';
+    const initialType = rowType || 'CUSTOMER';
 
-    State.activePickerType   = type;
     State.activeDisplayInput = displayInput;
-
-    configurePicker(type);
-    await loadPickerAccounts('');
 
     const modal = bootstrap.Modal.getOrCreateInstance(El.pickerModal, { focus: false });
     modal.show();
 
-    El.pickerModal.addEventListener('shown.bs.modal', function handler() {
-        El.pickerSearch.focus();
-        El.pickerModal.removeEventListener('shown.bs.modal', handler);
-    }, { once: true });
+    await activatePickerTab(initialType);
+
+    setTimeout(() => El.pickerSearch.focus(), 250);
 }
 
-function configurePicker(type) {
+async function activatePickerTab(type) {
+    State.activePickerType = type;
+
+    El.pickerTabs.forEach((tab) => {
+        tab.classList.toggle('active', tab.dataset.type === type);
+    });
+
     const titles = {
-        CASH:     'اختيار صندوق',
-        BANK:     'اختيار بنك',
-        CUSTOMER: 'اختيار عميل',
-        SUPPLIER: 'اختيار مورد',
+        CASH:      'اختيار صندوق',
+        BANK:      'اختيار بنك',
+        CUSTOMER:  'اختيار عميل',
+        SUPPLIER:  'اختيار مورد',
+        INVENTORY: 'اختيار مخزن',
     };
-    const headers = {
-        CASH:     'رمز الصندوق',
-        BANK:     'رمز البنك',
-        CUSTOMER: 'رمز العميل',
-        SUPPLIER: 'رمز المورد',
-    };
+    El.pickerTitle.textContent = titles[type] || 'اختيار حساب';
 
-    El.pickerTitle.textContent      = titles[type] || 'اختيار';
-    El.pickerCodeHeader.textContent = headers[type] || 'الرمز';
+    updatePickerColumns(type);
 
+    await loadPickerAccounts(El.pickerSearch.value);
+}
+
+function updatePickerColumns(type) {
+    const showPhone    = type === 'CUSTOMER' || type === 'SUPPLIER';
     const showCurrency = type === 'CASH' || type === 'BANK';
-    El.pickerModal.querySelectorAll('.picker-currency-col').forEach((col) => {
-        col.style.display = showCurrency ? '' : 'none';
+
+    El.pickerModal.querySelectorAll('.picker-phone-col').forEach((el) => {
+        el.style.display = showPhone ? '' : 'none';
+    });
+
+    El.pickerModal.querySelectorAll('.picker-currency-col').forEach((el) => {
+        el.style.display = showCurrency ? '' : 'none';
     });
 }
 
 async function loadPickerAccounts(search = '') {
-    El.pickerBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">جارٍ التحميل...</td></tr>';
+    showPickerLoading();
+
     El.pickerEmpty.style.display = 'none';
 
     try {
@@ -507,25 +641,31 @@ async function loadPickerAccounts(search = '') {
         const json = await response.json();
 
         if (!json.success) {
-            El.pickerBody.innerHTML = '';
+            El.pickerBody.replaceChildren();
             El.pickerEmpty.style.display = '';
             return;
         }
+            State.pickerAccounts = json.data || [];
+            renderPickerList();
 
-        State.pickerAccounts = json.data || [];
-        renderPickerList();
+            //  أعد تطبيق إخفاء/إظهار الأعمدة على الصفوف الجديدة
+            updatePickerColumns(State.activePickerType);
 
-    } catch (error) {
+        } catch (error) {
         console.error(error);
-        El.pickerBody.innerHTML = '';
+        El.pickerBody.replaceChildren();
         El.pickerEmpty.style.display = '';
     }
 }
 
-function renderPickerList() {
-    const showCurrency = State.activePickerType === 'CASH' || State.activePickerType === 'BANK';
+function showPickerLoading() {
+    const row = cloneTemplate(El.pickerLoadingTemplate);
+    if (!row) return;
+    El.pickerBody.replaceChildren(row);
+}
 
-    El.pickerBody.innerHTML = '';
+function renderPickerList() {
+    El.pickerBody.replaceChildren();
 
     if (!State.pickerAccounts.length) {
         El.pickerEmpty.style.display = '';
@@ -537,23 +677,17 @@ function renderPickerList() {
     const fragment = document.createDocumentFragment();
 
     State.pickerAccounts.forEach((acc) => {
-        const clone = El.pickerTemplate.content.cloneNode(true);
-        const tr = clone.querySelector('tr');
+        const tr = cloneTemplate(El.pickerTemplate);
+        if (!tr) return;
 
-        setText(tr, '.picker-code',    acc.code);
-        setText(tr, '.picker-name',    acc.name);
-        setText(tr, '.picker-account', acc.account_code);
-
-        const currencyCell = tr.querySelector('.picker-currency');
-        if (showCurrency) {
-            currencyCell.textContent = acc.currency_code || '—';
-        } else {
-            currencyCell.style.display = 'none';
-        }
+        setText(tr, '.picker-code',     acc.account_code || acc.code || '—');
+        setText(tr, '.picker-name',     acc.name || '—');
+        setText(tr, '.picker-phone',    acc.phone || '—');
+        setText(tr, '.picker-currency', acc.currency_code || '—');
 
         tr.addEventListener('click', () => selectPickerRow(acc));
 
-        fragment.appendChild(clone);
+        fragment.appendChild(tr);
     });
 
     El.pickerBody.appendChild(fragment);
@@ -562,30 +696,44 @@ function renderPickerList() {
 function selectPickerRow(acc) {
     if (!State.activeDisplayInput) return;
 
-    // ⬇️ التحقق من التكرار
     if (isAccountDuplicate(acc.account_id, State.activeDisplayInput)) {
         toast('هذا الحساب مضاف بالفعل في سطر آخر', 'warning');
         return;
     }
 
-    const row = State.activeDisplayInput.closest('tr');
+    const row  = State.activeDisplayInput.closest('tr');
+    const type = State.activePickerType;
+
+    row.querySelector('.line-type').value = type;
 
     row.querySelector('.line-account-id').value   = acc.account_id;
     row.querySelector('.line-account-code').value = acc.account_code;
     row.querySelector('.line-entity-id').value    = acc.id;
 
-    State.activeDisplayInput.value = `${acc.code || ''} - ${acc.name || ''}`.trim();
+    State.activeDisplayInput.value = `${acc.account_code || ''} - ${acc.name || ''}`.trim();
 
-    if (State.activePickerType === 'CASH' || State.activePickerType === 'BANK') {
-        const currencySelect = row.querySelector('.line-currency');
-        const rateInput      = row.querySelector('.line-rate');
+    const currencySelect = row.querySelector('.line-currency');
+    const rateInput      = row.querySelector('.line-rate');
 
-        if (currencySelect && acc.currency_id) {
+    if (isCurrencyLockedToAccount(type)) {
+        setCurrencyLock(currencySelect, true);
+
+        if (acc.currency_id && currencySelect) {
             currencySelect.value = acc.currency_id;
         }
-        if (rateInput && acc.exchange_rate) {
+
+        if (acc.exchange_rate && rateInput) {
             rateInput.value = Number(acc.exchange_rate).toFixed(2);
+        } else {
+            syncRateFromCurrency(currencySelect, rateInput);
         }
+    } else {
+        setCurrencyLock(currencySelect, false);
+
+        const sysOpt = findSystemCurrencyOption(currencySelect);
+        if (sysOpt) currencySelect.value = sysOpt.value;
+
+        syncRateFromCurrency(currencySelect, rateInput);
     }
 
     bootstrap.Modal.getInstance(El.pickerModal)?.hide();
@@ -620,7 +768,6 @@ function validateForm() {
         return false;
     }
 
-    // التحقق من التكرار
     const accountIds = [];
 
     for (let i = 0; i < rows.length; i++) {
@@ -635,7 +782,6 @@ function validateForm() {
         }
     }
 
-    // التحقق من كل سطر
     for (let i = 0; i < rows.length; i++) {
         const error = validateRow(rows[i], i);
         if (error) {
@@ -656,13 +802,11 @@ function validateForm() {
 
 function validateRow(row, index) {
     const n         = index + 1;
-    const type      = row.querySelector('.line-type')?.value;
     const accountId = row.querySelector('.line-account-id')?.value;
     const rate      = parseFloat(row.querySelector('.line-rate')?.value) || 0;
     const debit     = parseFloat(row.querySelector('.line-debit')?.value) || 0;
     const credit    = parseFloat(row.querySelector('.line-credit')?.value) || 0;
 
-    if (!type)                     return `السطر ${n}: يجب اختيار النوع`;
     if (!accountId)                return `السطر ${n}: يجب اختيار الحساب`;
     if (rate <= 0)                 return `السطر ${n}: سعر الصرف يجب أن يكون أكبر من صفر`;
     if (debit > 0 && credit > 0)   return `السطر ${n}: لا يمكن إدخال مدين ودائن معًا`;
@@ -692,7 +836,6 @@ function captureFormSnapshot() {
             exchange_rate: row.querySelector('.line-rate')?.value || '',
             debit:         row.querySelector('.line-debit')?.value || '',
             credit:        row.querySelector('.line-credit')?.value || '',
-            notes:         row.querySelector('.line-notes')?.value || '',
         });
     });
 
@@ -731,7 +874,9 @@ async function saveForm() {
         document.activeElement?.blur();
         bootstrap.Modal.getInstance(El.addEditModal)?.hide();
 
-        await loadTable(El.searchInput.value);
+        const targetPage = isEdit ? State.currentPage : 1;
+
+        await loadTable(El.searchInput?.value || '', targetPage);
         toast(json.message || 'تم الحفظ بنجاح', 'success');
 
     } catch (error) {
@@ -780,7 +925,12 @@ async function confirmDelete() {
         }
 
         closeDeleteModal();
-        await loadTable(El.searchInput.value);
+
+        const targetPage = State.cachedRows.length === 1 && State.currentPage > 1
+            ? State.currentPage - 1
+            : State.currentPage;
+
+        await loadTable(El.searchInput?.value || '', targetPage);
         toast(json.message || 'تم حذف الرصيد بنجاح', 'success');
 
     } catch (error) {
@@ -793,473 +943,27 @@ async function confirmDelete() {
 }
 
 // ═════════════════════════════════════════════════════════════
-//  الطباعة (محسّنة)
+//  الطباعة
 // ═════════════════════════════════════════════════════════════
 function printCurrentTab() {
-    const rows = State.cachedRows.length ? State.cachedRows : [];
-
-    if (!rows.length) {
+    if (!State.totalRows) {
         toast('لا توجد بيانات للطباعة', 'warning');
         return;
     }
 
-    const printData = {
-        title:       getTabTitle(El.currentType.value),
-        typeCode:    El.currentType.value,
-        rows:        rows.map((r, i) => normalizePrintRow(r, i + 1)),
-        totals:      State.cachedTotals || {},
-        systemCode:  State.systemCurrencyCode || '',
-        printedAt:   formatPrintDate(new Date()),
-        printedBy:   getCurrentUserName(),
-        companyName: getCompanyName(),
-    };
+    const params = new URLSearchParams();
+    params.set('type', El.currentType.value);
 
-    openPrintWindow(buildPrintHTML(printData));
-}
-
-function getTabTitle(type) {
-    return {
-        CASH:     'الصناديق',
-        BANK:     'البنوك',
-        CUSTOMER: 'العملاء',
-        SUPPLIER: 'الموردين',
-    }[type] || 'الأرصدة';
-}
-
-function normalizePrintRow(row, index) {
-    const isForeign = row.currency_code && row.currency_code !== State.systemCurrencyCode;
-
-    return {
-        index,
-        accountCode: row.entity_code || row.account_code || '—',
-        accountName: row.entity_name || row.account_name || '—',
-        currency:    row.currency_code || '—',
-        rate:        isForeign ? formatMoney(row.exchange_rate) : '—',
-        debit:       formatMoney(row.local_debit),
-        credit:      formatMoney(row.local_credit),
-        net:         formatMoney(row.local_net),
-        notes:       row.notes || '',
-    };
-}
-
-function formatPrintDate(date) {
-    const pad = (n) => String(n).padStart(2, '0');
-
-    return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ` +
-           `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function openPrintWindow(html) {
-    const win = window.open('', '_blank', 'width=1000,height=800');
-
-    if (!win) {
-        toast('تم منع النافذة المنبثقة. الرجاء السماح بها.', 'danger');
-        return;
+    const search = (El.searchInput?.value || '').trim();
+    if (search !== '') {
+        params.set('search', search);
     }
 
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-}
-
-function buildPrintHTML(data) {
-    const rowsPerPage = 20;
-    const pages       = chunkArray(data.rows, rowsPerPage);
-
-    const pagesHTML = pages.map((pageRows, pageIndex) => {
-        const isLastPage = pageIndex === pages.length - 1;
-        const startIndex = pageIndex * rowsPerPage;
-        const isFirstPage = pageIndex === 0;
-
-        return buildPrintPage({
-            data,
-            pageRows,
-            pageIndex,
-            startIndex,
-            isFirstPage,
-            isLastPage,
-            totalPages: pages.length,
-        });
-    }).join('');
-
-    return wrapPrintDocument({
-        title:     data.title,
-        pagesHTML,
-    });
-}
-
-function buildPrintPage(ctx) {
-    const { data, pageRows, pageIndex, startIndex, isFirstPage, isLastPage, totalPages } = ctx;
-
-    const rowsHTML = pageRows.map((r, i) => `
-        <tr>
-            <td class="col-num">${startIndex + i + 1}</td>
-            <td class="col-code">${escapeHtml(r.accountCode)}</td>
-            <td class="col-name">${escapeHtml(r.accountName)}</td>
-            <td class="col-currency">${escapeHtml(r.currency)}</td>
-            <td class="col-rate">${r.rate}</td>
-            <td class="col-amount">${r.debit}</td>
-            <td class="col-amount">${r.credit}</td>
-            <td class="col-amount net">${r.net}</td>
-            <td class="col-notes">${escapeHtml(r.notes)}</td>
-        </tr>
-    `).join('');
-
-    return `
-        <div class="page">
-            <header class="page-header">
-                <div class="header-title">
-                    <h1>${escapeHtml(data.companyName)}</h1>
-                    <h2>الأرصدة الافتتاحية - ${escapeHtml(data.title)}</h2>
-                </div>
-                <div class="header-meta">
-                    <div><strong>التاريخ:</strong> ${data.printedAt}</div>
-                    <div><strong>الصفحة:</strong> ${pageIndex + 1} / ${totalPages}</div>
-                    <div><strong>المستخدم:</strong> ${escapeHtml(data.printedBy)}</div>
-                </div>
-            </header>
-
-            ${isFirstPage ? buildPrintSummary(data) : ''}
-
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th class="col-num">#</th>
-                        <th class="col-code">رقم الحساب</th>
-                        <th class="col-name">اسم الحساب</th>
-                        <th class="col-currency">العملة</th>
-                        <th class="col-rate">السعر</th>
-                        <th class="col-amount">مدين</th>
-                        <th class="col-amount">دائن</th>
-                        <th class="col-amount">الرصيد</th>
-                        <th class="col-notes">ملاحظات</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rowsHTML}
-                </tbody>
-                ${isLastPage ? buildPrintTotals(data) : ''}
-            </table>
-
-            ${isLastPage ? buildPrintFooter(data) : ''}
-        </div>
-    `;
-}
-
-function buildPrintSummary(data) {
-    const t = data.totals;
-
-    return `
-        <div class="summary-bar">
-            <div class="summary-item">
-                <span class="label">عدد السجلات</span>
-                <span class="value">${data.rows.length}</span>
-            </div>
-            <div class="summary-item">
-                <span class="label">إجمالي المدين</span>
-                <span class="value debit">${formatMoney(t.local_debit)}</span>
-            </div>
-            <div class="summary-item">
-                <span class="label">إجمالي الدائن</span>
-                <span class="value credit">${formatMoney(t.local_credit)}</span>
-            </div>
-            <div class="summary-item">
-                <span class="label">الصافي</span>
-                <span class="value net">${formatMoney(t.local_net)}</span>
-            </div>
-        </div>
-    `;
-}
-
-function buildPrintTotals(data) {
-    const t = data.totals;
-
-    return `
-        <tfoot>
-            <tr>
-                <td colspan="5" class="total-label">الإجماليات:</td>
-                <td class="col-amount">${formatMoney(t.local_debit)}</td>
-                <td class="col-amount">${formatMoney(t.local_credit)}</td>
-                <td class="col-amount net">${formatMoney(t.local_net)}</td>
-                <td></td>
-            </tr>
-        </tfoot>
-    `;
-}
-
-function buildPrintFooter(data) {
-    return `
-        <footer class="page-footer">
-            <div class="signatures">
-                <div class="sig-box">
-                    <div class="sig-line"></div>
-                    <div class="sig-label">المحاسب</div>
-                </div>
-                <div class="sig-box">
-                    <div class="sig-line"></div>
-                    <div class="sig-label">المراجع</div>
-                </div>
-                <div class="sig-box">
-                    <div class="sig-line"></div>
-                    <div class="sig-label">المدير المالي</div>
-                </div>
-            </div>
-            <div class="footer-info">
-                <span>${escapeHtml(data.companyName)}</span>
-                <span>طُبع في: ${data.printedAt}</span>
-            </div>
-        </footer>
-    `;
-}
-
-function wrapPrintDocument({ title, pagesHTML }) {
-    return `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <title>${escapeHtml(title)}</title>
-    <style>${getPrintStyles()}</style>
-</head>
-<body>
-    ${pagesHTML}
-
-    <script>
-        window.onload = function () {
-            setTimeout(function () { window.print(); }, 400);
-        };
-    <\/script>
-</body>
-</html>`;
-}
-
-function getPrintStyles() {
-    return `
-        @page {
-            size: A4 portrait;
-            margin: 8mm;
-        }
-
-        * { box-sizing: border-box; }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, sans-serif;
-            direction: rtl;
-            margin: 0;
-            padding: 0;
-            color: #212529;
-            font-size: 11px;
-        }
-
-        .page {
-            padding: 10px;
-            page-break-after: always;
-            position: relative;
-            min-height: 275mm;
-        }
-
-        .page:last-child { page-break-after: auto; }
-
-        /* ─── الترويسة ─── */
-        .page-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 2px solid #0d6efd;
-            padding-bottom: 8px;
-            margin-bottom: 10px;
-        }
-
-        .header-title h1 {
-            font-size: 14px;
-            margin: 0 0 2px 0;
-            color: #0d6efd;
-        }
-
-        .header-title h2 {
-            font-size: 12px;
-            margin: 0;
-            color: #495057;
-            font-weight: 500;
-        }
-
-        .header-meta {
-            font-size: 10px;
-            color: #6c757d;
-            text-align: left;
-            line-height: 1.5;
-        }
-
-        /* ─── شريط الملخص ─── */
-        .summary-bar {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 10px;
-            padding: 8px;
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 4px;
-        }
-
-        .summary-item {
-            flex: 1;
-            text-align: center;
-            padding: 4px;
-            border-left: 1px solid #dee2e6;
-        }
-
-        .summary-item:first-child { border-left: none; }
-
-        .summary-item .label {
-            display: block;
-            font-size: 9px;
-            color: #6c757d;
-            margin-bottom: 3px;
-        }
-
-        .summary-item .value {
-            font-size: 12px;
-            font-weight: 700;
-            direction: ltr;
-            display: inline-block;
-        }
-
-        .summary-item .value.debit  { color: #198754; }
-        .summary-item .value.credit { color: #dc3545; }
-        .summary-item .value.net    { color: #0d6efd; }
-
-        /* ─── الجدول ─── */
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 10px;
-            table-layout: fixed;
-        }
-
-        .data-table th,
-        .data-table td {
-            border: 1px solid #dee2e6;
-            padding: 4px 5px;
-            text-align: center;
-            vertical-align: middle;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .data-table th {
-            background: #e7f1ff;
-            color: #0d6efd;
-            font-weight: 700;
-            font-size: 10px;
-        }
-
-        .data-table tbody tr:nth-child(even) {
-            background: #f8f9fa;
-        }
-
-        .data-table tfoot td {
-            background: #e7f1ff;
-            font-weight: 700;
-            color: #0d6efd;
-        }
-
-        /* ─── أعمدة ─── */
-        .col-num      { width: 4%; }
-        .col-code     { width: 11%; }
-        .col-name     { width: 23%; text-align: right; }
-        .col-currency { width: 6%; }
-        .col-rate     { width: 7%; }
-        .col-amount   { width: 12%; text-align: right; direction: ltr; font-family: 'Consolas', monospace; font-weight: 600; }
-        .col-notes    { width: 13%; text-align: right; font-size: 9px; }
-
-        .col-amount.net { color: #0d6efd; }
-
-        .total-label {
-            text-align: right;
-            background: #e7f1ff;
-            color: #0d6efd;
-            font-weight: 700;
-        }
-
-        /* ─── التذييل ─── */
-        .page-footer {
-            margin-top: 20px;
-            padding-top: 12px;
-            border-top: 1px dashed #adb5bd;
-        }
-
-        .signatures {
-            display: flex;
-            justify-content: space-around;
-            margin-bottom: 12px;
-        }
-
-        .sig-box {
-            text-align: center;
-            width: 28%;
-        }
-
-        .sig-line {
-            border-bottom: 1px solid #495057;
-            height: 35px;
-            margin-bottom: 4px;
-        }
-
-        .sig-label {
-            font-size: 10px;
-            color: #495057;
-            font-weight: 600;
-        }
-
-        .footer-info {
-            display: flex;
-            justify-content: space-between;
-            font-size: 9px;
-            color: #6c757d;
-            padding-top: 6px;
-            border-top: 1px solid #e9ecef;
-        }
-
-        @media print {
-            body { padding: 0; }
-            .page { padding: 0; min-height: auto; }
-        }
-    `;
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Helpers
-// ─────────────────────────────────────────────────────────────
-function chunkArray(arr, size) {
-    const chunks = [];
-
-    for (let i = 0; i < arr.length; i += size) {
-        chunks.push(arr.slice(i, i + size));
-    }
-
-    return chunks;
-}
-
-function escapeHtml(value) {
-    if (value === null || value === undefined) return '';
-
-    return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
-function getCurrentUserName() {
-    return document.querySelector('meta[name="user-name"]')?.content
-        || document.querySelector('.user-name')?.textContent?.trim()
-        || '—';
-}
-
-function getCompanyName() {
-    return document.querySelector('meta[name="company-name"]')?.content
-        || window.OB_COMPANY_NAME
-        || 'نظام ERP';
+    window.open(
+        `/setting/accounting/openingBalances/print?${params.toString()}`,
+        '_blank',
+        'width=1000,height=800'
+    );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1270,7 +974,7 @@ document.addEventListener('DOMContentLoaded', () => {
     readSystemSettings();
     bindGlobalEvents();
 
-    loadTable();
+    loadTable('', 1);
 });
 
 function cacheElements() {
@@ -1303,18 +1007,30 @@ function cacheElements() {
 
     El.pickerModal         = document.getElementById('accountPickerModal');
     El.pickerTitle         = document.getElementById('accountPickerTitle');
-    El.pickerCodeHeader    = document.getElementById('accountPickerCodeHeader');
     El.pickerSearch        = document.getElementById('accountPickerSearch');
     El.pickerClear         = document.getElementById('accountPickerClear');
     El.pickerBody          = document.getElementById('accountPickerBody');
     El.pickerEmpty         = document.getElementById('accountPickerEmpty');
     El.pickerTemplate      = document.getElementById('accountPickerRowTemplate');
+    El.pickerLoadingTemplate = document.getElementById('accountPickerLoadingTemplate');
+
+    El.pickerTabs          = El.pickerModal
+        ? El.pickerModal.querySelectorAll('#pickerTabs .nav-link')
+        : [];
 
     El.tabs                = document.querySelectorAll('#obTabs .nav-link');
+
+    // قوالب الترقيم
+    El.paginationWrapperTemplate  = document.getElementById('paginationWrapperTemplate');
+    El.paginationPrevTemplate     = document.getElementById('paginationPrevTemplate');
+    El.paginationNextTemplate     = document.getElementById('paginationNextTemplate');
+    El.paginationPageTemplate     = document.getElementById('paginationPageTemplate');
+    El.paginationEllipsisTemplate = document.getElementById('paginationEllipsisTemplate');
 }
 
 function readSystemSettings() {
     State.systemCurrencyCode = window.OB_SYSTEM_CURRENCY_CODE || '';
+    State.systemCurrencyId   = window.OB_SYSTEM_CURRENCY_ID   || null;
 }
 
 function bindGlobalEvents() {
@@ -1337,10 +1053,16 @@ function bindGlobalEvents() {
     El.pickerSearch?.addEventListener('input', debouncePicker);
     El.pickerClear?.addEventListener('click', clearPicker);
 
+    El.pickerTabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+            activatePickerTab(tab.dataset.type);
+        });
+    });
+
     El.tabs.forEach((tab) => {
         tab.addEventListener('shown.bs.tab', function () {
             El.currentType.value = this.dataset.type;
-            loadTable(El.searchInput.value);
+            loadTable(El.searchInput?.value || '', 1);
         });
     });
 
@@ -1363,7 +1085,7 @@ function bindGlobalEvents() {
 function resetModal() {
     El.obForm.reset();
     El.editId.value = '';
-    El.linesBody.innerHTML = '';
+    El.linesBody.replaceChildren();
     State.linesCounter = 0;
     State.isEditMode = false;
     State.originalSnapshot = null;
@@ -1372,7 +1094,10 @@ function resetModal() {
 
 function debounceSearch() {
     clearTimeout(State.searchTimer);
-    State.searchTimer = setTimeout(() => loadTable(El.searchInput.value), 500);
+    State.searchTimer = setTimeout(
+        () => loadTable(El.searchInput?.value || '', 1),
+        500
+    );
 }
 
 function debouncePicker() {
@@ -1382,7 +1107,7 @@ function debouncePicker() {
 
 function clearSearch() {
     El.searchInput.value = '';
-    loadTable('');
+    loadTable('', 1);
     El.searchInput.focus();
 }
 
@@ -1404,9 +1129,7 @@ function handleTableClick(e) {
         openDeleteModal(deleteBtn.dataset.id, deleteBtn.dataset.name);
     }
 }
-/* ═══════════════════════════════════════════════════════════
-   تصدير للـ HTML (احتياطي)
-   ═══════════════════════════════════════════════════════════ */
+
 Object.assign(window, {
     openAddModal,
     openEditModal,

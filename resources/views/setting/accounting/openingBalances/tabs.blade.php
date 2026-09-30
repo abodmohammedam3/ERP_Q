@@ -47,6 +47,17 @@
             الموردين
         </button>
     </li>
+     <li class="nav-item" role="presentation">
+        <button class="nav-link"
+                type="button"
+                data-bs-toggle="tab"
+                data-bs-target="#tab-inventory"
+                data-type="INVENTORY"
+                role="tab">
+            <i class="bi bi-box-seam"></i>
+            المخازن
+        </button>
+    </li>
 
 </ul>
 

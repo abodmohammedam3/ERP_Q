@@ -225,6 +225,10 @@ Route::get('/setting/accounting/openingBalances/picker',
     [OpeningBalanceController::class, 'picker']
 )->name('openingBalances.picker');
 
+Route::get('/setting/accounting/openingBalances/print', 
+    [OpeningBalanceController::class, 'print']
+)->name('openingBalances.print');
+
 Route::get('/setting/accounting/openingBalances/{id}/edit',
     [OpeningBalanceController::class, 'edit']
 )->name('openingBalances.edit');

@@ -4,23 +4,19 @@ namespace App\Observers;
 
 use App\Models\Customer;
 use App\Models\Accounting\CharAccount;
+use App\Http\Controllers\accounting\OpeningBalanceController;
 
 class CustomerObserver
 {
     /**
-     * بعد إنشاء العميل:
-     *
-     * الحساب التحليلي يكون قد أُنشئ مسبقاً
-     * من CustomerController.
-     *
-     * هنا نضمن تطابق اسم الحساب مع اسم العميل،
-     * وكذلك حالة النشاط.
+     * بعد إنشاء العميل
      */
     public function created(Customer $customer)
     {
-        $account = CharAccount::find(
-            $customer->accountID
-        );
+        // ✅ امسح كاش الأرصدة الافتتاحية
+        OpeningBalanceController::forgetAllCache();
+
+        $account = CharAccount::find($customer->accountID);
 
         if (!$account) {
             return;
@@ -28,40 +24,17 @@ class CustomerObserver
 
         $changed = false;
 
-        // =================================================
-        // مزامنة اسم العميل مع اسم الحساب
-        // =================================================
-
-        if (
-            $account->accName !==
-            $customer->CustomersName2
-        ) {
-            $account->accName =
-                $customer->CustomersName2;
-
+        // مزامنة اسم العميل
+        if ($account->accName !== $customer->CustomersName2) {
+            $account->accName = $customer->CustomersName2;
             $changed = true;
         }
 
-        // =================================================
-        // مزامنة حالة العميل مع الحساب
-        //
-        // is_active:
-        // 1 = نشط
-        // 0 = غير نشط
-        // =================================================
+        // مزامنة حالة العميل
+        $newIsActive = (int) $customer->is_active === 1 ? 1 : 0;
 
-        $newIsActive =
-            (int) $customer->is_active === 1
-                ? 1
-                : 0;
-
-        if (
-            (int) $account->IsActive !==
-            $newIsActive
-        ) {
-            $account->IsActive =
-                $newIsActive;
-
+        if ((int) $account->IsActive !== $newIsActive) {
+            $account->IsActive = $newIsActive;
             $changed = true;
         }
 
@@ -71,16 +44,14 @@ class CustomerObserver
     }
 
     /**
-     * عند تعديل العميل:
-     *
-     * مزامنة اسم وحالة الحساب التحليلي
-     * المرتبط بالعميل.
+     * عند تعديل العميل
      */
     public function updated(Customer $customer)
     {
-        $account = CharAccount::find(
-            $customer->accountID
-        );
+        // ✅ امسح كاش الأرصدة الافتتاحية
+        OpeningBalanceController::forgetAllCache();
+
+        $account = CharAccount::find($customer->accountID);
 
         if (!$account) {
             return;
@@ -88,45 +59,21 @@ class CustomerObserver
 
         $changed = false;
 
-        // =================================================
         // مزامنة اسم العميل
-        // =================================================
-
         if (
             $customer->wasChanged('CustomersName2') &&
-            $account->accName !==
-                $customer->CustomersName2
+            $account->accName !== $customer->CustomersName2
         ) {
-            $account->accName =
-                $customer->CustomersName2;
-
+            $account->accName = $customer->CustomersName2;
             $changed = true;
         }
 
-        // =================================================
         // مزامنة حالة العميل
-        //
-        // is_active:
-        // 1 = نشط
-        // 0 = غير نشط
-        // =================================================
+        if ($customer->wasChanged('is_active')) {
+            $newIsActive = (int) $customer->is_active === 1 ? 1 : 0;
 
-        if (
-            $customer->wasChanged('is_active')
-        ) {
-
-            $newIsActive =
-                (int) $customer->is_active === 1
-                    ? 1
-                    : 0;
-
-            if (
-                (int) $account->IsActive !==
-                $newIsActive
-            ) {
-                $account->IsActive =
-                    $newIsActive;
-
+            if ((int) $account->IsActive !== $newIsActive) {
+                $account->IsActive = $newIsActive;
                 $changed = true;
             }
         }
@@ -138,11 +85,10 @@ class CustomerObserver
 
     /**
      * الحذف يتم التحكم به من CustomerController
-     * لأن الحساب المرتبط يجب التعامل معه حسب
-     * وجود أبناء له.
      */
     public function deleted(Customer $customer)
     {
-        // يتم التعامل مع حذف الحساب في Controller
+        // ✅ امسح كاش الأرصدة الافتتاحية
+        OpeningBalanceController::forgetAllCache();
     }
 }

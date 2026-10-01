@@ -133,7 +133,7 @@ class PurchaseReturnController extends Controller
                     'warehouse_name'             => $d->warehouse->StockName ?? '',
                     'code'                       => $d->code,
                     'quantity'                   => (float) $d->quantity,
-                    'available_quantity'         => (float) $available + (float) $d->quantity,
+                    'available_quantity'         => (float) $available,
                     'price'                      => (float) $d->price,
                     'unit_cost'                  => (float) $d->unit_cost,
                     'discount'                   => (float) $d->discount,
@@ -325,7 +325,7 @@ class PurchaseReturnController extends Controller
             'payment_method'               => ['required', 'integer', 'in:1,2,3,4'],
             'coin_id'                      => ['required', 'exists:coins,coinsID'],
             'warehouse_id'                 => ['nullable', 'exists:stocks,StockID'],
-            'exchange_rate'                => ['nullable', 'numeric', 'min:0'],
+            'exchange_rate'                => ['nullable', 'numeric', 'gt:0'],
             'payment_account_id'           => ['nullable', 'exists:characcount,accountID'],
             'statement'                    => ['nullable', 'string'],
             'reference'                    => ['nullable', 'string'],
@@ -334,7 +334,7 @@ class PurchaseReturnController extends Controller
             'details.*.purchase_invoice_detail_id' => ['required', 'exists:purchase_invoice_details,purchase_invoice_detail_id'],
             'details.*.quantity'                    => ['required', 'numeric', 'gt:0'],
             'details.*.price'                       => ['required', 'numeric', 'gt:0'],
-            'details.*.discount'                  => ['nullable', 'numeric', 'min:0'],
+            'details.*.discount'                    => ['nullable', 'numeric', 'min:0'],
         ], [
             'return_number.required'                => 'رقم المرتجع مطلوب',
             'return_date.required'                  => 'تاريخ المرتجع مطلوب',
@@ -343,11 +343,32 @@ class PurchaseReturnController extends Controller
             'account_id.required'                   => 'يجب اختيار المورد',
             'payment_method.required'               => 'طريقة الدفع مطلوبة',
             'coin_id.required'                      => 'يجب اختيار العملة',
+            'exchange_rate.gt'                      => 'سعر الصرف يجب أن يكون أكبر من صفر',
             'details.required'                      => 'يجب إضافة صنف واحد على الأقل للمرتجع',
             'details.min'                           => 'يجب إضافة صنف واحد على الأقل للمرتجع',
             'details.*.purchase_invoice_detail_id.required' => 'سطر الفاتورة الأصلية مطلوب في كل الصفوف',
             'details.*.quantity.gt'                 => 'الكمية المراد إرجاعها يجب أن تكون أكبر من صفر',
         ]);
+
+        // ✅ التحقق من منطق طريقة الدفع (نفس منطق الفواتير)
+        $validator->after(function ($v) use ($request) {
+            $method    = (int) $request->input('payment_method');
+            $accountId = $request->input('payment_account_id');
+
+            if ($method === 1 && !empty($accountId)) {
+                $v->errors()->add(
+                    'payment_account_id',
+                    'طريقة الدفع "أجل" لا تحتاج إلى حساب دفع'
+                );
+            }
+
+            if (in_array($method, [2, 3, 4]) && empty($accountId)) {
+                $v->errors()->add(
+                    'payment_account_id',
+                    'يجب اختيار حساب الدفع'
+                );
+            }
+        });
 
         return $validator;
     }

@@ -15,9 +15,6 @@ use Illuminate\Validation\ValidationException;
 
 class SalesReturnService
 {
-    /**
-     * @var InventoryService
-     */
     protected InventoryService $inventoryService;
 
     public function __construct(InventoryService $inventoryService)
@@ -29,9 +26,6 @@ class SalesReturnService
     // الكمية المتاحة للإرجاع
     // =====================================================
 
-    /**
-     * حساب الكمية المتبقية القابلة للإرجاع لسطر فاتورة محدد
-     */
     public function availableForReturn(int $invoiceDetailId, ?int $exceptReturnId = null): float
     {
         $invoiceDetail = SalesInvoiceDetail::find($invoiceDetailId);
@@ -57,14 +51,19 @@ class SalesReturnService
     {
         return DB::transaction(function () use ($request) {
 
-            // ✅ التحقق الأمني: تطابق حساب العميل مع الفاتورة الأصلية
-            $this->validateAccountMatchesInvoice(
-                (int) $request->input('original_sales_invoice_id'),
-                (int) $request->input('account_id')
+            $originalInvoiceId = (int) $request->input('original_sales_invoice_id');
+
+            // ✅ 1) قفل الفاتورة الأصلية + التحقق
+            $this->lockAndValidateInvoice(
+                $originalInvoiceId,
+                $request->input('account_id'),
+                $request->input('coin_id')
             );
 
             $details = $request->input('details', []);
-            $this->validateReturnQuantities($details);
+
+            // ✅ 2) فحص التفاصيل
+            $this->validateReturnQuantities($originalInvoiceId, $details);
 
             $nextNumber = $this->nextReturnNumber();
 
@@ -87,19 +86,19 @@ class SalesReturnService
     {
         return DB::transaction(function () use ($id, $request) {
 
-            $salesReturn = SalesReturn::findOrFail($id);
+            $originalInvoiceId = (int) $request->input('original_sales_invoice_id');
 
-            // ⚠️ ملاحظة: لم نعد نستدعي deleteInventoryMovement هنا
-            // لأن syncInventoryMovement يستدعيها داخلياً.
-
-            // ✅ التحقق الأمني
-            $this->validateAccountMatchesInvoice(
-                (int) $request->input('original_sales_invoice_id'),
-                (int) $request->input('account_id')
+            $this->lockAndValidateInvoice(
+                $originalInvoiceId,
+                $request->input('account_id'),
+                $request->input('coin_id')
             );
 
+            $salesReturn = SalesReturn::lockForUpdate()->findOrFail($id);
+
             $details = $request->input('details', []);
-            $this->validateReturnQuantities($details, $salesReturn->sales_return_id);
+
+            $this->validateReturnQuantities($originalInvoiceId, $details, $salesReturn->sales_return_id);
 
             $data = $this->headerData($request);
             unset($data['return_number']);
@@ -119,8 +118,7 @@ class SalesReturnService
     public function delete(int $id): void
     {
         DB::transaction(function () use ($id) {
-
-            $salesReturn = SalesReturn::findOrFail($id);
+            $salesReturn = SalesReturn::lockForUpdate()->findOrFail($id);
 
             $this->deleteInventoryMovement($salesReturn);
 
@@ -130,45 +128,83 @@ class SalesReturnService
     }
 
     // =====================================================
-    // التحقق الأمني
+    // القفل + التحقق
     // =====================================================
 
-    /**
-     * التحقق من تطابق حساب العميل مع الفاتورة الأصلية
-     * يمنع تحميل مرتجع على حساب عميل مختلف عن عميل الفاتورة
-     */
-    protected function validateAccountMatchesInvoice(int $invoiceId, int $accountId): void
+    protected function lockAndValidateInvoice(int $invoiceId, $accountId, $coinId): void
     {
-        $invoice = SalesInvoice::findOrFail($invoiceId);
+        $invoice = SalesInvoice::lockForUpdate()->findOrFail($invoiceId);
 
-        if ($accountId !== (int) $invoice->account_id) {
+        if ((int) $accountId !== (int) $invoice->account_id) {
             throw ValidationException::withMessages([
                 'account_id' => 'حساب العميل لا يطابق الفاتورة الأصلية',
+            ]);
+        }
+
+        if ((int) $coinId !== (int) $invoice->coin_id) {
+            throw ValidationException::withMessages([
+                'coin_id' => 'العملة لا تطابق الفاتورة الأصلية',
             ]);
         }
     }
 
     // =====================================================
-    // التحقق من الكميات
+    // التحقق من التفاصيل
     // =====================================================
 
-    protected function validateReturnQuantities(array $details, ?int $exceptReturnId = null): void
-    {
+    protected function validateReturnQuantities(
+        int $originalInvoiceId,
+        array $details,
+        ?int $exceptReturnId = null
+    ): void {
         $errors = [];
 
+        // 1) Cross-invoice check
         foreach ($details as $i => $row) {
-            $invoiceDetailId = $row['sales_invoice_detail_id'] ?? null;
-            $qty             = (float) ($row['quantity'] ?? 0);
+            $detailId = (int) ($row['sales_invoice_detail_id'] ?? 0);
+            $qty      = (float) ($row['quantity'] ?? 0);
 
-            if (!$invoiceDetailId || $qty <= 0) {
+            if ($detailId <= 0 || $qty <= 0) {
                 continue;
             }
 
-            $available = $this->availableForReturn((int) $invoiceDetailId, $exceptReturnId);
+            $detail = SalesInvoiceDetail::find($detailId);
 
-            if ($qty > $available) {
-                $errors["details.{$i}.quantity"] =
-                    "الكمية المراد إرجاعها ({$qty}) أكبر من الكمية المتبقية القابلة للإرجاع ({$available})";
+            if (!$detail) {
+                $errors["details.{$i}.sales_invoice_detail_id"] = "سطر الفاتورة #{$detailId} غير موجود";
+                continue;
+            }
+
+            if ((int) $detail->sales_invoice_id !== $originalInvoiceId) {
+                $errors["details.{$i}.sales_invoice_detail_id"] =
+                    "سطر الفاتورة #{$detailId} لا ينتمي للفاتورة الأصلية";
+            }
+        }
+
+        if (!empty($errors)) {
+            throw ValidationException::withMessages($errors);
+        }
+
+        // 2) Duplicate check — تجميع الكميات
+        $grouped = [];
+        foreach ($details as $row) {
+            $detailId = (int) ($row['sales_invoice_detail_id'] ?? 0);
+            $qty      = (float) ($row['quantity'] ?? 0);
+
+            if ($detailId <= 0 || $qty <= 0) {
+                continue;
+            }
+
+            $grouped[$detailId] = ($grouped[$detailId] ?? 0) + $qty;
+        }
+
+        // 3) Quantity check
+        foreach ($grouped as $detailId => $totalQty) {
+            $available = $this->availableForReturn($detailId, $exceptReturnId);
+
+            if ($totalQty > $available) {
+                $errors["details"] =
+                    "الكمية الإجمالية للسطر #{$detailId} ({$totalQty}) أكبر من المتاح ({$available})";
             }
         }
 
@@ -234,7 +270,7 @@ class SalesReturnService
                 'unit_cost'    => $unitCost,
                 'min_price'    => null,
                 'max_price'    => null,
-                'sale_price'   => $detail->price,
+                'sale_price'   => null,
                 'total'        => $lineTotal,
             ]);
 
@@ -267,7 +303,7 @@ class SalesReturnService
     }
 
     // =====================================================
-    // دوال مساعدة داخلية
+    // دوال مساعدة
     // =====================================================
 
     protected function nextReturnNumber(): int
@@ -306,7 +342,6 @@ class SalesReturnService
             $discount = (float) ($row['discount'] ?? 0);
             $total    = max(0, ($quantity * $price) - $discount);
 
-            // نسخ التكلفة الأصلية للسطر
             $costPrice = (float) ($invoiceDetail->cost_price ?? 0);
 
             SalesReturnDetail::create([

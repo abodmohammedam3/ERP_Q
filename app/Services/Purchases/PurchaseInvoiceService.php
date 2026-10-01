@@ -14,12 +14,16 @@ class PurchaseInvoiceService
     public function create(Request $request): PurchaseInvoice
     {
         return DB::transaction(function () use ($request) {
+            $details = $request->input('details', []);
+
+            $this->lockStockRows($details, (int) $request->input('warehouse_id'));
+
             $nextNumber = $this->nextInvoiceNumber();
             $data = $this->headerData($request);
             $data['invoice_number'] = (string) $nextNumber;
 
             $invoice = PurchaseInvoice::create($data);
-            $this->saveDetails($invoice, $request->input('details', []));
+            $this->saveDetails($invoice, $details);
             $this->recalculateTotals($invoice);
 
             $invoice->load('details');
@@ -32,13 +36,18 @@ class PurchaseInvoiceService
     public function update(int $id, Request $request): PurchaseInvoice
     {
         return DB::transaction(function () use ($id, $request) {
-            $invoice = PurchaseInvoice::findOrFail($id);
+            $invoice = PurchaseInvoice::lockForUpdate()->findOrFail($id);
+
+            $details = $request->input('details', []);
+
+            $this->lockStockRows($details, (int) $request->input('warehouse_id'));
+
             $data = $this->headerData($request);
             unset($data['invoice_number']);
             $invoice->update($data);
 
             $invoice->details()->delete();
-            $this->saveDetails($invoice, $request->input('details', []));
+            $this->saveDetails($invoice, $details);
             $this->recalculateTotals($invoice);
 
             $invoice->load('details');
@@ -51,21 +60,53 @@ class PurchaseInvoiceService
     public function delete(int $id): void
     {
         DB::transaction(function () use ($id) {
-            $invoice = PurchaseInvoice::findOrFail($id);
+            $invoice = PurchaseInvoice::lockForUpdate()->findOrFail($id);
             $this->deleteInventoryMovement($invoice);
             $invoice->details()->delete();
             $invoice->delete();
         });
     }
 
-    /**
-     * ✅ إنشاء حركة المخزون + إضافة min/max/sale تلقائيًا
-     *
-     * القواعد:
-     *   min_price  = unit_cost
-     *   max_price  = unit_cost × 2
-     *   sale_price = unit_cost × 1.5
-     */
+    protected function lockStockRows(array $details, int $defaultWarehouseId): void
+    {
+        $pairs = [];
+
+        foreach ($details as $row) {
+            $itemId      = (int) ($row['item_id'] ?? 0);
+            $warehouseId = (int) ($row['warehouse_id'] ?? $defaultWarehouseId);
+            $unitId      = isset($row['unit_id']) && $row['unit_id'] !== null
+                ? (int) $row['unit_id']
+                : null;
+
+            if (!$itemId || !$warehouseId) {
+                continue;
+            }
+
+            $key = $itemId . '|' . $warehouseId . '|' . ($unitId ?? 0);
+            $pairs[$key] = [
+                'item_id'      => $itemId,
+                'warehouse_id' => $warehouseId,
+                'unit_id'      => $unitId,
+            ];
+        }
+
+        ksort($pairs);
+
+        foreach ($pairs as $pair) {
+            $query = DB::table('inventory_movement_details')
+                ->where('item_id', $pair['item_id'])
+                ->where('warehouse_id', $pair['warehouse_id']);
+
+            if ($pair['unit_id']) {
+                $query->where('unit_id', $pair['unit_id']);
+            }
+
+            $query->select('movement_detail_id')
+                  ->lockForUpdate()
+                  ->get();
+        }
+    }
+
     public function syncInventoryMovement(PurchaseInvoice $invoice): void
     {
         $this->deleteInventoryMovement($invoice);
@@ -131,7 +172,6 @@ class PurchaseInvoiceService
             $unitCostBC  = $unitCostFC * $rate;
             $lineTotalBC = $landedFC   * $rate;
 
-            // ✅ حساب min/max/sale تلقائيًا
             $minPrice  = round($unitCostBC, 6);
             $maxPrice  = round($unitCostBC * 2, 6);
             $salePrice = round($unitCostBC * 1.5, 6);

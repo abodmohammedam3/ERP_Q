@@ -143,16 +143,11 @@ class PurchaseInvoiceService
                       + (float) $invoice->other_cost;
 
         $detailsCollection = $invoice->details;
-        $totalNetFC = 0;
-
-        foreach ($detailsCollection as $d) {
-            $totalNetFC += max(
-                0,
-                ((float) $d->quantity * (float) $d->price) - (float) $d->discount
-            );
-        }
+        $lineCount = $detailsCollection->count();
 
         $movementTotalBC = 0;
+        $allocatedCostsFC = 0;
+        $index = 0;
 
         foreach ($detailsCollection as $detail) {
             $quantity   = (float) $detail->quantity;
@@ -161,9 +156,16 @@ class PurchaseInvoiceService
 
             $lineNetFC = max(0, ($quantity * $priceFC) - $discountFC);
 
+            // توزيع التكاليف الإضافية بالتساوي على عدد الأسطر
+            // مع دمج فرق التقريب المتبقي في السطر الأخير
             $shareFC = 0;
-            if ($totalNetFC > 0 && $extraCostsFC > 0) {
-                $shareFC = ($lineNetFC / $totalNetFC) * $extraCostsFC;
+            if ($lineCount > 0 && $extraCostsFC > 0) {
+                if ($index === $lineCount - 1) {
+                    $shareFC = $extraCostsFC - $allocatedCostsFC;
+                } else {
+                    $shareFC = $extraCostsFC / $lineCount;
+                    $allocatedCostsFC += $shareFC;
+                }
             }
 
             $landedFC   = $lineNetFC + $shareFC;
@@ -192,6 +194,7 @@ class PurchaseInvoiceService
             ]);
 
             $movementTotalBC += $lineTotalBC;
+            $index++;
         }
 
         $movement->total = $movementTotalBC;

@@ -9,7 +9,7 @@ class JournalEntryLine extends Model
 {
     protected $table      = 'JournalEntrryLine';
     protected $primaryKey = 'entryLineID';
-    public    $timestamps = false;
+    public $timestamps = false;
 
     protected $fillable = [
         'entryID',
@@ -33,11 +33,19 @@ class JournalEntryLine extends Model
 
     public function account(): BelongsTo
     {
-        return $this->belongsTo(CharAccount::class, 'accountID', 'accountID');
+        return $this->belongsTo(
+            CharAccount::class,
+            'accountID',
+            'accountID'
+        );
     }
 
     public function currency(): BelongsTo
     {
-        return $this->belongsTo(Coin::class, 'coinsID', 'coinsID');
+        return $this->belongsTo(
+            Coin::class,
+            'coinsID',
+            'coinsID'
+        );
     }
 }

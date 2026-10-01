@@ -187,6 +187,19 @@
             color: #dc3545;
         }
 
+        /* ⭐ صفوف الأرصدة */
+        .details-table .balance-row {
+            background: #f8f9fa;
+        }
+
+        .details-table .balance-row.highlight {
+            background: #fff3cd;
+        }
+
+        .details-table .balance-row td {
+            font-weight: 600;
+        }
+
         /* ═══ المبلغ كتابة ═══ */
         .amount-words-box {
             background: #fff3cd;
@@ -320,14 +333,12 @@
 
         <!-- ═══ الأطراف ═══ -->
         <div class="parties">
-            <!-- ⭐ الحساب الدائن: المورد -->
             <div class="party-box">
                 <span class="party-label">الحساب الدائن (المورد)</span>
                 <span class="party-value">
                     {{ $voucher->creditAccount->accCode ?? '' }} - {{ $voucher->creditAccount->accName ?? '' }}
                 </span>
             </div>
-            <!-- ⭐ الحساب المدين: الصندوق/البنك -->
             <div class="party-box">
                 <span class="party-label">الحساب المدين (الصندوق/البنك)</span>
                 <span class="party-value">
@@ -352,6 +363,20 @@
                     <td class="currency-cell">
                         {{ $voucher->currency->coinsCode ?? '' }} - {{ $voucher->currency->coinsName ?? '' }}
                     </td>
+                </tr>
+
+                {{-- ⭐ الرصيد قبل العملية --}}
+                <tr class="balance-row">
+                    <td>الرصيد قبل العملية ({{ $voucher->creditAccount->accName ?? '' }})</td>
+                    <td class="amount-cell">{{ number_format($balanceBefore, 2) }}</td>
+                    <td class="currency-cell">{{ $systemCurrencyCode ?? '—' }}</td>
+                </tr>
+
+                {{-- ⭐ الرصيد بعد العملية --}}
+                <tr class="balance-row highlight">
+                    <td>الرصيد بعد العملية ({{ $voucher->creditAccount->accName ?? '' }})</td>
+                    <td class="amount-cell">{{ number_format($balanceAfter, 2) }}</td>
+                    <td class="currency-cell">{{ $systemCurrencyCode ?? '—' }}</td>
                 </tr>
             </tbody>
         </table>

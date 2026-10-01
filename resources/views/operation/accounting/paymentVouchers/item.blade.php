@@ -1,6 +1,6 @@
 <!-- =========================================================
-     بيانات سند الصرف - بنفس نمط سند القبض
-     (الحساب الدائن = المورد + طريقة الدفع + الحساب المدين = الصندوق/البنك)
+     بيانات سند الصرف
+     (الحساب الدائن = المورد + الحساب المدين = الصندوق/البنك)
      ========================================================= -->
 
 <div class="card mb-3">
@@ -29,7 +29,7 @@
                            placeholder="اضغط لاختيار المورد..."
                            autocomplete="off"
                            readonly
-                           disabled>
+                           style="cursor: pointer;">
                     <div class="invalid-feedback">يرجى اختيار المورد.</div>
                 </div>
 
@@ -38,7 +38,7 @@
                     <label for="PaymentMethod" class="form-label">
                         طريقة الدفع <span class="text-danger">*</span>
                     </label>
-                    <select class="form-select" id="PaymentMethod" name="paymentMethod" disabled>
+                    <select class="form-select" id="PaymentMethod" name="paymentMethod">
                         <option value="">اختر طريقة الدفع</option>
                         <option value="cash">نقد</option>
                         <option value="bank">تحويل بنكي</option>
@@ -46,7 +46,7 @@
                     <div class="invalid-feedback">يرجى اختيار طريقة الدفع.</div>
                 </div>
 
-                <!-- 3. الحساب المدين (الصندوق/البنك) - يظهر بعد اختيار طريقة الدفع -->
+                <!-- 3. الحساب المدين (الصندوق/البنك) -->
                 <div class="col-md-3 d-none" id="debitAccountContainer">
                     <label for="DebitAccountName" class="form-label">
                         <span id="debitAccountLabel">الحساب المدين</span>
@@ -60,7 +60,7 @@
                            placeholder="اضغط لاختيار الحساب المدين..."
                            autocomplete="off"
                            readonly
-                           disabled>
+                           style="cursor: pointer;">
                     <div class="invalid-feedback">يرجى اختيار الحساب المدين.</div>
                 </div>
 
@@ -74,13 +74,13 @@
                 <!-- 4. العملة -->
                 <div class="col-md-3">
                     <label for="CoinsID" class="form-label">العملة <span class="text-danger">*</span></label>
-                    <select class="form-select" id="CoinsID" name="coinsID" disabled>
+                    <select class="form-select" id="CoinsID" name="coinsID">
                         <option value="">اختر العملة</option>
                     </select>
                     <div class="invalid-feedback">يرجى اختيار العملة.</div>
                 </div>
 
-                <!-- 5. سعر الصرف -->
+                <!-- 5. سعر الصرف (للعرض فقط — لا يقبل التعديل) -->
                 <div class="col-md-3">
                     <label for="ExchangeRate" class="form-label">سعر الصرف</label>
                     <input type="number"
@@ -88,8 +88,9 @@
                            class="form-control"
                            id="ExchangeRate"
                            name="exchangeRate"
-                           disabled
-                           oninput="updateSummary()">
+                           readonly
+                           tabindex="-1"
+                           style="background-color: var(--bs-tertiary-bg); cursor: not-allowed;">
                 </div>
 
                 <!-- 6. المبلغ -->
@@ -105,7 +106,6 @@
                            step="0.01"
                            min="0"
                            required
-                           disabled
                            oninput="updateSummary()">
                     <div class="invalid-feedback">المبلغ مطلوب وقيمته يجب أن تكون أكبر من صفر.</div>
                 </div>
@@ -124,8 +124,7 @@
                            class="form-control"
                            id="Notes"
                            name="notes"
-                           placeholder="سبب الصرف أو وصف العملية"
-                           disabled>
+                           placeholder="سبب الصرف أو وصف العملية">
                 </div>
 
             </div>

@@ -1,23 +1,18 @@
 /**
  * ═══════════════════════════════════════════════════════════
- *  صفحة سند الصرف - بنفس نمط سند القبض
- *  (الحساب الدائن = المورد + الحساب المدين = الصندوق/البنك)
+ *  صفحة سند الصرف
  * ═══════════════════════════════════════════════════════════
  */
 
 import '../receipt/accountPicker.js';
 
-// ⭐ تعيين مسار الـ picker الخاص بسندات الصرف
 if (window.AccountPicker && typeof window.AccountPicker.setUrl === 'function') {
     window.AccountPicker.setUrl('/operation/accounting/paymentVouchers/picker');
 }
 
-document.addEventListener('DOMContentLoaded', function () {
+function initPaymentVoucherPage() {
     console.log('🚀 بدء تهيئة صفحة سند الصرف');
 
-    // ══════════════════════════════════════════════════════════
-    //  دالة الرسائل
-    // ══════════════════════════════════════════════════════════
     function toast(message, type = 'info') {
         if (typeof showSystemToast === 'function') {
             showSystemToast(message, type);
@@ -26,19 +21,35 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    // ⭐ دوال مساعدة
     function toastInfo(message)    { toast(message, 'info');    }
     function toastSuccess(message) { toast(message, 'success'); }
     function toastWarning(message) { toast(message, 'warning'); }
     function toastError(message)   { toast(message, 'danger');  }
 
-    Modals.initAll();
+    if (typeof Modals !== 'undefined' && Modals.initAll) {
+        Modals.initAll();
+    }
 
     const state = new StateManager('payment-voucher');
 
     let saveInProgress = false;
     let lastSaveTime = 0;
     const MIN_SAVE_INTERVAL = 1500;
+
+    let currentBalanceInfo = null;   // رصيد الصندوق/البنك (للتحقق)
+    let creditBalanceInfo  = null;   // رصيد المورد/العميل (للعرض)
+
+    function lockExchangeRate() {
+        const exchangeEl = document.getElementById('ExchangeRate');
+        if (!exchangeEl) return;
+
+        exchangeEl.readOnly = true;
+        exchangeEl.tabIndex = -1;
+        exchangeEl.style.cursor = 'not-allowed';
+        exchangeEl.style.backgroundColor = 'var(--bs-tertiary-bg)';
+    }
+
+    lockExchangeRate();
 
     state.setFields([
         'PaymentVoucherNumber', 'PaymentVoucherDate',
@@ -58,9 +69,9 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     state.onModeChange(function (mode) {
-        console.log('🔄 تغيير الوضع إلى:', mode);
         toggleFormDisabled(mode === 'view');
         updateDisplay();
+        lockExchangeRate();
     });
 
     // ══════════════════════════════════════════════════════════
@@ -122,25 +133,48 @@ document.addEventListener('DOMContentLoaded', function () {
     loadCurrencies();
 
     // ══════════════════════════════════════════════════════════
-    //  حقول الحسابات
-    //  ⭐ الحساب الدائن = المورد
-    //  ⭐ الحساب المدين = الصندوق/البنك
+    //  الحساب الدائن (المورد / العميل / حساب آخر)
     // ══════════════════════════════════════════════════════════
 
-    document.getElementById('CreditAccountName')?.addEventListener('click', function () {
+    document.getElementById('CreditAccountName')?.addEventListener('click', function (e) {
+        e.preventDefault();
+
         if (state.mode === 'view' || saveInProgress) return;
         if (typeof window.AccountPicker === 'undefined') {
             toastError('مودال اختيار الحسابات غير محمّل');
             return;
         }
 
-        window.AccountPicker.open('supplier', function (account) {
-            document.getElementById('CreditAccountID').value   = account.id;
-            document.getElementById('CreditAccountName').value = account.code + ' - ' + account.name;
-        });
+        window.AccountPicker.open(
+            'supplier',
+            function (account) {
+                document.getElementById('CreditAccountID').value   = account.id;
+                document.getElementById('CreditAccountName').value = account.code + ' - ' + account.name;
+
+                creditBalanceInfo = {
+                    id:      account.id,
+                    name:    account.name,
+                    balance: parseFloat(account.balance) || 0,
+                };
+
+                const prevEl = document.getElementById('SummaryPrevious');
+                if (prevEl) prevEl.textContent = creditBalanceInfo.balance.toFixed(2);
+
+                updateSummary();
+            },
+            {
+                allowedTypes: ['supplier', 'customer', 'other'],
+            }
+        );
     });
 
-    document.getElementById('DebitAccountName')?.addEventListener('click', function () {
+    // ══════════════════════════════════════════════════════════
+    //  الحساب المدين (الصندوق/البنك)
+    // ══════════════════════════════════════════════════════════
+
+    document.getElementById('DebitAccountName')?.addEventListener('click', function (e) {
+        e.preventDefault();
+
         if (state.mode === 'view' || saveInProgress) return;
         if (typeof window.AccountPicker === 'undefined') {
             toastError('مودال اختيار الحسابات غير محمّل');
@@ -150,14 +184,59 @@ document.addEventListener('DOMContentLoaded', function () {
         const paymentMethod = document.getElementById('PaymentMethod').value || 'cash';
         const type = paymentMethod === 'bank' ? 'bank' : 'cash';
 
-        window.AccountPicker.open(type, function (account) {
-            document.getElementById('DebitAccountID').value   = account.id;
-            document.getElementById('DebitAccountName').value = account.code + ' - ' + account.name;
-        });
+        const currentCoinsID = document.getElementById('CoinsID').value || null;
+
+        window.AccountPicker.open(
+            type,
+            function (account) {
+                document.getElementById('DebitAccountID').value   = account.id;
+                document.getElementById('DebitAccountName').value = account.code + ' - ' + account.name;
+
+                currentBalanceInfo = {
+                    id:      account.id,
+                    name:    account.name,
+                    balance: parseFloat(account.balance) || 0,
+                };
+
+                if (account.currency_id) {
+                    const coinsSelect = document.getElementById('CoinsID');
+
+                    const exists = Array.from(coinsSelect.options).some(
+                        o => String(o.value) === String(account.currency_id)
+                    );
+
+                    if (!exists) {
+                        const opt = document.createElement('option');
+                        opt.value = account.currency_id;
+                        opt.textContent = account.currency_code || '';
+                        opt.dataset.rate = account.exchange_rate || 1;
+                        coinsSelect.appendChild(opt);
+                    }
+
+                    coinsSelect.value = account.currency_id;
+                    coinsSelect.disabled = true;
+                    coinsSelect.classList.add('bg-body-secondary');
+
+                    const exchangeEl = document.getElementById('ExchangeRate');
+                    if (exchangeEl) {
+                        exchangeEl.value = account.exchange_rate || 1;
+                    }
+
+                    lockExchangeRate();
+
+                    updateSummary();
+                    toastInfo('تم قفل العملة على: ' + (account.currency_code || ''));
+                }
+            },
+            {
+                coinsID: currentCoinsID,
+                allowedTypes: [type],
+            }
+        );
     });
 
     // ══════════════════════════════════════════════════════════
-    //  طريقة الدفع - تُظهر/تُخفي حقل الحساب المدين
+    //  طريقة الدفع
     // ══════════════════════════════════════════════════════════
 
     document.getElementById('PaymentMethod')?.addEventListener('change', function () {
@@ -179,6 +258,13 @@ document.addEventListener('DOMContentLoaded', function () {
             const debitName = document.getElementById('DebitAccountName');
             if (debitID)   debitID.value = '';
             if (debitName) debitName.value = '';
+            currentBalanceInfo = null;
+        }
+
+        const coinsSelect = document.getElementById('CoinsID');
+        if (coinsSelect && state.mode !== 'view') {
+            coinsSelect.disabled = false;
+            coinsSelect.classList.remove('bg-body-secondary');
         }
     });
 
@@ -188,13 +274,23 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function toggleFormDisabled(disabled) {
         const fields = [
-            'CreditAccountName', 'DebitAccountName', 'Amount',
-            'CoinsID', 'ExchangeRate', 'PaymentMethod', 'Notes',
+            'Amount', 'CoinsID', 'PaymentMethod', 'Notes',
         ];
+
         fields.forEach(id => {
             const el = document.getElementById(id);
             if (el) el.disabled = disabled;
         });
+
+        ['CreditAccountName', 'DebitAccountName'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+
+            el.classList.toggle('bg-body-secondary', disabled);
+            el.style.cursor = disabled ? 'not-allowed' : 'pointer';
+        });
+
+        lockExchangeRate();
     }
 
     function setButtonsDisabled(disabled) {
@@ -222,16 +318,20 @@ document.addEventListener('DOMContentLoaded', function () {
         const amountWordsEl = document.getElementById('AmountWords');
         if (amountWordsEl) {
             if (amount <= 0 || isNaN(amount)) amountWordsEl.value = '';
-            else amountWordsEl.value = Utils.numberToWords(amount, currencyName);
+            else if (typeof Utils !== 'undefined' && Utils.numberToWords) {
+                amountWordsEl.value = Utils.numberToWords(amount, currencyName);
+            }
         }
 
-        const summaryPaid     = document.getElementById('SummaryPaid');
+        const prevBalance = creditBalanceInfo?.balance || 0;
+
         const summaryPrevious = document.getElementById('SummaryPrevious');
+        const summaryPaid     = document.getElementById('SummaryPaid');
         const summaryRemain   = document.getElementById('SummaryRemain');
 
+        if (summaryPrevious) summaryPrevious.textContent = prevBalance.toFixed(2);
         if (summaryPaid)     summaryPaid.textContent     = paid.toFixed(2);
-        if (summaryPrevious) summaryPrevious.textContent = '0.00';
-        if (summaryRemain)   summaryRemain.textContent   = (0 - paid).toFixed(2);
+        if (summaryRemain)   summaryRemain.textContent   = (prevBalance - paid).toFixed(2);
     };
 
     function updateDisplay() {
@@ -292,9 +392,19 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('SummaryPaid').textContent     = '0.00';
         document.getElementById('SummaryRemain').textContent   = '0.00';
 
+        const coinsSelect = document.getElementById('CoinsID');
+        if (coinsSelect) {
+            coinsSelect.disabled = false;
+            coinsSelect.classList.remove('bg-body-secondary');
+        }
+
+        lockExchangeRate();
+
         const numEl = document.getElementById('PaymentVoucherNumber');
         if (numEl) numEl.dataset.id = '';
 
+        currentBalanceInfo  = null;
+        creditBalanceInfo   = null;
         originalVoucherData = null;
         state.setMode('view');
         updateDisplay();
@@ -310,6 +420,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
         state.setMode('add');
         updateDisplay();
+        lockExchangeRate();
+
         toastInfo('يمكنك الآن إدخال بيانات السند الجديد');
 
         setTimeout(() => document.getElementById('PaymentMethod')?.focus(), 300);
@@ -334,24 +446,36 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!coinsID) errors.push('يرجى اختيار العملة.');
         if (exchangeRate <= 0 || isNaN(exchangeRate)) errors.push('سعر الصرف يجب أن يكون أكبر من صفر.');
 
+        if (currentBalanceInfo && (paymentMethod === 'cash' || paymentMethod === 'bank')) {
+            const localAmount = amount * exchangeRate;
+
+            if (localAmount > currentBalanceInfo.balance) {
+                errors.push(
+                    'رصيد ' + currentBalanceInfo.name + ' غير كافٍ. ' +
+                    'الرصيد الحالي: ' + currentBalanceInfo.balance.toFixed(2) + ' | ' +
+                    'المطلوب: ' + localAmount.toFixed(2)
+                );
+            }
+        }
+
         return errors.length > 0 ? errors : null;
     }
 
     window.saveVoucher = async function () {
-        if (saveInProgress) return;
+        if (saveInProgress) return false;
 
         const now = Date.now();
-        if (now - lastSaveTime < MIN_SAVE_INTERVAL) return;
+        if (now - lastSaveTime < MIN_SAVE_INTERVAL) return false;
 
         const isEdit = state.mode === 'edit';
 
         if (isEdit && !hasChanges()) {
             toastError('لم تُجرِ أي تعديل على السند.');
-            return;
+            return false;
         }
 
         const errors = validateForm();
-        if (errors) { toastError(errors[0]); return; }
+        if (errors) { toastError(errors[0]); return false; }
 
         saveInProgress = true;
         lastSaveTime = now;
@@ -395,7 +519,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (!data.success) {
                 toastError(data.message || 'حدث خطأ غير متوقع.');
-                return;
+                return false;
             }
 
             toastSuccess(isEdit ? 'تم تعديل السند بنجاح.' : 'تم حفظ السند بنجاح.');
@@ -411,9 +535,12 @@ document.addEventListener('DOMContentLoaded', function () {
             updateDisplay();
             originalVoucherData = null;
 
+            return true;
+
         } catch (error) {
             console.error('❌ خطأ في الحفظ:', error);
             toastError('فشل الاتصال بالخادم. يرجى المحاولة مرة أخرى.');
+            return false;
         } finally {
             saveInProgress = false;
             setButtonsDisabled(false);
@@ -421,10 +548,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     };
 
+    // ⭐ حفظ + إضافة جديد — لا تُضيف إلا بعد نجاح الحفظ
     window.saveAndNewVoucher = async function () {
         if (saveInProgress) return;
-        await saveVoucher();
-        await resetVoucher();
+
+        const saved = await saveVoucher();
+
+        if (saved === true) {
+            await resetVoucher();
+        }
     };
 
     window.editVoucher = function () {
@@ -471,7 +603,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ══════════════════════════════════════════════════════════
 
     let searchModal   = null;
-    let searchTimeout = null;  // ⭐ تم التصريح عنه
+    let searchTimeout = null;
 
     function openSearchModal() {
         const modalEl = document.getElementById('PaymentVoucherSearchModal');
@@ -572,6 +704,11 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('ExchangeRate').value = v.exchangeRate;
             document.getElementById('Notes').value        = v.notes || '';
 
+            currentBalanceInfo = null;
+            creditBalanceInfo  = null;
+
+            lockExchangeRate();
+
             updateSummary();
             updateDisplay();
             state.setMode('view');
@@ -587,7 +724,6 @@ document.addEventListener('DOMContentLoaded', function () {
     // ══════════════════════════════════════════════════════════
 
     document.getElementById('Amount')?.addEventListener('input', updateSummary);
-    document.getElementById('ExchangeRate')?.addEventListener('input', updateSummary);
 
     document.getElementById('PaymentVoucherSearchInput')?.addEventListener('input', function () {
         clearTimeout(searchTimeout);
@@ -616,4 +752,10 @@ document.addEventListener('DOMContentLoaded', function () {
     loadNextVoucherNumber();
 
     console.log('✅ تم تهيئة صفحة سند الصرف بنجاح');
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPaymentVoucherPage);
+} else {
+    initPaymentVoucherPage();
+}

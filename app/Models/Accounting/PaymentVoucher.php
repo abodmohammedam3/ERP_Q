@@ -9,7 +9,6 @@ class PaymentVoucher extends Model
     protected $table      = 'payment_vouchers';
     protected $primaryKey = 'paymentID';
 
-    // ⭐ لا يوجد timestamps (نفس نمط سندات القبض)
     public $timestamps = false;
 
     protected $fillable = [
@@ -18,6 +17,7 @@ class PaymentVoucher extends Model
         'creditAccountID',
         'debitAccountID',
         'coinsID',
+        'entryID',          // ✅ جديد
         'amount',
         'exchangeRate',
         'localAmount',
@@ -37,7 +37,7 @@ class PaymentVoucher extends Model
     // ══════════════════════════════════════════════════════════
 
     /**
-     * الحساب الدائن (الصندوق/البنك) — النقدية تخرج منه
+     * الحساب الدائن (الصندوق/البنك)
      */
     public function creditAccount()
     {
@@ -45,7 +45,7 @@ class PaymentVoucher extends Model
     }
 
     /**
-     * الحساب المدين (المورد) — النقدية تدخل إليه
+     * الحساب المدين (المورد)
      */
     public function debitAccount()
     {
@@ -58,5 +58,13 @@ class PaymentVoucher extends Model
     public function currency()
     {
         return $this->belongsTo(Coin::class, 'coinsID', 'coinsID');
+    }
+
+    /**
+     * ✅ القيد المحاسبي المرتبط
+     */
+    public function entry()
+    {
+        return $this->belongsTo(JournalEntry::class, 'entryID', 'entryID');
     }
 }

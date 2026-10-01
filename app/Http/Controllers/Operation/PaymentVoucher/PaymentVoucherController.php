@@ -7,8 +7,10 @@ use App\Models\Accounting\PaymentVoucher;
 use App\Models\Accounting\CharAccount;
 use App\Models\Accounting\Box;
 use App\Models\Accounting\Bank;
+use App\Models\Customer;
 use App\Models\Supplier;
 use App\Services\PaymentVoucherService;
+use App\Services\AccountBalanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -179,6 +181,10 @@ class PaymentVoucherController extends Controller
 
             $voucher = PaymentVoucherService::create($data);
 
+            if (is_string($voucher)) {
+                return $this->fail($voucher);
+            }
+
             if (!$voucher) {
                 return $this->fail('فشل حفظ السند. يرجى المحاولة مرة أخرى.');
             }
@@ -236,6 +242,10 @@ class PaymentVoucherController extends Controller
 
             $voucher = PaymentVoucherService::update($id, $data);
 
+            if (is_string($voucher)) {
+                return $this->fail($voucher);
+            }
+
             if (!$voucher) {
                 return $this->fail('فشل تعديل السند.');
             }
@@ -276,8 +286,9 @@ class PaymentVoucherController extends Controller
         session()->save();
 
         $currencies = \App\Models\Accounting\Coin::where('is_active', 1)
+            ->orderByDesc('coinsSystem')
             ->orderBy('coinsName')
-            ->get(['coinsID', 'coinsName', 'coinsCode', 'coinsExchangeRate']);
+            ->get(['coinsID', 'coinsName', 'coinsCode', 'coinsExchangeRate', 'coinsSystem']);
 
         return $this->ok([
             'rows' => $currencies->map(fn($c) => [
@@ -290,92 +301,201 @@ class PaymentVoucherController extends Controller
     }
 
     // ══════════════════════════════════════════════════════════
-    //  اختيار الحسابات (Picker) - النشطة فقط
-    //  ⭐ الأنواع: supplier | cash | bank
+    //  اختيار الحسابات (Picker) — 5 أنواع
     // ══════════════════════════════════════════════════════════
 
     public function picker(Request $request): JsonResponse
     {
         session()->save();
 
-        $type   = $request->input('type', 'supplier');
-        $search = trim($request->input('search', ''));
+        $type    = $request->input('type', 'supplier');
+        $search  = trim($request->input('search', ''));
+        $coinsID = $request->input('coinsID');
+
+        // ─── الحسابات الأخرى (ليست تحت: صناديق/بنوك/عملاء/موردين/مخازن) ───
+        if ($type === 'other') {
+            return $this->pickerOtherAccounts($search);
+        }
 
         $parentKey = match ($type) {
             'supplier' => 'suppliers',
+            'customer' => 'customers',
             'cash'     => 'cash',
             'bank'     => 'banks',
             default    => 'suppliers',
         };
 
-        $parentId = CharAccount::whereRaw('LOWER(system_key) = ?', [strtolower($parentKey)])->value('accountID');
-        if (!$parentId) {
-            $parentId = CharAccount::whereRaw('LOWER(system_key) LIKE ?', ['%' . strtolower($parentKey) . '%'])->value('accountID');
-        }
+        $parentId = CharAccount::whereRaw('LOWER(system_key) = ?', [strtolower($parentKey)])
+            ->value('accountID');
 
         if (!$parentId) {
             return response()->json(['success' => false, 'message' => 'لم يتم العثور على الحساب الأب']);
         }
 
         $ids = $this->getDescendantIds($parentId);
+
         if (!empty($ids)) {
-            $ids = CharAccount::whereIn('accountID', $ids)->whereNotNull('accParent')->pluck('accountID')->all();
+            $ids = CharAccount::whereIn('accountID', $ids)
+                ->whereNotNull('accParent')
+                ->pluck('accountID')
+                ->all();
         }
 
         $query = CharAccount::whereIn('accountID', $ids)->where('IsActive', 1);
 
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
-                $q->where('accCode', 'like', "%{$search}%")->orWhere('accName', 'like', "%{$search}%");
+                $q->where('accCode', 'like', "%{$search}%")
+                  ->orWhere('accName', 'like', "%{$search}%");
             });
         }
 
         $accounts = $query->orderBy('accCode')->limit(50)->get(['accountID', 'accCode', 'accName']);
 
         $rows = [];
+
         foreach ($accounts as $acc) {
-            $row = ['id' => $acc->accountID, 'code' => $acc->accCode, 'name' => $acc->accName, 'extra' => '—'];
 
-            // ⭐ المورد (نشط فقط)
+            $row = [
+                'id'            => $acc->accountID,
+                'code'          => $acc->accCode,
+                'name'          => $acc->accName,
+                'extra'         => '—',
+                'balance'       => null,
+                'currency_id'   => null,
+                'currency_code' => null,
+                'exchange_rate' => 1,
+            ];
+
+            // ─── مورد ───
             if ($type === 'supplier') {
-                $supplier = Supplier::where('accountID', $acc->accountID)
-                    ->where('supStoped', 0)
+                $entity = Supplier::where('accountID', $acc->accountID)
+                    ->where('is_active', 1)
                     ->first();
 
-                if (!$supplier) continue;
+                if (!$entity) continue;
 
-                $row['name']  = $supplier->supName ?? $acc->accName;
-                $row['extra'] = !empty($supplier->supPhone) ? $supplier->supPhone : '—';
+                $row['name']    = $entity->supName ?? $acc->accName;
+                $row['extra']   = !empty($entity->supPhone) ? $entity->supPhone : '—';
+                $row['balance'] = AccountBalanceService::getBalance($acc->accountID);
             }
-            // ⭐ الصندوق (نشط فقط)
+
+            // ─── عميل ───
+            elseif ($type === 'customer') {
+                $entity = Customer::where('accountID', $acc->accountID)
+                    ->where('is_active', 1)
+                    ->first();
+
+                if (!$entity) continue;
+
+                $row['name']    = $entity->CustomersName2 ?? $acc->accName;
+                $row['extra']   = !empty($entity->CusPhone) ? $entity->CusPhone : '—';
+                $row['balance'] = AccountBalanceService::getBalance($acc->accountID);
+            }
+
+            // ─── صندوق ───
             elseif ($type === 'cash') {
-                $box = Box::where('accountID', $acc->accountID)
+                $entity = Box::where('accountID', $acc->accountID)
                     ->where('is_active', 1)
                     ->with('coin')
                     ->first();
 
-                if (!$box) continue;
+                if (!$entity) continue;
 
-                $row['name']  = $box->boxName ?? $acc->accName;
-                $row['extra'] = $box->coin->coinsCode ?? '—';
+                if (!empty($coinsID) && (int) $entity->coinsID !== (int) $coinsID) {
+                    continue;
+                }
+
+                $row['name']          = $entity->boxName ?? $acc->accName;
+                $row['extra']         = $entity->coin->coinsCode ?? '—';
+                $row['balance']       = AccountBalanceService::getBalance($acc->accountID);
+                $row['currency_id']   = $entity->coinsID;
+                $row['currency_code'] = $entity->coin->coinsCode ?? '';
+                $row['exchange_rate'] = (float) ($entity->coin->coinsExchangeRate ?? 1);
             }
-            // ⭐ البنك (نشط فقط)
+
+            // ─── بنك ───
             elseif ($type === 'bank') {
-                $bank = Bank::where('accountID', $acc->accountID)
+                $entity = Bank::where('accountID', $acc->accountID)
                     ->where('is_active', 1)
                     ->with('coin')
                     ->first();
 
-                if (!$bank) continue;
+                if (!$entity) continue;
 
-                $row['name']  = $bank->bankName ?? $acc->accName;
-                $row['extra'] = $bank->coin->coinsCode ?? '—';
+                if (!empty($coinsID) && (int) $entity->coinsID !== (int) $coinsID) {
+                    continue;
+                }
+
+                $row['name']          = $entity->bankName ?? $acc->accName;
+                $row['extra']         = $entity->coin->coinsCode ?? '—';
+                $row['balance']       = AccountBalanceService::getBalance($acc->accountID);
+                $row['currency_id']   = $entity->coinsID;
+                $row['currency_code'] = $entity->coin->coinsCode ?? '';
+                $row['exchange_rate'] = (float) ($entity->coin->coinsExchangeRate ?? 1);
             }
 
             $rows[] = $row;
         }
 
         return response()->json(['success' => true, 'type' => $type, 'rows' => $rows]);
+    }
+
+    /**
+     * الحسابات التحليلية الأخرى
+     * ✅ لم نعد نستبعد is_system = 1
+     */
+    private function pickerOtherAccounts(string $search): JsonResponse
+    {
+      $systemKeys = [
+            'cash',
+            'banks', 'bank',
+            'customers', 'customer',
+            'suppliers', 'supplier',
+            'inventory', 'stock',
+            'ownerCapital',          // ⭐ رأس مال المالك
+            'capital',               // احتياطي
+            'openingBalance',        // احتياطي
+      ];
+
+        $excludeIds = [];
+
+        foreach ($systemKeys as $key) {
+            $parentId = CharAccount::whereRaw('LOWER(system_key) = ?', [strtolower($key)])
+                ->value('accountID');
+
+            if ($parentId) {
+                $excludeIds = array_merge($excludeIds, $this->getDescendantIds($parentId));
+            }
+        }
+
+        // ✅ استبعد فقط ما هو تحت الأنواع النظامية
+        $query = CharAccount::where('isPostable', 1)
+            ->where('IsActive', 1);
+        // ⛔ حذف ->where('is_system', 0)
+
+        if (!empty($excludeIds)) {
+            $query->whereNotIn('accountID', $excludeIds);
+        }
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('accCode', 'like', "%{$search}%")
+                  ->orWhere('accName', 'like', "%{$search}%");
+            });
+        }
+
+        $accounts = $query->orderBy('accCode')->limit(50)->get(['accountID', 'accCode', 'accName']);
+
+        $rows = $accounts->map(fn($acc) => [
+            'id'      => $acc->accountID,
+            'code'    => $acc->accCode,
+            'name'    => $acc->accName,
+            'extra'   => '—',
+            'balance' => AccountBalanceService::getBalance($acc->accountID),
+        ])->all();
+
+        return response()->json(['success' => true, 'type' => 'other', 'rows' => $rows]);
     }
 
     private function getDescendantIds(int $parentId): array
@@ -413,40 +533,58 @@ class PaymentVoucherController extends Controller
     }
 
     /**
-     * ⭐ عرض سند الصرف للطباعة
-     */
-    public function printView(int $id)
-    {
-        session()->save();
+ * عرض سند الصرف للطباعة
+ */
+public function printView(int $id)
+{
+    session()->save();
 
-        $voucher = PaymentVoucher::with([
-            'creditAccount',
-            'debitAccount',
-            'currency',
-        ])->findOrFail($id);
+    $voucher = PaymentVoucher::with([
+        'creditAccount',
+        'debitAccount',
+        'currency',
+    ])->findOrFail($id);
 
-        $paymentMethodText = [
-            'cash' => 'نقد',
-            'bank' => 'تحويل بنكي',
-        ][$voucher->paymentMethod] ?? '—';
+    $paymentMethodText = [
+        'cash' => 'نقد',
+        'bank' => 'تحويل بنكي',
+    ][$voucher->paymentMethod] ?? '—';
 
-        $formattedDate = $voucher->voucherDate
-            ? $voucher->voucherDate->locale('ar')->translatedFormat('d F Y')
-            : '—';
+    $formattedDate = $voucher->voucherDate
+        ? $voucher->voucherDate->locale('ar')->translatedFormat('d F Y')
+        : '—';
 
-        $printTime = now()->locale('ar')->translatedFormat('d/m/Y H:i');
+    $printTime = now()->locale('ar')->translatedFormat('d/m/Y H:i');
 
-        $companyName = config('app.company_name', 'نظام ERP');
+    $companyName = config('app.company_name', 'نظام ERP');
 
-        $amountWords = null;
+    // ⭐ تحويل المبلغ إلى كلمات — Tafqeet
+    $currencyName = $voucher->currency->coinsName ?? '';
+    $amountWords  = \App\Helpers\Tafqeet::numberToWords(
+        (float) $voucher->amount,
+        $currencyName
+    );
 
-        return view('operation.accounting.paymentVouchers.print', [
-            'voucher'           => $voucher,
-            'paymentMethodText' => $paymentMethodText,
-            'formattedDate'     => $formattedDate,
-            'printTime'         => $printTime,
-            'companyName'       => $companyName,
-            'amountWords'       => $amountWords,
-        ]);
-    }
+    // ⭐ حساب الرصيد قبل / بعد العملية للمورد
+    $creditAccountID = (int) $voucher->creditAccountID;
+    $localAmount     = (float) $voucher->localAmount;
+
+    $balanceAfter  = AccountBalanceService::getBalance($creditAccountID);
+    $balanceBefore = $balanceAfter + $localAmount;
+
+    $systemCurrency = \App\Models\Accounting\Coin::where('coinsSystem', 1)
+        ->first(['coinsCode']);
+
+    return view('operation.accounting.paymentVouchers.print', [
+        'voucher'            => $voucher,
+        'paymentMethodText'  => $paymentMethodText,
+        'formattedDate'      => $formattedDate,
+        'printTime'          => $printTime,
+        'companyName'        => $companyName,
+        'amountWords'        => $amountWords,
+        'balanceBefore'      => $balanceBefore,
+        'balanceAfter'       => $balanceAfter,
+        'systemCurrencyCode' => $systemCurrency->coinsCode ?? '',
+    ]);
+}
 }

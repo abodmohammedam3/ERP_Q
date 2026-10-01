@@ -10,7 +10,7 @@
             <h4 class="mb-1"><i class="bi bi-building"></i> المخازن</h4>
             <small class="text-muted">إدارة المخازن المرتبطة بالنظام</small>
         </div>
-        <div class="btn-group">
+        <div class="d-flex gap-2">
             @if($hasParent)
                 <button type="button" class="btn btn-outline-secondary" onclick="printStocks()">
                     <i class="bi bi-printer"></i> طباعة

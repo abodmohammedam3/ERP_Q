@@ -1,11 +1,14 @@
 
 <!-- مودال الإضافة/التعديل -->
 <div class="modal fade" id="stockModal" tabindex="-1" aria-labelledby="stockModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header  position-relative">
-                <h5 class="modal-title" id="stockModalLabel">إضافة مخزن جديد</h5>
-                <button type="button" class="btn-close position-absolute  top-0 start-0 m-3" data-bs-dismiss="modal"></button>
+            <div class="modal-header">
+                <h5 class="modal-title" id="stockModalLabel">
+                    <i class="bi bi-building"></i>
+                    إضافة مخزن جديد
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
             </div>
             <div class="modal-body">
                 <form id="stockForm">
@@ -22,8 +25,12 @@
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
-                <button type="button" class="btn btn-primary" onclick="saveStock()">حفظ</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg"></i> إلغاء
+                </button>
+                <button type="button" class="btn btn-primary" onclick="saveStock()">
+                    <i class="bi bi-check-lg"></i> حفظ البيانات
+                </button>
             </div>
         </div>
     </div>

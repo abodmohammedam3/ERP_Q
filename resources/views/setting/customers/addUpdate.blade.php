@@ -5,7 +5,7 @@
     tabindex="-1"
     aria-hidden="true"
 >
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
 
         <div class="modal-content">
 
@@ -13,18 +13,16 @@
                  رأس المودال
             ================================= --}}
 
-            <div class="modal-header position-relative">
+            <div class="modal-header">
 
-                <h5
-                    class="modal-title"
-                    id="customerModalLabel"
-                >
-                    إضافة عميل جديد
+                <h5 class="modal-title">
+                    <i class="bi bi-people"></i>
+                    <span id="customerModalLabel">إضافة عميل جديد</span>
                 </h5>
 
                 <button
                     type="button"
-                    class="btn-close position-absolute top-0 end-0 m-3"
+                    class="btn-close"
                     data-bs-dismiss="modal"
                     aria-label="إغلاق"
                 ></button>
@@ -186,32 +184,32 @@
 
                     </div>
 
-
-                    {{-- ================================
-                         أزرار المودال
-                    ================================= --}}
-
-                    <div class="modal-footer mt-4">
-
-                        <button
-                            type="button"
-                            class="btn btn-secondary"
-                            data-bs-dismiss="modal"
-                        >
-                            إلغاء
-                        </button>
-
-                        <button
-                            type="submit"
-                            class="btn btn-primary"
-                            id="saveCustomerBtn"
-                        >
-                            حفظ البيانات
-                        </button>
-
-                    </div>
-
                 </form>
+
+            </div>
+
+            {{-- ================================
+                 أزرار المودال
+            ================================= --}}
+
+            <div class="modal-footer">
+
+                <button
+                    type="button"
+                    class="btn btn-secondary"
+                    data-bs-dismiss="modal"
+                >
+                    إلغاء
+                </button>
+
+                <button
+                    type="submit"
+                    form="customerForm"
+                    class="btn btn-primary"
+                    id="saveCustomerBtn"
+                >
+                    حفظ البيانات
+                </button>
 
             </div>
 

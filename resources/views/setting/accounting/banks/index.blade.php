@@ -16,7 +16,7 @@
         </div>
 
         <div class="d-flex gap-2">
-            <button type="button" class="btn btn-secondary" onclick="printBanks()">
+            <button type="button" class="btn btn-outline-secondary" onclick="printBanks()">
                 <i class="bi bi-printer"></i> طباعة
             </button>
             <button type="button" class="btn btn-primary" onclick="openBankModal()">

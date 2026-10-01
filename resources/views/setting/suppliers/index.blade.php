@@ -16,15 +16,15 @@
         <div class="d-flex gap-2">
             {{-- ✅ تمت إضافة id وإزالة onclick --}}
             <button type="button"
-                    class="btn btn-sm btn-outline-secondary"
+                    class="btn btn-outline-secondary"
                     id="printSuppliersBtn">
                 <i class="bi bi-printer"></i> طباعة
             </button>
 
             <button type="button"
-                    class="btn btn-sm btn-primary"
+                    class="btn btn-primary"
                     id="addSupplierBtn">
-                <i class="bi bi-plus-lg me-1"></i> إضافة مورد
+                <i class="bi bi-plus-lg"></i> إضافة مورد
             </button>
         </div>
     </header>

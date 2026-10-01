@@ -2,10 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\Accounting\CharAccount;
 use App\Models\Accounting\PaymentVoucher;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 
 class PaymentVoucherService
 {
@@ -15,7 +16,7 @@ class PaymentVoucherService
     }
 
     // ══════════════════════════════════════════════════════════
-    //  CREATE
+    // CREATE
     // ══════════════════════════════════════════════════════════
 
     public static function create(array $data): PaymentVoucher|string|null
@@ -34,19 +35,37 @@ class PaymentVoucherService
                 $data['voucherNumber'] = self::generateVoucherNumber();
             }
 
-            if (PaymentVoucher::where('voucherNumber', $data['voucherNumber'])->exists()) {
-                Log::warning('PaymentVoucherService@create: رقم مكرر ' . $data['voucherNumber']);
+            if (
+                PaymentVoucher::where(
+                    'voucherNumber',
+                    $data['voucherNumber']
+                )->exists()
+            ) {
+                Log::warning(
+                    'PaymentVoucherService@create: رقم مكرر '
+                    . $data['voucherNumber']
+                );
+
                 DB::rollBack();
+
                 return null;
             }
 
-            $data['voucherDate'] = $data['voucherDate'] ?? now()->toDateString();
-            $data['localAmount'] = ($data['amount'] ?? 0) * ($data['exchangeRate'] ?? 1);
+            $data['voucherDate'] = $data['voucherDate']
+                ?? now()->toDateString();
 
-            // ✅ التحقق من الرصيد
+            $data['localAmount'] =
+                ($data['amount'] ?? 0)
+                * ($data['exchangeRate'] ?? 1);
+
+            // التحقق من رصيد حساب الدفع
             if ($error = self::validateBalance($data)) {
-                Log::warning('PaymentVoucherService@create: ' . $error);
+                Log::warning(
+                    'PaymentVoucherService@create: ' . $error
+                );
+
                 DB::rollBack();
+
                 return $error;
             }
 
@@ -55,41 +74,59 @@ class PaymentVoucherService
             $entryID = self::createJournalEntry($voucher);
 
             if ($entryID) {
-                $voucher->update(['entryID' => $entryID]);
+                $voucher->update([
+                    'entryID' => $entryID,
+                ]);
             }
 
             DB::commit();
 
             self::recalculateBalances($voucher);
 
-            Log::info('PaymentVoucherService@create: ' . $voucher->voucherNumber);
+            Log::info(
+                'PaymentVoucherService@create: '
+                . $voucher->voucherNumber
+            );
 
             return $voucher;
 
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('PaymentVoucherService@create: ' . $e->getMessage());
+
+            Log::error(
+                'PaymentVoucherService@create: '
+                . $e->getMessage()
+            );
+
             return null;
+
         } finally {
             $lock->release();
         }
     }
 
     // ══════════════════════════════════════════════════════════
-    //  UPDATE
+    // UPDATE
     // ══════════════════════════════════════════════════════════
 
-    public static function update(int $id, array $data): PaymentVoucher|string|null
-    {
+    public static function update(
+        int $id,
+        array $data
+    ): PaymentVoucher|string|null {
         $lockKey = 'payment_voucher_update_' . $id;
-        $lock    = Cache::lock($lockKey, 10);
+
+        $lock = Cache::lock($lockKey, 10);
 
         if (!$lock->get()) {
-            Log::warning('PaymentVoucherService@update: طلب مزدوج #' . $id);
+            Log::warning(
+                'PaymentVoucherService@update: طلب مزدوج #' . $id
+            );
+
             return null;
         }
 
         $voucher = PaymentVoucher::find($id);
+
         if (!$voucher) {
             $lock->release();
             return null;
@@ -98,74 +135,114 @@ class PaymentVoucherService
         DB::beginTransaction();
 
         try {
+            // رقم السند لا يتغير أثناء التعديل
             unset($data['voucherNumber']);
 
-            $data['localAmount'] = ($data['amount'] ?? 0) * ($data['exchangeRate'] ?? 1);
+            $data['localAmount'] =
+                ($data['amount'] ?? 0)
+                * ($data['exchangeRate'] ?? 1);
 
-            // ✅ التحقق من الرصيد (مع استثناء السند الحالي)
+            // التحقق من الرصيد مع استثناء السند الحالي
             if ($error = self::validateBalance($data, $id)) {
-                Log::warning('PaymentVoucherService@update: ' . $error);
+                Log::warning(
+                    'PaymentVoucherService@update: ' . $error
+                );
+
                 DB::rollBack();
+
                 return $error;
             }
 
-            $oldCreditID = (int) $voucher->creditAccountID;
-            $oldDebitID  = (int) $voucher->debitAccountID;
+            $oldBeneficiaryID =
+                (int) $voucher->beneficiaryAccountID;
+
+            $oldPaymentID =
+                (int) $voucher->paymentAccountID;
 
             $voucher->update($data);
 
             if ($voucher->entryID) {
-                JournalEntryService::updateEntry($voucher->entryID, [
-                    'docType'     => 'سند صرف',
-                    'entryDate'   => $voucher->voucherDate,
-                    'description' => 'سند صرف رقم ' . $voucher->voucherNumber
-                                   . ' - ' . ($voucher->creditAccount->accName ?? ''),
-                    'lines'       => self::buildEntryLines($voucher),
-                ]);
+                JournalEntryService::updateEntry(
+                    $voucher->entryID,
+                    [
+                        'docType'     => 'سند صرف',
+                        'entryDate'   => $voucher->voucherDate,
+                        'description' =>
+                            'سند صرف رقم '
+                            . $voucher->voucherNumber
+                            . ' - '
+                            . (
+                                $voucher
+                                    ->beneficiaryAccount
+                                    ->accName
+                                ?? ''
+                            ),
+                        'lines' => self::buildEntryLines($voucher),
+                    ]
+                );
             } else {
                 $entryID = self::createJournalEntry($voucher);
+
                 if ($entryID) {
-                    $voucher->update(['entryID' => $entryID]);
+                    $voucher->update([
+                        'entryID' => $entryID,
+                    ]);
                 }
             }
 
             DB::commit();
 
-            AccountBalanceService::recalculateBatch(array_unique([
-                $oldCreditID,
-                $oldDebitID,
-                (int) $voucher->creditAccountID,
-                (int) $voucher->debitAccountID,
-            ]));
+            AccountBalanceService::recalculateBatch(
+                array_unique([
+                    $oldBeneficiaryID,
+                    $oldPaymentID,
+                    (int) $voucher->beneficiaryAccountID,
+                    (int) $voucher->paymentAccountID,
+                ])
+            );
 
-            Log::info('PaymentVoucherService@update: ' . $voucher->voucherNumber);
+            Log::info(
+                'PaymentVoucherService@update: '
+                . $voucher->voucherNumber
+            );
 
             return $voucher;
 
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('PaymentVoucherService@update: ' . $e->getMessage());
+
+            Log::error(
+                'PaymentVoucherService@update: '
+                . $e->getMessage()
+            );
+
             return null;
+
         } finally {
             $lock->release();
         }
     }
 
     // ══════════════════════════════════════════════════════════
-    //  DELETE
+    // DELETE
     // ══════════════════════════════════════════════════════════
 
     public static function delete(int $id): bool
     {
         $lockKey = 'payment_voucher_delete_' . $id;
-        $lock    = Cache::lock($lockKey, 10);
+
+        $lock = Cache::lock($lockKey, 10);
 
         if (!$lock->get()) {
-            Log::warning('PaymentVoucherService@delete: طلب مزدوج #' . $id);
+            Log::warning(
+                'PaymentVoucherService@delete: طلب مزدوج #' . $id
+            );
+
             return false;
         }
 
         $voucher = PaymentVoucher::find($id);
+
         if (!$voucher) {
             $lock->release();
             return false;
@@ -174,96 +251,134 @@ class PaymentVoucherService
         DB::beginTransaction();
 
         try {
-            $creditID = (int) $voucher->creditAccountID;
-            $debitID  = (int) $voucher->debitAccountID;
+            $beneficiaryID =
+                (int) $voucher->beneficiaryAccountID;
 
-            JournalEntryService::deleteByDocNumber('PV-' . $voucher->paymentID);
+            $paymentID =
+                (int) $voucher->paymentAccountID;
+
+            JournalEntryService::deleteByDocNumber(
+                'PV-' . $voucher->paymentID
+            );
+
             $voucher->delete();
 
             DB::commit();
 
-            AccountBalanceService::recalculateBatch([$creditID, $debitID]);
+            AccountBalanceService::recalculateBatch([
+                $beneficiaryID,
+                $paymentID,
+            ]);
 
             return true;
 
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('PaymentVoucherService@delete: ' . $e->getMessage());
+
+            Log::error(
+                'PaymentVoucherService@delete: '
+                . $e->getMessage()
+            );
+
             return false;
+
         } finally {
             $lock->release();
         }
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Balance Validation
+    // BALANCE VALIDATION
     // ══════════════════════════════════════════════════════════
 
-    /**
-     * التحقق من رصيد الصندوق/البنك
-     */
-    private static function validateBalance(array $data, ?int $excludeVoucherID = null): ?string
-    {
+    private static function validateBalance(
+        array $data,
+        ?int $excludeVoucherID = null
+    ): ?string {
         $paymentMethod = $data['paymentMethod'] ?? null;
 
         if (!in_array($paymentMethod, ['cash', 'bank'])) {
             return null;
         }
 
-        $debitAccountID = (int) ($data['debitAccountID'] ?? 0);
-        if (!$debitAccountID) return null;
+        $paymentAccountID =
+            (int) ($data['paymentAccountID'] ?? 0);
 
-        $amount       = (float) ($data['amount'] ?? 0);
-        $exchangeRate = (float) ($data['exchangeRate'] ?? 1);
-        $localAmount  = $amount * $exchangeRate;
+        if (!$paymentAccountID) {
+            return null;
+        }
 
-        $balance = AccountBalanceService::getBalance($debitAccountID);
+        $amount =
+            (float) ($data['amount'] ?? 0);
 
-        // إذا كان تعديلًا، أضف المبلغ القديم للسند الحالي (لأنه سيُعاد خصمه)
+        $exchangeRate =
+            (float) ($data['exchangeRate'] ?? 1);
+
+        $localAmount =
+            $amount * $exchangeRate;
+
+        $balance =
+            AccountBalanceService::getBalance(
+                $paymentAccountID
+            );
+
+        /*
+         * عند تعديل سند:
+         * نعيد مبلغ السند القديم إلى الرصيد
+         * قبل مقارنة المبلغ الجديد.
+         */
         if ($excludeVoucherID) {
-            $oldVoucher = PaymentVoucher::find($excludeVoucherID);
-            if ($oldVoucher && (int) $oldVoucher->debitAccountID === $debitAccountID) {
-                $balance += (float) $oldVoucher->localAmount;
+            $oldVoucher =
+                PaymentVoucher::find($excludeVoucherID);
+
+            if (
+                $oldVoucher
+                && (int) $oldVoucher->paymentAccountID
+                    === $paymentAccountID
+            ) {
+                $balance +=
+                    (float) $oldVoucher->localAmount;
             }
         }
 
         if ($localAmount > $balance) {
-            $account = \App\Models\Accounting\CharAccount::find($debitAccountID);
-            $name    = $account->accName ?? 'الحساب';
+            $account =
+                CharAccount::find($paymentAccountID);
 
-            return 'رصيد ' . $name . ' غير كافٍ. '
-                 . 'الرصيد المتاح: ' . number_format($balance, 2)
-                 . ' | المطلوب: ' . number_format($localAmount, 2);
+            $name =
+                $account->accName ?? 'الحساب';
+
+            return
+                'رصيد ' . $name . ' غير كافٍ. '
+                . 'الرصيد المتاح: '
+                . number_format($balance, 2)
+                . ' | المطلوب: '
+                . number_format($localAmount, 2);
         }
 
         return null;
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Journal Entry
+    // JOURNAL ENTRY LINES
     // ══════════════════════════════════════════════════════════
 
-    /**
-     * بناء أسطر القيد
-     *
-     * ⚠️ نموذج سند الصرف:
-     *   - creditAccountID = المورد
-     *   - debitAccountID  = الصندوق/البنك
-     *
-     * في القيد:
-     *   - المورد (ندفع له) → مدين
-     *   - الصندوق/البنك    → دائن
-     */
-    private static function buildEntryLines(PaymentVoucher $voucher): array
-    {
-        $amount = (float) $voucher->amount;
-        $rate   = (float) $voucher->exchangeRate;
-        $local  = (float) $voucher->localAmount;
+    private static function buildEntryLines(
+        PaymentVoucher $voucher
+    ): array {
+        $amount =
+            (float) $voucher->amount;
+
+        $rate =
+            (float) $voucher->exchangeRate;
+
+        $local =
+            (float) $voucher->localAmount;
 
         return [
-            // مدين: المورد
+            // مدين: الحساب المستفيد
             [
-                'accountID'   => $voucher->creditAccountID,
+                'accountID'   => $voucher->beneficiaryAccountID,
                 'coinsID'     => $voucher->coinsID,
                 'exchangRate' => $rate,
                 'debit'       => $amount,
@@ -271,9 +386,10 @@ class PaymentVoucherService
                 'localDebit'  => $local,
                 'localCredit' => 0,
             ],
-            // دائن: الصندوق/البنك
+
+            // دائن: حساب الدفع
             [
-                'accountID'   => $voucher->debitAccountID,
+                'accountID'   => $voucher->paymentAccountID,
                 'coinsID'     => $voucher->coinsID,
                 'exchangRate' => $rate,
                 'debit'       => 0,
@@ -284,12 +400,17 @@ class PaymentVoucherService
         ];
     }
 
-    private static function createJournalEntry(PaymentVoucher $voucher): ?int
-    {
-        $supplier = $voucher->creditAccount;
+    private static function createJournalEntry(
+        PaymentVoucher $voucher
+    ): ?int {
+        $beneficiary =
+            $voucher->beneficiaryAccount;
 
-        $desc = 'سند صرف رقم ' . $voucher->voucherNumber
-              . ' - ' . ($supplier->accName ?? '');
+        $desc =
+            'سند صرف رقم '
+            . $voucher->voucherNumber
+            . ' - '
+            . ($beneficiary->accName ?? '');
 
         return JournalEntryService::create([
             'docType'     => 'سند صرف',
@@ -301,36 +422,71 @@ class PaymentVoucherService
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Helpers
+    // RECALCULATE BALANCES
     // ══════════════════════════════════════════════════════════
 
-    private static function recalculateBalances(PaymentVoucher $voucher): void
-    {
-        AccountBalanceService::recalculateBatch(array_unique([
-            (int) $voucher->creditAccountID,
-            (int) $voucher->debitAccountID,
-        ]));
+    private static function recalculateBalances(
+        PaymentVoucher $voucher
+    ): void {
+        AccountBalanceService::recalculateBatch(
+            array_unique([
+                (int) $voucher->beneficiaryAccountID,
+                (int) $voucher->paymentAccountID,
+            ])
+        );
     }
+
+    // ══════════════════════════════════════════════════════════
+    // GENERATE NUMBER
+    // ══════════════════════════════════════════════════════════
 
     private static function generateVoucherNumber(): string
     {
         $today = now()->format('Ymd');
 
-        $lastVoucher = PaymentVoucher::where('voucherNumber', 'LIKE', "PV-{$today}-%")
+        $lastVoucher =
+            PaymentVoucher::where(
+                'voucherNumber',
+                'LIKE',
+                "PV-{$today}-%"
+            )
             ->orderByDesc('paymentID')
             ->first();
 
         if ($lastVoucher) {
-            $lastNumber = (int) substr($lastVoucher->voucherNumber, -4);
+            $lastNumber =
+                (int) substr(
+                    $lastVoucher->voucherNumber,
+                    -4
+                );
+
             $nextNumber = $lastNumber + 1;
         } else {
             $nextNumber = 1;
         }
 
         do {
-            $voucherNumber = 'PV-' . $today . '-' . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
-            $exists = PaymentVoucher::where('voucherNumber', $voucherNumber)->exists();
-            if ($exists) $nextNumber++;
+            $voucherNumber =
+                'PV-'
+                . $today
+                . '-'
+                . str_pad(
+                    $nextNumber,
+                    4,
+                    '0',
+                    STR_PAD_LEFT
+                );
+
+            $exists =
+                PaymentVoucher::where(
+                    'voucherNumber',
+                    $voucherNumber
+                )->exists();
+
+            if ($exists) {
+                $nextNumber++;
+            }
+
         } while ($exists);
 
         return $voucherNumber;

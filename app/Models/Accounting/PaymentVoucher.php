@@ -14,10 +14,10 @@ class PaymentVoucher extends Model
     protected $fillable = [
         'voucherNumber',
         'voucherDate',
-        'creditAccountID',
-        'debitAccountID',
+        'beneficiaryAccountID',
+        'paymentAccountID',
         'coinsID',
-        'entryID',          // ✅ جديد
+        'entryID',
         'amount',
         'exchangeRate',
         'localAmount',
@@ -32,39 +32,39 @@ class PaymentVoucher extends Model
         'localAmount'  => 'decimal:2',
     ];
 
-    // ══════════════════════════════════════════════════════════
-    //  العلاقات
-    // ══════════════════════════════════════════════════════════
-
-    /**
-     * الحساب الدائن (الصندوق/البنك)
-     */
-    public function creditAccount()
+    public function beneficiaryAccount()
     {
-        return $this->belongsTo(CharAccount::class, 'creditAccountID', 'accountID');
+        return $this->belongsTo(
+            CharAccount::class,
+            'beneficiaryAccountID',
+            'accountID'
+        );
     }
 
-    /**
-     * الحساب المدين (المورد)
-     */
-    public function debitAccount()
+    public function paymentAccount()
     {
-        return $this->belongsTo(CharAccount::class, 'debitAccountID', 'accountID');
+        return $this->belongsTo(
+            CharAccount::class,
+            'paymentAccountID',
+            'accountID'
+        );
     }
 
-    /**
-     * العملة
-     */
     public function currency()
     {
-        return $this->belongsTo(Coin::class, 'coinsID', 'coinsID');
+        return $this->belongsTo(
+            Coin::class,
+            'coinsID',
+            'coinsID'
+        );
     }
 
-    /**
-     * ✅ القيد المحاسبي المرتبط
-     */
     public function entry()
     {
-        return $this->belongsTo(JournalEntry::class, 'entryID', 'entryID');
+        return $this->belongsTo(
+            JournalEntry::class,
+            'entryID',
+            'entryID'
+        );
     }
 }

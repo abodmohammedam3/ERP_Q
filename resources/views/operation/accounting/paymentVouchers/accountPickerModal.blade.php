@@ -1,5 +1,5 @@
 {{-- ═══════════════════════════════════════════════════════════
-     مودال اختيار الحساب الموحد (مع تبويبات)
+     مودال اختيار الحساب الموحد
      ═══════════════════════════════════════════════════════════ --}}
 <div class="modal fade" id="AccountPickerModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
@@ -7,15 +7,26 @@
 
             <!-- رأس المودال -->
             <div class="modal-header">
-                <h5 class="modal-title" id="AccountPickerTitle">اختيار الحساب</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="AccountPickerTitle">
+                    اختيار الحساب
+                </h5>
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="إغلاق">
+                </button>
             </div>
 
             <!-- جسم المودال -->
             <div class="modal-body">
 
                 <!-- التبويبات -->
-                <ul class="nav nav-tabs mb-3" id="AccountPickerTabs" role="tablist">
+                <ul class="nav nav-tabs mb-3"
+                    id="AccountPickerTabs"
+                    role="tablist">
+
+                    <!-- العملاء -->
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active"
                                 data-type="customer"
@@ -25,6 +36,8 @@
                             العملاء
                         </button>
                     </li>
+
+                    <!-- الموردون -->
                     <li class="nav-item" role="presentation">
                         <button class="nav-link"
                                 data-type="supplier"
@@ -34,15 +47,19 @@
                             الموردين
                         </button>
                     </li>
+
+                    <!-- المصروفات -->
                     <li class="nav-item" role="presentation">
                         <button class="nav-link"
-                                data-type="other"
+                                data-type="expense"
                                 type="button"
                                 role="tab">
-                            <i class="bi bi-journal-text"></i>
-                            الحسابات
+                            <i class="bi bi-wallet2"></i>
+                            المصروفات
                         </button>
                     </li>
+
+                    <!-- البنوك -->
                     <li class="nav-item" role="presentation">
                         <button class="nav-link"
                                 data-type="bank"
@@ -52,6 +69,8 @@
                             البنوك
                         </button>
                     </li>
+
+                    <!-- الصناديق -->
                     <li class="nav-item" role="presentation">
                         <button class="nav-link"
                                 data-type="cash"
@@ -61,10 +80,12 @@
                             الصناديق
                         </button>
                     </li>
+
                 </ul>
 
-                <!-- حقل البحث + زر تفريغ -->
+                <!-- البحث -->
                 <div class="row g-2 mb-3">
+
                     <div class="col-md-10">
                         <input type="text"
                                class="form-control"
@@ -73,6 +94,7 @@
                                autocomplete="off"
                                autofocus>
                     </div>
+
                     <div class="col-md-2">
                         <button type="button"
                                 class="btn btn-outline-secondary w-100"
@@ -81,26 +103,67 @@
                             تفريغ
                         </button>
                     </div>
+
                 </div>
 
                 <!-- جدول النتائج -->
-                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                <div class="table-responsive"
+                     style="max-height: 400px; overflow-y: auto;">
+
                     <table class="table table-bordered table-hover align-middle mb-0">
+
                         <thead class="table-light sticky-top">
+
                             <tr class="text-center">
-                                <th style="width: 18%;">الكود</th>
-                                <th>الاسم</th>
-                                <th style="width: 18%;" id="AccountPickerColExtra">معلومة إضافية</th>
-                                <th style="width: 18%;" id="AccountPickerColBalance">الرصيد</th>
+
+                                <th style="width: 15%;">
+                                    الكود
+                                </th>
+
+                                <th>
+                                    الاسم
+                                </th>
+
+                                <!-- يظهر للمصروفات فقط -->
+                                <th style="width: 25%;"
+                                    id="AccountPickerColParent"
+                                    class="d-none">
+                                    الحساب الأب
+                                </th>
+
+                                <!-- الهاتف / العملة -->
+                                <th style="width: 18%;"
+                                    id="AccountPickerColExtra">
+                                    معلومة إضافية
+                                </th>
+
+                                <!-- الرصيد -->
+                                <th style="width: 18%;"
+                                    id="AccountPickerColBalance">
+                                    الرصيد
+                                </th>
+
                             </tr>
+
                         </thead>
+
                         <tbody id="AccountPickerResults">
-                            <tr><td colspan="4" class="text-center text-muted py-4">ابدأ البحث</td></tr>
+
+                            <tr>
+                                <td colspan="5"
+                                    class="text-center text-muted py-4">
+                                    ابدأ البحث
+                                </td>
+                            </tr>
+
                         </tbody>
+
                     </table>
+
                 </div>
 
             </div>
+
         </div>
     </div>
 </div>

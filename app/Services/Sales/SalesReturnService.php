@@ -270,7 +270,7 @@ class SalesReturnService
                 'unit_cost'    => $unitCost,
                 'min_price'    => null,
                 'max_price'    => null,
-                'sale_price'   => $detail->price,
+                'sale_price'   => null,
                 'total'        => $lineTotal,
             ]);
 

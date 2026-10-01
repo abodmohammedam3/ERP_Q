@@ -130,7 +130,7 @@ class SalesReturnController extends Controller
                     'warehouse_name'          => $d->warehouse->StockName ?? '',
                     'code'                    => $d->code,
                     'quantity'                => (float) $d->quantity,
-                    'available_quantity'      => (float) $available + (float) $d->quantity,
+                    'available_quantity'      => (float) $available,
                     'price'                   => (float) $d->price,
                     'cost_price'              => (float) $d->cost_price,
                     'discount'                => (float) $d->discount,

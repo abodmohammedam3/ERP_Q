@@ -7,15 +7,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AccountBalance extends Model
 {
-    protected $table      = 'account_balances';
+    protected $table = 'account_balances';
+
     protected $primaryKey = 'id';
-    public    $incrementing = true;
-    protected $keyType    = 'int';
-    public    $timestamps = false;
+
+    public $incrementing = true;
+
+    protected $keyType = 'int';
+
+    public $timestamps = false;
 
     protected $fillable = [
         'accountID',
-        'fiscalYear',
         'coinsID',
         'debitTotal',
         'creditTotal',
@@ -25,7 +28,6 @@ class AccountBalance extends Model
 
     protected $casts = [
         'accountID'     => 'integer',
-        'fiscalYear'    => 'integer',
         'coinsID'       => 'integer',
         'debitTotal'    => 'decimal:2',
         'creditTotal'   => 'decimal:2',
@@ -35,11 +37,19 @@ class AccountBalance extends Model
 
     public function account(): BelongsTo
     {
-        return $this->belongsTo(CharAccount::class, 'accountID', 'accountID');
+        return $this->belongsTo(
+            CharAccount::class,
+            'accountID',
+            'accountID'
+        );
     }
 
     public function currency(): BelongsTo
     {
-        return $this->belongsTo(Coin::class, 'coinsID', 'coinsID');
+        return $this->belongsTo(
+            Coin::class,
+            'coinsID',
+            'coinsID'
+        );
     }
 }

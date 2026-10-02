@@ -5,250 +5,655 @@ namespace App\Services;
 use App\Models\Accounting\AccountBalance;
 use App\Models\Accounting\CharAccount;
 use App\Models\Accounting\Coin;
+use App\Models\Accounting\JournalEntry;
 use App\Models\Accounting\JournalEntryLine;
 
 class AccountBalanceService
 {
-    /**
-     * Cache محلي للعملة النظامية (لكل طلب)
-     */
     private static ?int $systemCurrencyIdCache = null;
 
-    /**
-     * Cache لطبائع الحسابات (لكل طلب)
-     */
-    private static array $natureCache = [];
+    // =========================================================
+    // RECALCULATE ACCOUNT
+    // =========================================================
 
-    // ══════════════════════════════════════════════════════════
-    //  الحساب الأساسي
-    // ══════════════════════════════════════════════════════════
-
-    /**
-     * إعادة حساب رصيد حساب واحد.
-     */
     public static function recalculate(int $accountID): void
     {
-        $account = CharAccount::find($accountID);
+        if ($accountID <= 0) {
+            return;
+        }
+
+        $account = CharAccount::query()
+            ->select([
+                'accountID',
+                'nature',
+            ])
+            ->find($accountID);
 
         if (!$account) {
             return;
         }
 
-        $totals = JournalEntryLine::where('accountID', $accountID)
-            ->selectRaw(
-                'COALESCE(SUM(localDebit), 0)  AS total_debit,
-                 COALESCE(SUM(localCredit), 0) AS total_credit'
+        $totals = JournalEntryLine::query()
+            ->where(
+                'accountID',
+                $accountID
             )
+            ->select([
+                'accountID',
+            ])
+            ->selectRaw(
+                'COALESCE(SUM(localDebit), 0) AS total_debit'
+            )
+            ->selectRaw(
+                'COALESCE(SUM(localCredit), 0) AS total_credit'
+            )
+            ->groupBy('accountID')
             ->first();
 
-        $totalDebit  = (float) ($totals->total_debit  ?? 0);
-        $totalCredit = (float) ($totals->total_credit ?? 0);
+        $totalDebit =
+            (float) (
+                $totals->total_debit ?? 0
+            );
 
-        $balance = self::calculateBalance(
-            $totalDebit,
-            $totalCredit,
-            (int) $account->nature
-        );
+        $totalCredit =
+            (float) (
+                $totals->total_credit ?? 0
+            );
 
-        self::saveBalance($accountID, $totalDebit, $totalCredit, $balance);
+        self::upsertBalances([
+            [
+                'accountID' =>
+                    $accountID,
+
+                'coinsID' =>
+                    self::getSystemCurrencyId(),
+
+                'debitTotal' =>
+                    $totalDebit,
+
+                'creditTotal' =>
+                    $totalCredit,
+
+                'balance' =>
+                    self::calculateBalance(
+                        $totalDebit,
+                        $totalCredit,
+                        (int) $account->nature
+                    ),
+
+                'lastUpdatedAt' =>
+                    now(),
+            ],
+        ]);
     }
 
-    /**
-     * إعادة حساب مجموعة حسابات.
-     */
-    public static function recalculateBatch(array $accountIDs): void
-    {
-        $accountIDs = array_unique(array_filter($accountIDs));
+    // =========================================================
+    // RECALCULATE BATCH
+    // =========================================================
+
+    public static function recalculateBatch(
+        array $accountIDs
+    ): void {
+        $accountIDs =
+            self::normalizeAccountIDs(
+                $accountIDs
+            );
 
         if (empty($accountIDs)) {
             return;
         }
 
-        // جلب المجاميع لكل حساب دفعة واحدة
-        $totalsByAccount = JournalEntryLine::whereIn('accountID', $accountIDs)
+        $totals = JournalEntryLine::query()
+            ->whereIn(
+                'accountID',
+                $accountIDs
+            )
+            ->select([
+                'accountID',
+            ])
             ->selectRaw(
-                'accountID,
-                 COALESCE(SUM(localDebit), 0)  AS total_debit,
-                 COALESCE(SUM(localCredit), 0) AS total_credit'
+                'COALESCE(SUM(localDebit), 0) AS total_debit'
+            )
+            ->selectRaw(
+                'COALESCE(SUM(localCredit), 0) AS total_credit'
             )
             ->groupBy('accountID')
             ->get()
             ->keyBy('accountID');
 
-        // ✅ جلب طبائع كل الحسابات دفعة واحدة
-        $natures = CharAccount::whereIn('accountID', $accountIDs)
-            ->pluck('nature', 'accountID')
+        $natures = CharAccount::query()
+            ->whereIn(
+                'accountID',
+                $accountIDs
+            )
+            ->pluck(
+                'nature',
+                'accountID'
+            )
             ->all();
 
-        $fiscalYear       = (int) now()->year;
-        $systemCurrencyId = self::getSystemCurrencyId();
+        $now = now();
+
+        $balances = [];
 
         foreach ($accountIDs as $accountID) {
-            $row = $totalsByAccount->get($accountID);
 
-            $totalDebit  = (float) ($row->total_debit  ?? 0);
-            $totalCredit = (float) ($row->total_credit ?? 0);
+            $row =
+                $totals->get(
+                    $accountID
+                );
 
-            $nature = (int) ($natures[$accountID] ?? 0);
+            $totalDebit =
+                (float) (
+                    $row->total_debit ?? 0
+                );
 
-            $balance = self::calculateBalance($totalDebit, $totalCredit, $nature);
+            $totalCredit =
+                (float) (
+                    $row->total_credit ?? 0
+                );
 
-            self::upsert(
-                (int) $accountID,
-                $fiscalYear,
-                $systemCurrencyId,
-                $totalDebit,
-                $totalCredit,
-                $balance
-            );
+            $nature =
+                (int) (
+                    $natures[$accountID] ?? 0
+                );
+
+            $balances[] = [
+
+                'accountID' =>
+                    $accountID,
+
+                'coinsID' =>
+                    self::getSystemCurrencyId(),
+
+                'debitTotal' =>
+                    $totalDebit,
+
+                'creditTotal' =>
+                    $totalCredit,
+
+                'balance' =>
+                    self::calculateBalance(
+                        $totalDebit,
+                        $totalCredit,
+                        $nature
+                    ),
+
+                'lastUpdatedAt' =>
+                    $now,
+            ];
         }
+
+        self::upsertBalances(
+            $balances
+        );
     }
 
-    /**
-     * إعادة حساب كل الحسابات.
-     */
+    // =========================================================
+    // RECALCULATE ALL
+    // =========================================================
+
     public static function recalculateAll(): void
     {
-        $totals = JournalEntryLine::selectRaw(
-                'accountID,
-                 COALESCE(SUM(localDebit), 0)  AS total_debit,
-                 COALESCE(SUM(localCredit), 0) AS total_credit'
+        $totals = JournalEntryLine::query()
+            ->select([
+                'accountID',
+            ])
+            ->selectRaw(
+                'COALESCE(SUM(localDebit), 0) AS total_debit'
+            )
+            ->selectRaw(
+                'COALESCE(SUM(localCredit), 0) AS total_credit'
             )
             ->groupBy('accountID')
             ->get();
 
-        // جلب طبائع كل الحسابات
-        $natures = CharAccount::pluck('nature', 'accountID')->all();
+        if ($totals->isEmpty()) {
+            return;
+        }
 
-        $fiscalYear       = (int) now()->year;
-        $systemCurrencyId = self::getSystemCurrencyId();
+        $accountIDs =
+            $totals
+                ->pluck('accountID')
+                ->filter()
+                ->map(
+                    fn ($id) => (int) $id
+                )
+                ->unique()
+                ->values()
+                ->all();
+
+        $natures = CharAccount::query()
+            ->whereIn(
+                'accountID',
+                $accountIDs
+            )
+            ->pluck(
+                'nature',
+                'accountID'
+            )
+            ->all();
+
+        $now = now();
+
+        $balances = [];
 
         foreach ($totals as $row) {
-            $totalDebit  = (float) $row->total_debit;
-            $totalCredit = (float) $row->total_credit;
 
-            $nature = (int) ($natures[$row->accountID] ?? 0);
+            $accountID =
+                (int) $row->accountID;
 
-            $balance = self::calculateBalance($totalDebit, $totalCredit, $nature);
+            $totalDebit =
+                (float) (
+                    $row->total_debit ?? 0
+                );
 
-            self::upsert(
-                (int) $row->accountID,
-                $fiscalYear,
-                $systemCurrencyId,
-                $totalDebit,
-                $totalCredit,
-                $balance
-            );
+            $totalCredit =
+                (float) (
+                    $row->total_credit ?? 0
+                );
+
+            $nature =
+                (int) (
+                    $natures[$accountID] ?? 0
+                );
+
+            $balances[] = [
+
+                'accountID' =>
+                    $accountID,
+
+                'coinsID' =>
+                    self::getSystemCurrencyId(),
+
+                'debitTotal' =>
+                    $totalDebit,
+
+                'creditTotal' =>
+                    $totalCredit,
+
+                'balance' =>
+                    self::calculateBalance(
+                        $totalDebit,
+                        $totalCredit,
+                        $nature
+                    ),
+
+                'lastUpdatedAt' =>
+                    $now,
+            ];
         }
+
+        self::upsertBalances(
+            $balances
+        );
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  الحساب حسب الطبيعة
-    // ══════════════════════════════════════════════════════════
+    // =========================================================
+    // GET
+    // =========================================================
 
-    /**
-     * ✅ حساب الرصيد حسب طبيعة الحساب.
-     *
-     * nature = 0 (مدين):  balance = debit - credit
-     * nature = 1 (دائن):  balance = credit - debit
-     */
-    private static function calculateBalance(
-        float $totalDebit,
-        float $totalCredit,
-        int $nature
-    ): float {
-        // nature = 1 (دائن) → الرصيد = credit - debit
-        if ($nature === 1) {
-            return $totalCredit - $totalDebit;
+    public static function get(
+        int $accountID
+    ): ?AccountBalance {
+        if ($accountID <= 0) {
+            return null;
         }
 
-        // nature = 0 (مدين) → الرصيد = debit - credit
-        return $totalDebit - $totalCredit;
-    }
-
-    // ══════════════════════════════════════════════════════════
-    //  القراءة
-    // ══════════════════════════════════════════════════════════
-
-    public static function get(int $accountID): ?AccountBalance
-    {
-        return AccountBalance::where('accountID', $accountID)
-            ->where('fiscalYear', (int) now()->year)
-            ->where('coinsID', self::getSystemCurrencyId())
+        return AccountBalance::query()
+            ->where(
+                'accountID',
+                $accountID
+            )
+            ->where(
+                'coinsID',
+                self::getSystemCurrencyId()
+            )
             ->first();
     }
 
-    public static function getBalance(int $accountID): float
-    {
-        return (float) (self::get($accountID)?->balance ?? 0);
+    // =========================================================
+    // GET BALANCE
+    // =========================================================
+
+    public static function getBalance(
+        int $accountID
+    ): float {
+        return (float) (
+            self::get($accountID)?->balance
+            ?? 0
+        );
     }
 
-    public static function getBalances(array $accountIDs): array
-    {
+    // =========================================================
+    // GET BALANCES
+    // =========================================================
+
+    public static function getBalances(
+        array $accountIDs
+    ): array {
+        $accountIDs =
+            self::normalizeAccountIDs(
+                $accountIDs
+            );
+
         if (empty($accountIDs)) {
             return [];
         }
 
-        return AccountBalance::whereIn('accountID', $accountIDs)
-            ->where('fiscalYear', (int) now()->year)
-            ->where('coinsID', self::getSystemCurrencyId())
-            ->pluck('balance', 'accountID')
-            ->map(fn($v) => (float) $v)
+        return AccountBalance::query()
+            ->whereIn(
+                'accountID',
+                $accountIDs
+            )
+            ->where(
+                'coinsID',
+                self::getSystemCurrencyId()
+            )
+            ->pluck(
+                'balance',
+                'accountID'
+            )
+            ->map(
+                fn ($value) =>
+                    (float) $value
+            )
             ->all();
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  Helpers
-    // ══════════════════════════════════════════════════════════
+    // =========================================================
+    // BALANCE AROUND ENTRY
+    // =========================================================
 
-    private static function saveBalance(
+    public static function getBalanceAroundEntry(
         int $accountID,
-        float $totalDebit,
-        float $totalCredit,
-        float $balance
-    ): void {
-        self::upsert(
-            $accountID,
-            (int) now()->year,
-            self::getSystemCurrencyId(),
-            $totalDebit,
-            $totalCredit,
-            $balance
-        );
+        ?int $entryNo
+    ): array {
+        if ($accountID <= 0) {
+            return [
+                'before' => 0.0,
+                'after'  => 0.0,
+                'nature' => 0,
+            ];
+        }
+
+        /*
+         * لا يوجد قيد محدد:
+         * نعيد الرصيد الحالي.
+         */
+        if (!$entryNo) {
+
+            $nature =
+                (int) (
+                    CharAccount::query()
+                        ->where(
+                            'accountID',
+                            $accountID
+                        )
+                        ->value('nature')
+                    ?? 0
+                );
+
+            $balance =
+                self::getBalance(
+                    $accountID
+                );
+
+            return [
+                'before' => $balance,
+                'after'  => $balance,
+                'nature' => $nature,
+            ];
+        }
+
+        /*
+         * Query واحدة فقط:
+         *
+         * before = قبل القيد
+         * after  = بعد القيد
+         *
+         * بدون أي حسابات في Controller.
+         */
+
+        $totals = CharAccount::query()
+            ->from(
+                (new CharAccount)->getTable() . ' as a'
+            )
+            ->leftJoin(
+                (new JournalEntryLine)->getTable() . ' as l',
+                'l.accountID',
+                '=',
+                'a.accountID'
+            )
+            ->leftJoin(
+                (new JournalEntry)->getTable() . ' as e',
+                'e.entryID',
+                '=',
+                'l.entryID'
+            )
+            ->where(
+                'a.accountID',
+                $accountID
+            )
+            ->select([
+                'a.nature',
+            ])
+            ->selectRaw(
+                'COALESCE(
+                    SUM(
+                        CASE
+                            WHEN e.entryNo < ?
+                            THEN l.localDebit
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ) AS before_debit',
+                [$entryNo]
+            )
+            ->selectRaw(
+                'COALESCE(
+                    SUM(
+                        CASE
+                            WHEN e.entryNo < ?
+                            THEN l.localCredit
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ) AS before_credit',
+                [$entryNo]
+            )
+            ->selectRaw(
+                'COALESCE(
+                    SUM(
+                        CASE
+                            WHEN e.entryNo <= ?
+                            THEN l.localDebit
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ) AS after_debit',
+                [$entryNo]
+            )
+            ->selectRaw(
+                'COALESCE(
+                    SUM(
+                        CASE
+                            WHEN e.entryNo <= ?
+                            THEN l.localCredit
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ) AS after_credit',
+                [$entryNo]
+            )
+            ->groupBy(
+                'a.accountID',
+                'a.nature'
+            )
+            ->first();
+
+        if (!$totals) {
+            return [
+                'before' => 0.0,
+                'after'  => 0.0,
+                'nature' => 0,
+            ];
+        }
+
+        $nature =
+            (int) (
+                $totals->nature ?? 0
+            );
+
+        $before =
+            self::calculateBalance(
+                (float) (
+                    $totals->before_debit ?? 0
+                ),
+                (float) (
+                    $totals->before_credit ?? 0
+                ),
+                $nature
+            );
+
+        $after =
+            self::calculateBalance(
+                (float) (
+                    $totals->after_debit ?? 0
+                ),
+                (float) (
+                    $totals->after_credit ?? 0
+                ),
+                $nature
+            );
+
+        return [
+            'before' => $before,
+            'after'  => $after,
+            'nature' => $nature,
+        ];
     }
 
-    private static function upsert(
+    // =========================================================
+    // AVAILABLE PAYMENT BALANCE
+    // =========================================================
+
+    public static function getAvailableBalanceForPayment(
         int $accountID,
-        int $fiscalYear,
-        int $coinsID,
-        float $totalDebit,
-        float $totalCredit,
-        float $balance
+        ?float $oldLocalAmount = null,
+        ?int $oldPaymentAccountID = null
+    ): float {
+        $balance =
+            self::getBalance(
+                $accountID
+            );
+
+        /*
+         * عند تعديل سند موجود:
+         *
+         * إذا كان حساب الدفع نفسه،
+         * نعيد مبلغ السند القديم مؤقتًا
+         * حتى لا يمنع التعديل نفسه.
+         */
+        if (
+            $oldLocalAmount !== null
+            && $oldPaymentAccountID !== null
+            && $accountID === $oldPaymentAccountID
+        ) {
+            $balance += $oldLocalAmount;
+        }
+
+        return $balance;
+    }
+
+    // =========================================================
+    // BALANCE CALCULATION
+    // =========================================================
+
+    private static function calculateBalance(
+        float $debit,
+        float $credit,
+        int $nature
+    ): float {
+        return $nature === 1
+            ? $credit - $debit
+            : $debit - $credit;
+    }
+
+    // =========================================================
+    // UPSERT
+    // =========================================================
+
+    private static function upsertBalances(
+        array $balances
     ): void {
-        AccountBalance::updateOrCreate(
+        if (empty($balances)) {
+            return;
+        }
+
+        AccountBalance::upsert(
+            $balances,
             [
-                'accountID'  => $accountID,
-                'fiscalYear' => $fiscalYear,
-                'coinsID'    => $coinsID,
+                'accountID',
+                'coinsID',
             ],
             [
-                'debitTotal'    => $totalDebit,
-                'creditTotal'   => $totalCredit,
-                'balance'       => $balance,
-                'lastUpdatedAt' => now(),
+                'debitTotal',
+                'creditTotal',
+                'balance',
+                'lastUpdatedAt',
             ]
         );
     }
 
+    // =========================================================
+    // NORMALIZE IDS
+    // =========================================================
+
+    private static function normalizeAccountIDs(
+        array $accountIDs
+    ): array {
+        return collect($accountIDs)
+            ->filter(
+                fn ($id) =>
+                    is_numeric($id)
+                    && (int) $id > 0
+            )
+            ->map(
+                fn ($id) =>
+                    (int) $id
+            )
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    // =========================================================
+    // SYSTEM CURRENCY
+    // =========================================================
+
     private static function getSystemCurrencyId(): int
     {
-        if (self::$systemCurrencyIdCache !== null) {
+        if (
+            self::$systemCurrencyIdCache !== null
+        ) {
             return self::$systemCurrencyIdCache;
         }
 
-        self::$systemCurrencyIdCache = (int) (
-            Coin::where('coinsSystem', 1)->value('coinsID') ?? 1
-        );
+        self::$systemCurrencyIdCache =
+            (int) (
+                Coin::query()
+                    ->where(
+                        'coinsSystem',
+                        1
+                    )
+                    ->value('coinsID')
+                ?? 1
+            );
 
         return self::$systemCurrencyIdCache;
     }

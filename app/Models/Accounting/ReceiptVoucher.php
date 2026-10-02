@@ -9,7 +9,6 @@ class ReceiptVoucher extends Model
     protected $table      = 'receipt_vouchers';
     protected $primaryKey = 'receiptID';
 
-    // ⭐ إلغاء timestamps لأن الجدول لا يحتوي عليها
     public $timestamps = false;
 
     protected $fillable = [
@@ -18,6 +17,7 @@ class ReceiptVoucher extends Model
         'creditAccountID',
         'debitAccountID',
         'coinsID',
+        'entryID',
         'amount',
         'exchangeRate',
         'localAmount',
@@ -31,33 +31,42 @@ class ReceiptVoucher extends Model
         'amount'       => 'decimal:2',
         'exchangeRate' => 'decimal:6',
         'localAmount'  => 'decimal:2',
+        'entryID'      => 'integer',
     ];
 
-    // ══════════════════════════════════════════════════════════
-    //  العلاقات
-    // ══════════════════════════════════════════════════════════
-
-    /**
-     * الحساب الدائن (العميل)
-     */
     public function creditAccount()
     {
-        return $this->belongsTo(CharAccount::class, 'creditAccountID', 'accountID');
+        return $this->belongsTo(
+            CharAccount::class,
+            'creditAccountID',
+            'accountID'
+        );
     }
 
-    /**
-     * الحساب المدين (الصندوق/البنك)
-     */
     public function debitAccount()
     {
-        return $this->belongsTo(CharAccount::class, 'debitAccountID', 'accountID');
+        return $this->belongsTo(
+            CharAccount::class,
+            'debitAccountID',
+            'accountID'
+        );
     }
 
-    /**
-     * العملة
-     */
     public function currency()
     {
-        return $this->belongsTo(Coin::class, 'coinsID', 'coinsID');
+        return $this->belongsTo(
+            Coin::class,
+            'coinsID',
+            'coinsID'
+        );
+    }
+
+    public function entry()
+    {
+        return $this->belongsTo(
+            JournalEntry::class,
+            'entryID',
+            'entryID'
+        );
     }
 }

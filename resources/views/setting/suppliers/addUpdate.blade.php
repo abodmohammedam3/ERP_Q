@@ -16,8 +16,9 @@
             ================================= --}}
             <div class="modal-header">
 
-                <h5 class="modal-title" id="supplierModalLabel">
-                    إضافة مورد جديد
+                <h5 class="modal-title">
+                    <i class="bi bi-truck"></i>
+                    <span id="supplierModalLabel">إضافة مورد جديد</span>
                 </h5>
 
                 <button type="button"
@@ -151,14 +152,14 @@
                 <button type="button"
                         class="btn btn-secondary"
                         data-bs-dismiss="modal">
-                    إلغاء
+                    <i class="bi bi-x-lg"></i> إلغاء
                 </button>
 
                 <button type="submit"
                         form="supplierForm"
                         class="btn btn-primary"
                         id="saveSupplierBtn">
-                    حفظ البيانات
+                    <i class="bi bi-check-lg"></i> حفظ البيانات
                 </button>
 
             </div>

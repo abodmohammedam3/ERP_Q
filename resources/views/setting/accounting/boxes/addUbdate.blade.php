@@ -8,16 +8,16 @@
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
 
-            <div class="modal-header position-relative">
+            <div class="modal-header">
                 <h5 class="modal-title" id="boxModalLabel">
                     <i class="bi bi-safe2"></i>
                     إضافة صندوق
                 </h5>
 
                 <button type="button"
-                        class="btn-close position-absolute top-0 start-0 m-3"
+                        class="btn-close"
                         data-bs-dismiss="modal"
-                        aria-label="Close">
+                        aria-label="إغلاق">
                 </button>
             </div>
 

@@ -4,12 +4,15 @@
 
 <div class="card" id="suppliersTableCard">
 
-    <div class="card-header bg-body border-bottom d-flex justify-content-between align-items-center">
+    <div class="card-header d-flex justify-content-between align-items-center">
 
-        <div class="d-flex align-items-center gap-2">
-            <i class="bi bi-truck text-primary"></i>
-            <h6 class="mb-0 fw-bold">قائمة الموردين</h6>
-        </div>
+        <span>
+            <i class="bi bi-list-ul"></i> قائمة الموردين
+        </span>
+
+        <span class="badge bg-secondary" id="suppliersCountBadge">
+            {{ isset($suppliers) ? $suppliers->count() : 0 }}
+        </span>
 
     </div>
 
@@ -18,7 +21,7 @@
         <div class="table-responsive">
 
             <table
-                class="table table-striped table-hover mb-0 align-middle"
+                class="table table-hover table-bordered mb-0 align-middle"
                 id="suppliersTable"
                 style="width: 100%; table-layout: fixed;"
             >
@@ -35,7 +38,7 @@
 
                 <thead class="table-light">
 
-                    <tr>
+                    <tr class="text-center">
 
                         <th>#</th>
 
@@ -62,7 +65,7 @@
                     @forelse($suppliers ?? [] as $index => $supplier)
 
                         <tr
-                            class="supplier-row"
+                            class="supplier-row text-center"
                             data-id="{{ $supplier->suplierID }}"
                         >
 
@@ -130,7 +133,7 @@
 
                                 @if($supplier->is_active === 1)
 
-                                    <span class="badge bg-primary">
+                                    <span class="badge bg-success">
                                         نشط
                                     </span>
 
@@ -148,23 +151,29 @@
                             {{-- الإجراءات --}}
                             <td class="text-center">
 
-                                <button
-                                    type="button"
-                                    class="btn btn-sm btn-outline-primary me-1 edit-supplier"
-                                    data-id="{{ $supplier->suplierID }}"
-                                >
-                                    <i class="bi bi-pencil"></i>
-                                    تعديل
-                                </button>
+                                <div class="btn-action-group">
 
-                                <button
-                                    type="button"
-                                    class="btn btn-sm btn-outline-danger delete-supplier"
-                                    data-id="{{ $supplier->suplierID }}"
-                                >
-                                    <i class="bi bi-trash"></i>
-                                    حذف
-                                </button>
+                                    <button
+                                        type="button"
+                                        class="btn btn-sm btn-outline-primary edit-supplier"
+                                        data-id="{{ $supplier->suplierID }}"
+                                        title="تعديل"
+                                    >
+                                        <i class="bi bi-pencil d-md-none"></i>
+                                        <span class="d-none d-md-inline">تعديل</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        class="btn btn-sm btn-outline-danger delete-supplier"
+                                        data-id="{{ $supplier->suplierID }}"
+                                        title="حذف"
+                                    >
+                                        <i class="bi bi-trash d-md-none"></i>
+                                        <span class="d-none d-md-inline">حذف</span>
+                                    </button>
+
+                                </div>
 
                             </td>
 
@@ -199,19 +208,9 @@
 
 
     {{-- تذييل الجدول (ترقيم الصفحات) --}}
-    <div
-        class="card-footer d-flex flex-wrap justify-content-between align-items-center"
-        id="suppliersPagination"
-    >
+    <div class="card-footer d-flex justify-content-center align-items-center">
 
-        <span
-            class="text-muted small"
-            id="suppliersPaginationInfo"
-        >
-            عرض 0-0 من 0 مورد
-        </span>
-
-        <nav>
+        <nav aria-label="Pagination">
 
             <ul
                 class="pagination pagination-sm mb-0"

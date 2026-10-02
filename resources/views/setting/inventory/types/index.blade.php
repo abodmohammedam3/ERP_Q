@@ -15,7 +15,7 @@
             <small class="text-muted">إدارة أنواع الأصناف</small>
         </div>
 
-        <div class="btn-group">
+        <div class="d-flex gap-2">
             <button type="button" class="btn btn-outline-secondary" onclick="printTypes()">
                 <i class="bi bi-printer"></i> طباعة
             </button>

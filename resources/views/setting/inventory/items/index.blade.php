@@ -15,7 +15,7 @@
             <small class="text-muted">إدارة الأصناف المسجلة في النظام</small>
         </div>
 
-        <div class="btn-group">
+        <div class="d-flex gap-2">
             <button type="button" class="btn btn-outline-secondary" onclick="printItems()">
                 <i class="bi bi-printer"></i> طباعة
             </button>

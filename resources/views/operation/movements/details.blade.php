@@ -1,25 +1,23 @@
-<div class="card shadow-sm mb-3">
+<div class="card mb-3">
 
-    <div class="card-header">
-        <div class="d-flex justify-content-between align-items-center">
+    <div class="card-header d-flex justify-content-between align-items-center">
 
-            <h6 class="mb-0">
-                <i class="bi bi-box-seam"></i>
-                تفاصيل الحركة
-            </h6>
+        <strong>
+            <i class="bi bi-box-seam"></i>
+            تفاصيل الحركة
+        </strong>
 
-            <button
-                type="button"
-                id="btnAddMovementRow"
-                class="btn btn-sm btn-primary"
-                onclick="addMovementRow()"
-                disabled
-            >
-                <i class="bi bi-plus-lg"></i>
-                إضافة صنف
-            </button>
+                <button
+                    type="button"
+                    id="btnAddMovementRow"
+                    class="btn btn-sm btn-success"
+                    onclick="addMovementRow()"
+                    disabled
+                >
+                    <i class="bi bi-plus-lg"></i>
+                    إضافة صنف
+                </button>
 
-        </div>
     </div>
 
     <div class="card-body p-0">
@@ -48,19 +46,22 @@
                 <tbody id="movementDetails"></tbody>
 
                 <tfoot>
-                    <tr class="table-light">
-                        <th colspan="11" class="text-end align-middle fs-6">
-                            إجمالي الحركة
-                        </th>
-                        <th class="p-1">
-                            <input
-                                type="text"
-                                id="movementTotal"
-                                class="form-control form-control-sm text-center fw-bold bg-white"
-                                value="0.00"
-                                readonly
-                            >
-                        </th>
+                    <tr>
+                        <td colspan="12" class="p-3 bg-light">
+                            <div class="d-flex justify-content-end">
+                                <div class="d-flex align-items-center gap-2 border rounded-3 bg-white p-2 px-3">
+                                    <span class="text-success small fw-bold">إجمالي الحركة</span>
+                                    <input
+                                        type="text"
+                                        id="movementTotal"
+                                        class="form-control form-control-sm text-center fw-bold bg-white"
+                                        style="width: 120px;"
+                                        value="0.00"
+                                        readonly
+                                    >
+                                </div>
+                            </div>
+                        </td>
                     </tr>
                 </tfoot>
 
@@ -202,27 +203,23 @@
 
 
 {{-- أزرار الحفظ --}}
-<div id="movementSaveActions" class="card shadow-sm mb-3 d-none">
-    <div class="card-body">
-        <div class="d-flex flex-wrap gap-2">
-            <button
-                type="button"
-                id="btnSaveMovement"
-                class="btn btn-success"
-                onclick="saveMovement()"
-            >
-                <i class="bi bi-check-lg"></i>
-                حفظ
-            </button>
-            <button
-                type="button"
-                id="btnCancelMovement"
-                class="btn btn-secondary"
-                onclick="cancelMovement()"
-            >
-                <i class="bi bi-x-lg"></i>
-                إلغاء
-            </button>
-        </div>
-    </div>
+<div id="movementSaveActions" class="d-flex justify-content-end gap-2 mt-3 flex-wrap d-none">
+    <button
+        type="button"
+        id="btnSaveMovement"
+        class="btn btn-success"
+        onclick="saveMovement()"
+    >
+        <i class="bi bi-save"></i>
+        حفظ
+    </button>
+    <button
+        type="button"
+        id="btnCancelMovement"
+        class="btn btn-secondary"
+        onclick="cancelMovement()"
+    >
+        <i class="bi bi-x-lg"></i>
+        إلغاء
+    </button>
 </div>

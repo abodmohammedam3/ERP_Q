@@ -1,11 +1,11 @@
-<div class="card shadow-sm mb-3">
+<div class="card mb-3">
 
     <div class="card-header">
 
-        <h6 class="mb-0">
+        <strong>
             <i class="bi bi-search"></i>
             البحث في حركات المخزون
-        </h6>
+        </strong>
 
     </div>
 
@@ -175,18 +175,18 @@
 
 <div
     id="movementSearchResults"
-    class="card shadow-sm mb-3 d-none"
+    class="card mb-3 d-none"
 >
 
     <div class="card-header">
 
-        <h6 class="mb-0">
+        <strong>
 
             <i class="bi bi-list-ul"></i>
 
             نتائج البحث
 
-        </h6>
+        </strong>
 
     </div>
 

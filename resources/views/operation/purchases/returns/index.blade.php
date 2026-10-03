@@ -10,7 +10,7 @@
     <div class="d-flex justify-content-between align-items-center mb-3">
 
         <div>
-            <h4 class="mb-1 text-warning">
+            <h4 class="mb-1 text-danger">
                 <i class="bi bi-arrow-return-right me-2"></i>
                 مرتجع شراء
             </h4>
@@ -21,7 +21,7 @@
 
             <button
                 type="button"
-                class="btn btn-warning text-dark fw-bold"
+                class="btn btn-primary"
                 id="btnNewPurchaseReturn"
                 onclick="resetPurchaseReturn()"
             >
@@ -128,7 +128,7 @@
         <div class="modal-content">
 
             <div class="modal-header">
-                <h5 class="modal-title text-warning">
+                <h5 class="modal-title text-danger">
                     <i class="bi bi-search me-2"></i>
                     البحث عن مرتجع شراء
                 </h5>
@@ -150,7 +150,7 @@
                     <div class="col-md-2">
                         <button
                             type="button"
-                            class="btn btn-warning w-100"
+                            class="btn btn-danger w-100"
                             onclick="performPurchaseReturnSearch()"
                         >
                             <i class="bi bi-search"></i>

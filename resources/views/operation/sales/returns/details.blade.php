@@ -17,7 +17,7 @@
 
             <thead class="table-light">
                 <tr>
-                    <th style="width:4%;">#</th>
+                    <th style="width:4%;">الرقم</th>
                     <th style="width:14%;">الصنف</th>
                     <th style="width:9%;">النوع</th>
                     <th style="width:8%;">الرمز</th>
@@ -28,7 +28,7 @@
                     <th style="width:9%;">كمية المرتجع</th>
                     <th style="width:8%;">الخصم</th>
                     <th style="width:11%;">الإجمالي</th>
-                    <th style="width:6%;">حذف</th>
+                    <th style="width:6%;">إجراء</th>
                 </tr>
             </thead>
 

@@ -1,75 +1,3 @@
-<style>
-    .amount-foreign {
-        font-size: 0.75rem;
-        color: #6c757d;
-        direction: ltr;
-        text-align: right;
-        line-height: 1.2;
-        font-weight: 400;
-    }
-
-    .amount-local {
-        font-size: 1rem;
-        font-weight: 700;
-        color: #212529;
-        direction: ltr;
-        text-align: right;
-        line-height: 1.3;
-    }
-
-    .amount-single {
-        font-size: 1rem;
-        font-weight: 700;
-        color: #212529;
-        direction: ltr;
-        text-align: right;
-    }
-
-    .totals-box {
-        display: flex;
-        align-items: stretch;
-        gap: 0;
-        border: 1px solid #dee2e6;
-        border-radius: 0.5rem;
-        background: #fff;
-        overflow: hidden;
-    }
-
-    .totals-item {
-        flex: 1;
-        padding: 10px 16px;
-        text-align: center;
-        border-left: 1px solid #e9ecef;
-    }
-
-    .totals-item:first-child { border-left: none; }
-
-    .totals-label {
-        display: block;
-        font-size: 0.9rem;
-        font-weight: 700;
-        margin-bottom: 4px;
-    }
-
-    .totals-item.discount .totals-label { color: #dc3545; }
-    .totals-item.total    .totals-label { color: #198654; }
-
-    .amount-words {
-        font-size: 0.85rem;
-    }
-
-    input[type="number"]::-webkit-outer-spin-button,
-    input[type="number"]::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-    }
-    input[type="number"] {
-        -moz-appearance: textfield;
-        appearance: textfield;
-    }
-</style>
-
-
 <!-- ========================= -->
 <!-- تفاصيل الفاتورة -->
 <!-- ========================= -->
@@ -126,9 +54,9 @@
             <tfoot>
                 <tr>
                     <td colspan="10" class="p-3 bg-light">
-                        <div class="row g-3 align-items-center">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
 
-                            <div class="col-md-6">
+                            <div class="flex-grow-1" style="max-width: 50%;">
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-text bg-white fw-bold text-secondary text-nowrap">
                                         <i class="bi bi-fonts me-1"></i>
@@ -136,7 +64,8 @@
                                     </span>
                                     <input
                                         type="text"
-                                        class="form-control amount-words"
+                                        class="form-control"
+                                        style="font-size: 0.85rem;"
                                         id="AmountWords"
                                         name="amountWords"
                                         readonly
@@ -145,22 +74,26 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-6">
-                                <div class="totals-box">
+                            <div class="d-flex align-items-center gap-3 border rounded-3 bg-white p-2 px-3">
 
-                                    <div class="totals-item discount">
-                                        <span class="totals-label">إجمالي الخصم</span>
-                                        <div class="amount-foreign" id="totalDiscountForeign">0.00</div>
-                                        <div class="amount-local"   id="totalDiscountLocal">0.00</div>
-                                    </div>
-
-                                    <div class="totals-item total">
-                                        <span class="totals-label">إجمالي الفاتورة</span>
-                                        <div class="amount-foreign" id="invoiceTotalForeign">0.00</div>
-                                        <div class="amount-local"   id="invoiceTotalLocal">0.00</div>
-                                    </div>
-
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="text-danger small fw-bold">إجمالي الخصم</span>
+                                    <span class="text-danger small fw-bold d-flex flex-column align-items-center">
+                                        <span class="amount-foreign" style="font-size: 0.75rem; color: #6c757d; direction: ltr;" id="totalDiscountForeign">0.00</span>
+                                        <strong class="amount-local" style="font-size: 1rem; direction: ltr;" id="totalDiscountLocal">0.00</strong>
+                                    </span>
                                 </div>
+
+                                <div class="vr"></div>
+
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="text-success small fw-bold">إجمالي الفاتورة</span>
+                                    <span class="text-success d-flex flex-column align-items-center">
+                                        <span class="amount-foreign" style="font-size: 0.75rem; color: #6c757d; direction: ltr;" id="invoiceTotalForeign">0.00</span>
+                                        <strong class="amount-local fs-5" style="font-size: 1rem; direction: ltr;" id="invoiceTotalLocal">0.00</strong>
+                                    </span>
+                                </div>
+
                             </div>
 
                         </div>

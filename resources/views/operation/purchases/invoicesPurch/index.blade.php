@@ -11,6 +11,7 @@
 
         <div>
             <h4 class="mb-1">فاتورة شراء</h4>
+            <small class="text-muted">إدارة فواتير المشتريات من الموردين</small>
         </div>
 
         <div class="btn-group" role="group">
@@ -75,12 +76,8 @@
 
             <div class="modal-body">
 
-                <!-- ✅ حقل بحث واحد موسّع — بحث فوري -->
-                <div class="mb-3">
-                    <div class="input-group input-group-lg">
-                        <span class="input-group-text bg-white">
-                            <i class="bi bi-search text-primary"></i>
-                        </span>
+                <div class="row g-2 mb-3">
+                    <div class="col-md-10">
                         <input
                             type="text"
                             class="form-control"
@@ -90,10 +87,16 @@
                             autocomplete="off"
                         >
                     </div>
-                    <small class="text-muted">
-                        <i class="bi bi-info-circle"></i>
-                        النتائج تظهر تلقائيًا أثناء الكتابة
-                    </small>
+                    <div class="col-md-2">
+                        <button
+                            type="button"
+                            class="btn btn-primary w-100"
+                            onclick="debouncedInvoiceSearch()"
+                        >
+                            <i class="bi bi-search"></i>
+                            بحث
+                        </button>
+                    </div>
                 </div>
 
                 <div class="table-responsive" style="max-height: 450px;">

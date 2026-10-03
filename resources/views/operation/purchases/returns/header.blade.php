@@ -6,7 +6,7 @@
 
     <div class="card-header">
         <strong>
-            <i class="bi bi-arrow-return-right text-warning me-1"></i>
+            <i class="bi bi-arrow-return-right text-danger me-1"></i>
             بيانات مرتجع الشراء
         </strong>
     </div>

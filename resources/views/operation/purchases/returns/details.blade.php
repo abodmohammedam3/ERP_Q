@@ -17,7 +17,7 @@
 
             <thead class="table-light">
                 <tr>
-                    <th style="width:4%;">#</th>
+                    <th style="width:4%;">الرقم</th>
                     <th style="width:14%;">الصنف</th>
                     <th style="width:9%;">النوع</th>
                     <th style="width:8%;">الرمز</th>
@@ -28,7 +28,7 @@
                     <th style="width:9%;">كمية المرتجع</th>
                     <th style="width:8%;">الخصم</th>
                     <th style="width:11%;">الإجمالي</th>
-                    <th style="width:6%;">حذف</th>
+                    <th style="width:6%;">إجراء</th>
                 </tr>
             </thead>
 
@@ -54,8 +54,8 @@
                                 <div class="vr"></div>
 
                                 <div class="d-flex align-items-center gap-2">
-                                    <span class="text-warning small fw-bold">إجمالي المرتجع</span>
-                                    <strong class="text-warning fs-5" id="purchaseReturnTotalDisplay">0.00</strong>
+                                    <span class="text-danger small fw-bold">إجمالي المرتجع</span>
+                                    <strong class="text-danger fs-5" id="purchaseReturnTotalDisplay">0.00</strong>
                                 </div>
 
                             </div>
@@ -264,7 +264,7 @@
         <td>
             <input
                 type="number"
-                class="form-control form-control-sm row-measure border-warning fw-bold"
+                class="form-control form-control-sm row-measure border-primary fw-bold"
                 value="0"
                 min="0"
                 step="0.001"

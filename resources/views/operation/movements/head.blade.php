@@ -1,10 +1,10 @@
-<div class="card shadow-sm mb-3">
+<div class="card mb-3">
 
     <div class="card-header">
-        <h6 class="mb-0">
+        <strong>
             <i class="bi bi-file-earmark-text"></i>
             بيانات الحركة
-        </h6>
+        </strong>
     </div>
 
     <div class="card-body">

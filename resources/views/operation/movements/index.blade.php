@@ -4,7 +4,50 @@
 
 @section('content')
 
-<div class="container-fluid">
+<div class="container-fluid py-3">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+
+        <div>
+            <h4 class="mb-1">حركة مخزون</h4>
+            <small class="text-muted">إدارة حركات وأرصدة المخزون</small>
+        </div>
+
+        <div class="btn-group" role="group">
+
+            <button
+                type="button"
+                id="btnAddSupplyMovement"
+                class="btn btn-success"
+                onclick="startSupplyMovement()"
+            >
+                <i class="bi bi-box-arrow-in-down"></i>
+                أمر توريد مخزني
+            </button>
+
+            <button
+                type="button"
+                id="btnAddIssueMovement"
+                class="btn btn-warning"
+                onclick="startIssueMovement()"
+            >
+                <i class="bi bi-box-arrow-up"></i>
+                أمر صرف مخزني
+            </button>
+
+            <button
+                type="button"
+                id="btnPrintMovement"
+                class="btn btn-outline-secondary"
+                onclick="printMovement()"
+            >
+                <i class="bi bi-printer"></i>
+                طباعة
+            </button>
+
+        </div>
+
+    </div>
 
     {{-- ═══════════════════════════════════════════════ --}}
     {{-- شريط التابات                                    --}}
@@ -25,9 +68,6 @@
 
             {{-- قسم البحث --}}
             @include('operation.movements.search')
-
-            {{-- قسم أزرار العمليات --}}
-            @include('operation.movements.operations')
 
             {{-- رأس الحركة --}}
             @include('operation.movements.head')

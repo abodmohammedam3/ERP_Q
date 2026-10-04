@@ -6,23 +6,22 @@ use App\Models\Purchases\PurchaseInvoice;
 use App\Models\Purchases\PurchaseInvoiceDetail;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\Inventory\InventoryMovementDetail;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseInvoiceService
 {
-    public function create(Request $request): PurchaseInvoice
+    public function create(array $data): PurchaseInvoice
     {
-        return DB::transaction(function () use ($request) {
-            $details = $request->input('details', []);
+        return DB::transaction(function () use ($data) {
+            $details = $data['details'] ?? [];
 
-            $this->lockStockRows($details, (int) $request->input('warehouse_id'));
+            $this->lockStockRows($details, (int) ($data['warehouse_id'] ?? 0));
 
             $nextNumber = $this->nextInvoiceNumber();
-            $data = $this->headerData($request);
-            $data['invoice_number'] = (string) $nextNumber;
+            $header = $this->headerData($data);
+            $header['invoice_number'] = (string) $nextNumber;
 
-            $invoice = PurchaseInvoice::create($data);
+            $invoice = PurchaseInvoice::create($header);
             $this->saveDetails($invoice, $details);
             $this->recalculateTotals($invoice);
 
@@ -33,18 +32,18 @@ class PurchaseInvoiceService
         });
     }
 
-    public function update(int $id, Request $request): PurchaseInvoice
+    public function update(int $id, array $data): PurchaseInvoice
     {
-        return DB::transaction(function () use ($id, $request) {
+        return DB::transaction(function () use ($id, $data) {
             $invoice = PurchaseInvoice::lockForUpdate()->findOrFail($id);
 
-            $details = $request->input('details', []);
+            $details = $data['details'] ?? [];
 
-            $this->lockStockRows($details, (int) $request->input('warehouse_id'));
+            $this->lockStockRows($details, (int) ($data['warehouse_id'] ?? 0));
 
-            $data = $this->headerData($request);
-            unset($data['invoice_number']);
-            $invoice->update($data);
+            $header = $this->headerData($data);
+            unset($header['invoice_number']);
+            $invoice->update($header);
 
             $invoice->details()->delete();
             $this->saveDetails($invoice, $details);
@@ -225,28 +224,28 @@ class PurchaseInvoiceService
         return $last ? ((int) $last->invoice_number + 1) : 1;
     }
 
-    private function headerData(Request $request): array
+    private function headerData(array $data): array
     {
-        $otherCost = (float) $request->input('other_cost', 0);
+        $otherCost = (float) ($data['other_cost'] ?? 0);
 
         return [
-            'invoice_number'         => $request->input('invoice_number'),
-            'invoice_date'           => $request->input('invoice_date'),
-            'account_id'             => $request->input('account_id'),
-            'payment_account_id'     => $request->input('payment_account_id'),
-            'coin_id'                => $request->input('coin_id'),
-            'warehouse_id'           => $request->input('warehouse_id'),
-            'exchange_rate'          => $request->input('exchange_rate', 1),
-            'payment_method'         => $request->input('payment_method'),
-            'expenses'               => $request->input('expenses', 0),
-            'tax_cost'               => $request->input('tax_cost', 0),
-            'transportation'         => $request->input('transportation', 0),
+            'invoice_number'         => $data['invoice_number'] ?? null,
+            'invoice_date'           => $data['invoice_date'] ?? null,
+            'account_id'             => $data['account_id'] ?? null,
+            'payment_account_id'     => $data['payment_account_id'] ?? null,
+            'coin_id'                => $data['coin_id'] ?? null,
+            'warehouse_id'           => $data['warehouse_id'] ?? null,
+            'exchange_rate'          => $data['exchange_rate'] ?? 1,
+            'payment_method'         => $data['payment_method'] ?? null,
+            'expenses'               => $data['expenses'] ?? 0,
+            'tax_cost'               => $data['tax_cost'] ?? 0,
+            'transportation'         => $data['transportation'] ?? 0,
             'other_cost'             => $otherCost,
             'other_cost_description' => $otherCost > 0
-                ? $request->input('other_cost_description')
+                ? ($data['other_cost_description'] ?? null)
                 : null,
-            'statement'              => $request->input('statement'),
-            'reference'              => $request->input('reference'),
+            'statement'              => $data['statement'] ?? null,
+            'reference'              => $data['reference'] ?? null,
         ];
     }
 

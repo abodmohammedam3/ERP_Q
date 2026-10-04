@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Operation\Purchases;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Purchases\StorePurchaseInvoiceRequest;
+use App\Http\Requests\Purchases\UpdatePurchaseInvoiceRequest;
 use App\Models\Purchases\PurchaseInvoice;
 use App\Models\Accounting\Coin;
 use App\Models\Accounting\Bank;
@@ -10,7 +12,6 @@ use App\Services\Purchases\PurchaseInvoiceService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Validator;
 
 class PurchaseInvoiceController extends Controller
 {
@@ -190,19 +191,10 @@ class PurchaseInvoiceController extends Controller
         return response()->json(['data' => $banks]);
     }
 
-    public function store(Request $request)
+    public function store(StorePurchaseInvoiceRequest $request)
     {
-        $validator = $this->validateInvoice($request);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'بيانات غير صحيحة',
-                'errors'  => $validator->errors(),
-            ], 422);
-        }
-
         try {
-            $invoice = $this->service->create($request);
+            $invoice = $this->service->create($request->validated());
 
             return response()->json([
                 'message'             => 'تم حفظ الفاتورة بنجاح',
@@ -224,19 +216,10 @@ class PurchaseInvoiceController extends Controller
         }
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdatePurchaseInvoiceRequest $request, $id)
     {
-        $validator = $this->validateInvoice($request);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'بيانات غير صحيحة',
-                'errors'  => $validator->errors(),
-            ], 422);
-        }
-
         try {
-            $this->service->update((int) $id, $request);
+            $this->service->update((int) $id, $request->validated());
 
             return response()->json([
                 'message' => 'تم تحديث الفاتورة بنجاح',
@@ -317,10 +300,7 @@ class PurchaseInvoiceController extends Controller
         return view('print.purchase-invoice', compact('invoice', 'bank'));
     }
 
-    // =====================================================
-    // التحقق
-    // =====================================================
-
+    /*
     private function validateInvoice(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -416,4 +396,5 @@ class PurchaseInvoiceController extends Controller
 
         return $validator;
     }
+    */
 }

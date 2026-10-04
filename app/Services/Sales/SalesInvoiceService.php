@@ -7,7 +7,6 @@ use App\Models\Sales\SalesInvoiceDetail;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\Inventory\InventoryMovementDetail;
 use App\Services\Inventory\InventoryService;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -24,21 +23,21 @@ class SalesInvoiceService
     // CRUD
     // =====================================================
 
-    public function create(Request $request): SalesInvoice
+    public function create(array $data): SalesInvoice
     {
-        return DB::transaction(function () use ($request) {
+        return DB::transaction(function () use ($data) {
 
-            $details = $request->input('details', []);
+            $details = $data['details'] ?? [];
 
             $this->lockStockRows($details);
             $this->validateStockAvailability($details);
 
             $nextNumber = $this->nextInvoiceNumber();
 
-            $data = $this->headerData($request);
-            $data['invoice_number'] = (string) $nextNumber;
+            $header = $this->headerData($data);
+            $header['invoice_number'] = (string) $nextNumber;
 
-            $invoice = SalesInvoice::create($data);
+            $invoice = SalesInvoice::create($header);
 
             $this->saveDetails($invoice, $details);
             $this->recalculateTotals($invoice);
@@ -50,20 +49,20 @@ class SalesInvoiceService
         });
     }
 
-    public function update(int $id, Request $request): SalesInvoice
+    public function update(int $id, array $data): SalesInvoice
     {
-        return DB::transaction(function () use ($id, $request) {
+        return DB::transaction(function () use ($id, $data) {
 
             $invoice = SalesInvoice::lockForUpdate()->findOrFail($id);
 
-            $details = $request->input('details', []);
+            $details = $data['details'] ?? [];
 
             $this->lockStockRows($details);
             $this->validateStockAvailability($details);
 
-            $data = $this->headerData($request);
-            unset($data['invoice_number']);
-            $invoice->update($data);
+            $header = $this->headerData($data);
+            unset($header['invoice_number']);
+            $invoice->update($header);
 
             $this->deleteInventoryMovement($invoice);
 
@@ -270,18 +269,18 @@ class SalesInvoiceService
         return $last ? ((int) $last->invoice_number + 1) : 1;
     }
 
-    protected function headerData(Request $request): array
+    protected function headerData(array $data): array
     {
         return [
-            'invoice_number'     => $request->input('invoice_number'),
-            'invoice_date'       => $request->input('invoice_date'),
-            'account_id'         => $request->input('account_id'),
-            'payment_account_id' => $request->input('payment_account_id'),
-            'coin_id'            => $request->input('coin_id'),
-            'exchange_rate'      => $request->input('exchange_rate', 1),
-            'payment_method'     => $request->input('payment_method'),
-            'statement'          => $request->input('statement'),
-            'reference'          => $request->input('reference'),
+            'invoice_number'     => $data['invoice_number'] ?? null,
+            'invoice_date'       => $data['invoice_date'] ?? null,
+            'account_id'         => $data['account_id'] ?? null,
+            'payment_account_id' => $data['payment_account_id'] ?? null,
+            'coin_id'            => $data['coin_id'] ?? null,
+            'exchange_rate'      => $data['exchange_rate'] ?? 1,
+            'payment_method'     => $data['payment_method'] ?? null,
+            'statement'          => $data['statement'] ?? null,
+            'reference'          => $data['reference'] ?? null,
         ];
     }
 

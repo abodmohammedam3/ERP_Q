@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Operation\Sales;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Sales\StoreSalesReturnRequest;
+use App\Http\Requests\Sales\UpdateSalesReturnRequest;
 use App\Models\Sales\SalesReturn;
 use App\Services\Sales\SalesReturnService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -171,19 +173,10 @@ class SalesReturnController extends Controller
     /**
      * حفظ مرتجع جديد
      */
-    public function store(Request $request)
+    public function store(StoreSalesReturnRequest $request)
     {
-        $validator = $this->validateReturn($request);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'بيانات غير صحيحة',
-                'errors'  => $validator->errors(),
-            ], 422);
-        }
-
         try {
-            $salesReturn = $this->service->create($request);
+            $salesReturn = $this->service->create($request->validated());
 
             return response()->json([
                 'message'         => 'تم حفظ مرتجع البيع بنجاح',
@@ -214,19 +207,10 @@ class SalesReturnController extends Controller
     /**
      * تحديث مرتجع
      */
-    public function update(Request $request, $id)
+    public function update(UpdateSalesReturnRequest $request, $id)
     {
-        $validator = $this->validateReturn($request);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'بيانات غير صحيحة',
-                'errors'  => $validator->errors(),
-            ], 422);
-        }
-
         try {
-            $this->service->update((int) $id, $request);
+            $this->service->update((int) $id, $request->validated());
 
             return response()->json([
                 'message' => 'تم تحديث مرتجع البيع بنجاح',
@@ -311,6 +295,7 @@ class SalesReturnController extends Controller
     // التحقق من البيانات
     // =====================================================
 
+    /*
     protected function validateReturn(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -367,4 +352,5 @@ class SalesReturnController extends Controller
 
         return $validator;
     }
+    */
 }

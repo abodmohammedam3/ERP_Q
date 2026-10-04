@@ -3,13 +3,14 @@
 namespace App\Http\Controllers\Operation\Sales;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Sales\StoreSalesInvoiceRequest;
+use App\Http\Requests\Sales\UpdateSalesInvoiceRequest;
 use App\Models\Sales\SalesInvoice;
 use App\Services\Sales\SalesInvoiceService;
 use App\Services\Inventory\InventoryService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Validator;
 
 class SalesInvoiceController extends Controller
 {
@@ -168,19 +169,10 @@ class SalesInvoiceController extends Controller
     /**
      * حفظ فاتورة جديدة
      */
-    public function store(Request $request)
+    public function store(StoreSalesInvoiceRequest $request)
     {
-        $validator = $this->validateInvoice($request);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'بيانات غير صحيحة',
-                'errors'  => $validator->errors(),
-            ], 422);
-        }
-
         try {
-            $invoice = $this->service->create($request);
+            $invoice = $this->service->create($request->validated());
 
             return response()->json([
                 'message'          => 'تم حفظ الفاتورة بنجاح',
@@ -211,19 +203,10 @@ class SalesInvoiceController extends Controller
     /**
      * تحديث فاتورة
      */
-    public function update(Request $request, $id)
+    public function update(UpdateSalesInvoiceRequest $request, $id)
     {
-        $validator = $this->validateInvoice($request);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'بيانات غير صحيحة',
-                'errors'  => $validator->errors(),
-            ], 422);
-        }
-
         try {
-            $this->service->update((int) $id, $request);
+            $this->service->update((int) $id, $request->validated());
 
             return response()->json([
                 'message' => 'تم تحديث الفاتورة بنجاح',
@@ -307,90 +290,4 @@ class SalesInvoiceController extends Controller
 
 
 
-    // =====================================================
-    // التحقق من البيانات
-    // =====================================================
-
-    protected function validateInvoice(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'invoice_number'      => ['required', 'string', 'max:50'],
-            'invoice_date'        => ['required', 'date'],
-            'account_id'          => ['required', 'exists:characcount,accountID'],
-            'payment_method'      => ['required', 'integer', 'in:1,2,3,4'],
-            'coin_id'             => ['required', 'exists:coins,coinsID'],
-            'exchange_rate'       => ['nullable', 'numeric', 'min:0'],
-            'payment_account_id'  => ['nullable', 'exists:characcount,accountID'],
-            'statement'           => ['nullable', 'string'],
-            'reference'           => ['nullable', 'string'],
-
-            'details'                  => ['required', 'array', 'min:1'],
-            'details.*.item_id'        => ['required', 'exists:Items,itemID'],
-            'details.*.type_id'        => ['nullable', 'exists:type,id'],
-            'details.*.unit_id'        => ['nullable', 'exists:units,UnitID'],
-            'details.*.warehouse_id'   => ['required', 'exists:stocks,StockID'],
-            'details.*.code'           => ['nullable', 'string', 'max:50'],
-            'details.*.quantity'       => ['required', 'numeric', 'gt:0'],
-            'details.*.price'          => ['required', 'numeric', 'gt:0'],
-            'details.*.cost_price'     => ['nullable', 'numeric', 'min:0'],
-            'details.*.discount'       => ['nullable', 'numeric', 'min:0'],
-        ], [
-            'invoice_number.required'  => 'رقم الفاتورة مطلوب',
-            'invoice_date.required'    => 'تاريخ الفاتورة مطلوب',
-            'account_id.required'      => 'يجب اختيار العميل',
-            'account_id.exists'        => 'العميل المحدد غير موجود',
-            'payment_method.required'  => 'طريقة الدفع مطلوبة',
-            'coin_id.required'         => 'يجب اختيار العملة',
-            'coin_id.exists'           => 'العملة المحددة غير موجودة',
-            'details.required'         => 'يجب إضافة صنف واحد على الأقل',
-            'details.min'              => 'يجب إضافة صنف واحد على الأقل',
-            'details.*.item_id.required'=> 'يجب اختيار الصنف في كل الصفوف',
-            'details.*.item_id.exists' => 'أحد الأصناف المحددة غير موجود',
-            'details.*.warehouse_id.required' => 'يجب اختيار المخزن في كل الصفوف',
-            'details.*.warehouse_id.exists'   => 'أحد المخازن المحددة غير موجود',
-            'details.*.quantity.gt'    => 'الكمية يجب أن تكون أكبر من صفر',
-            'details.*.price.gt'       => 'سعر الوحدة يجب أن يكون أكبر من صفر',
-        ]);
-
-        $validator->after(function ($v) use ($request) {
-            $method    = (int) $request->input('payment_method');
-            $accountId = $request->input('payment_account_id');
-
-            if ($method === 1 && !empty($accountId)) {
-                $v->errors()->add(
-                    'payment_account_id',
-                    'طريقة الدفع "أجل" لا تحتاج إلى حساب دفع'
-                );
-            }
-
-            if (in_array($method, [2, 3, 4]) && empty($accountId)) {
-                $v->errors()->add(
-                    'payment_account_id',
-                    'يجب اختيار حساب الدفع'
-                );
-            }
-
-            foreach ($request->input('details', []) as $i => $row) {
-                $qty      = (float) ($row['quantity'] ?? 0);
-                $price    = (float) ($row['price'] ?? 0);
-                $discount = (float) ($row['discount'] ?? 0);
-
-                if ($discount > $qty * $price) {
-                    $v->errors()->add(
-                        "details.{$i}.discount",
-                        'الخصم لا يمكن أن يتجاوز قيمة الصف'
-                    );
-                }
-
-                if (max(0, $qty * $price - $discount) <= 0) {
-                    $v->errors()->add(
-                        "details.{$i}.price",
-                        'إجمالي الصف يجب أن يكون أكبر من صفر'
-                    );
-                }
-            }
-        });
-
-        return $validator;
-    }
 }

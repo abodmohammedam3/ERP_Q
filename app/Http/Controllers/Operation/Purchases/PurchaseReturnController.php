@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Operation\Purchases;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Purchases\StorePurchaseReturnRequest;
+use App\Http\Requests\Purchases\UpdatePurchaseReturnRequest;
 use App\Models\Purchases\PurchaseReturn;
 use App\Services\Purchases\PurchaseReturnService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -174,19 +176,10 @@ class PurchaseReturnController extends Controller
     /**
      * حفظ مرتجع شراء جديد
      */
-    public function store(Request $request)
+    public function store(StorePurchaseReturnRequest $request)
     {
-        $validator = $this->validateReturn($request);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'بيانات غير صحيحة',
-                'errors'  => $validator->errors(),
-            ], 422);
-        }
-
         try {
-            $purchaseReturn = $this->service->create($request);
+            $purchaseReturn = $this->service->create($request->validated());
 
             return response()->json([
                 'message'            => 'تم حفظ مرتجع الشراء بنجاح',
@@ -217,19 +210,10 @@ class PurchaseReturnController extends Controller
     /**
      * تحديث مرتجع شراء
      */
-    public function update(Request $request, $id)
+    public function update(UpdatePurchaseReturnRequest $request, $id)
     {
-        $validator = $this->validateReturn($request);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'بيانات غير صحيحة',
-                'errors'  => $validator->errors(),
-            ], 422);
-        }
-
         try {
-            $this->service->update((int) $id, $request);
+            $this->service->update((int) $id, $request->validated());
 
             return response()->json([
                 'message' => 'تم تحديث مرتجع الشراء بنجاح',
@@ -315,6 +299,7 @@ class PurchaseReturnController extends Controller
     // التحقق من البيانات
     // =====================================================
 
+    /*
     protected function validateReturn(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -372,4 +357,5 @@ class PurchaseReturnController extends Controller
 
         return $validator;
     }
+    */
 }

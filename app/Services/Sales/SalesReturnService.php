@@ -9,7 +9,6 @@ use App\Models\Sales\SalesInvoiceDetail;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\Inventory\InventoryMovementDetail;
 use App\Services\Inventory\InventoryService;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -47,27 +46,27 @@ class SalesReturnService
     // CRUD
     // =====================================================
 
-    public function create(Request $request): SalesReturn
+    public function create(array $data): SalesReturn
     {
-        return DB::transaction(function () use ($request) {
+        return DB::transaction(function () use ($data) {
 
-            $originalInvoiceId = (int) $request->input('original_sales_invoice_id');
+            $originalInvoiceId = (int) ($data['original_sales_invoice_id'] ?? 0);
 
             // ✅ 1) قفل الفاتورة الأصلية + التحقق
             $this->lockAndValidateInvoice(
                 $originalInvoiceId,
-                $request->input('account_id'),
-                $request->input('coin_id')
+                $data['account_id'] ?? null,
+                $data['coin_id'] ?? null
             );
 
-            $details = $request->input('details', []);
+            $details = $data['details'] ?? [];
 
             // ✅ 2) فحص التفاصيل
             $this->validateReturnQuantities($originalInvoiceId, $details);
 
             $nextNumber = $this->nextReturnNumber();
 
-            $data = $this->headerData($request);
+            $data = $this->headerData($data);
             $data['return_number'] = (string) $nextNumber;
 
             $salesReturn = SalesReturn::create($data);
@@ -82,25 +81,25 @@ class SalesReturnService
         });
     }
 
-    public function update(int $id, Request $request): SalesReturn
+    public function update(int $id, array $data): SalesReturn
     {
-        return DB::transaction(function () use ($id, $request) {
+        return DB::transaction(function () use ($id, $data) {
 
-            $originalInvoiceId = (int) $request->input('original_sales_invoice_id');
+            $originalInvoiceId = (int) ($data['original_sales_invoice_id'] ?? 0);
 
             $this->lockAndValidateInvoice(
                 $originalInvoiceId,
-                $request->input('account_id'),
-                $request->input('coin_id')
+                $data['account_id'] ?? null,
+                $data['coin_id'] ?? null
             );
 
             $salesReturn = SalesReturn::lockForUpdate()->findOrFail($id);
 
-            $details = $request->input('details', []);
+            $details = $data['details'] ?? [];
 
             $this->validateReturnQuantities($originalInvoiceId, $details, $salesReturn->sales_return_id);
 
-            $data = $this->headerData($request);
+            $data = $this->headerData($data);
             unset($data['return_number']);
             $salesReturn->update($data);
 
@@ -315,19 +314,19 @@ class SalesReturnService
         return $last ? ((int) $last->return_number + 1) : 1;
     }
 
-    protected function headerData(Request $request): array
+    protected function headerData(array $data): array
     {
         return [
-            'return_number'             => $request->input('return_number'),
-            'return_date'               => $request->input('return_date'),
-            'original_sales_invoice_id' => $request->input('original_sales_invoice_id'),
-            'account_id'                => $request->input('account_id'),
-            'payment_account_id'        => $request->input('payment_account_id'),
-            'coin_id'                   => $request->input('coin_id'),
-            'exchange_rate'             => $request->input('exchange_rate', 1),
-            'payment_method'            => $request->input('payment_method'),
-            'statement'                 => $request->input('statement'),
-            'reference'                 => $request->input('reference'),
+            'return_number'             => $data['return_number'] ?? null,
+            'return_date'               => $data['return_date'] ?? null,
+            'original_sales_invoice_id' => $data['original_sales_invoice_id'] ?? null,
+            'account_id'                => $data['account_id'] ?? null,
+            'payment_account_id'        => $data['payment_account_id'] ?? null,
+            'coin_id'                   => $data['coin_id'] ?? null,
+            'exchange_rate'             => $data['exchange_rate'] ?? 1,
+            'payment_method'            => $data['payment_method'] ?? null,
+            'statement'                 => $data['statement'] ?? null,
+            'reference'                 => $data['reference'] ?? null,
         ];
     }
 

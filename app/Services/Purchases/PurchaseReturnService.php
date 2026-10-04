@@ -9,7 +9,6 @@ use App\Models\Purchases\PurchaseInvoiceDetail;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\Inventory\InventoryMovementDetail;
 use App\Services\Inventory\InventoryService;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -39,39 +38,39 @@ class PurchaseReturnService
         return max(0.0, (float) $invoiceDetail->quantity - (float) $alreadyReturned);
     }
 
-    public function create(Request $request): PurchaseReturn
+    public function create(array $data): PurchaseReturn
     {
-        return DB::transaction(function () use ($request) {
+        return DB::transaction(function () use ($data) {
 
-            $originalInvoiceId = (int) $request->input('original_purchase_invoice_id');
+            $originalInvoiceId = (int) ($data['original_purchase_invoice_id'] ?? 0);
 
             $this->lockAndValidateInvoice(
                 $originalInvoiceId,
-                $request->input('account_id'),
-                $request->input('coin_id'),
-                $request->input('warehouse_id')
+                $data['account_id'] ?? null,
+                $data['coin_id'] ?? null,
+                $data['warehouse_id'] ?? null
             );
 
-            $details = $request->input('details', []);
+            $details = $data['details'] ?? [];
 
             $this->validateReturnQuantities($originalInvoiceId, $details);
 
             $this->lockStockRows(
                 $details,
-                $request->input('warehouse_id')
+                $data['warehouse_id'] ?? null
             );
 
             $this->validateStockAvailability(
                 $details,
-                $request->input('warehouse_id')
+                $data['warehouse_id'] ?? null
             );
 
             $nextNumber = $this->nextReturnNumber();
 
-            $data = $this->headerData($request);
-            $data['return_number'] = (string) $nextNumber;
+            $header = $this->headerData($data);
+            $header['return_number'] = (string) $nextNumber;
 
-            $purchaseReturn = PurchaseReturn::create($data);
+            $purchaseReturn = PurchaseReturn::create($header);
 
             $this->saveDetails($purchaseReturn, $details);
             $this->recalculateTotals($purchaseReturn);
@@ -83,39 +82,39 @@ class PurchaseReturnService
         });
     }
 
-    public function update(int $id, Request $request): PurchaseReturn
+    public function update(int $id, array $data): PurchaseReturn
     {
-        return DB::transaction(function () use ($id, $request) {
+        return DB::transaction(function () use ($id, $data) {
 
-            $originalInvoiceId = (int) $request->input('original_purchase_invoice_id');
+            $originalInvoiceId = (int) ($data['original_purchase_invoice_id'] ?? 0);
 
             $this->lockAndValidateInvoice(
                 $originalInvoiceId,
-                $request->input('account_id'),
-                $request->input('coin_id'),
-                $request->input('warehouse_id')
+                $data['account_id'] ?? null,
+                $data['coin_id'] ?? null,
+                $data['warehouse_id'] ?? null
             );
 
             $purchaseReturn = PurchaseReturn::lockForUpdate()->findOrFail($id);
 
-            $details = $request->input('details', []);
+            $details = $data['details'] ?? [];
 
             $this->validateReturnQuantities($originalInvoiceId, $details, $purchaseReturn->purchase_return_id);
 
             $this->lockStockRows(
                 $details,
-                $request->input('warehouse_id')
+                $data['warehouse_id'] ?? null
             );
 
             $this->validateStockAvailability(
                 $details,
-                $request->input('warehouse_id'),
+                $data['warehouse_id'] ?? null,
                 $purchaseReturn->purchase_return_id
             );
 
-            $data = $this->headerData($request);
-            unset($data['return_number']);
-            $purchaseReturn->update($data);
+            $header = $this->headerData($data);
+            unset($header['return_number']);
+            $purchaseReturn->update($header);
 
             $purchaseReturn->details()->delete();
             $this->saveDetails($purchaseReturn, $details);
@@ -445,20 +444,20 @@ class PurchaseReturnService
         return $last ? ((int) $last->return_number + 1) : 1;
     }
 
-    protected function headerData(Request $request): array
+    protected function headerData(array $data): array
     {
         return [
-            'return_number'                => $request->input('return_number'),
-            'return_date'                  => $request->input('return_date'),
-            'original_purchase_invoice_id' => $request->input('original_purchase_invoice_id'),
-            'account_id'                   => $request->input('account_id'),
-            'payment_account_id'           => $request->input('payment_account_id'),
-            'coin_id'                      => $request->input('coin_id'),
-            'warehouse_id'                 => $request->input('warehouse_id'),
-            'exchange_rate'                => $request->input('exchange_rate', 1),
-            'payment_method'               => $request->input('payment_method'),
-            'statement'                    => $request->input('statement'),
-            'reference'                    => $request->input('reference'),
+            'return_number'                => $data['return_number'] ?? null,
+            'return_date'                  => $data['return_date'] ?? null,
+            'original_purchase_invoice_id' => $data['original_purchase_invoice_id'] ?? null,
+            'account_id'                   => $data['account_id'] ?? null,
+            'payment_account_id'           => $data['payment_account_id'] ?? null,
+            'coin_id'                      => $data['coin_id'] ?? null,
+            'warehouse_id'                 => $data['warehouse_id'] ?? null,
+            'exchange_rate'                => $data['exchange_rate'] ?? 1,
+            'payment_method'               => $data['payment_method'] ?? null,
+            'statement'                    => $data['statement'] ?? null,
+            'reference'                    => $data['reference'] ?? null,
         ];
     }
 

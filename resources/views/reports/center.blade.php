@@ -126,6 +126,9 @@
     </div>
 </div>
 
+{{-- مودال اختيار الحساب — خاص بمركز التقارير --}}
+@include('reports.accountPicker')
+
 @endsection
 
 @push('scripts')

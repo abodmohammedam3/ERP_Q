@@ -43,6 +43,7 @@ Route::get('/reports/sources', [ReportCenterController::class, 'sources'])->name
 Route::get('/reports/data/{key}', [ReportCenterController::class, 'data'])->name('reports.data');
 Route::get('/reports/print/{key}', [ReportCenterController::class, 'print'])->name('reports.print');
 Route::get('/reports/export/{key}', [ReportCenterController::class, 'export'])->name('reports.export');
+Route::get('/reports/accounts', [ReportCenterController::class, 'accounts'])->name('reports.accounts');
 
 // =====================================================
 // دوال دليل الحسابات

@@ -25,6 +25,12 @@ const RC = {
     controller: null,    // AbortController للطلب الحالي
     sort: { key: null, dir: 'asc' },
     quickSearch: '',
+
+    // مودال اختيار الحساب (دليل الحسابات) — خاص بهذه الشاشة
+    pickerAccounts: null,   // الحسابات المؤهلة — تُحمَّل مرة واحدة
+    pickerPromise: null,    // وعد التحميل الجاري (منع الطلبات المكرّرة)
+    pickerTargetId: null,   // الحقل المخفي المستهدف للاختيار
+    pickerTab: 'ALL',
 };
 
 /* ════════════════════════════════════════════════════════
@@ -154,8 +160,8 @@ function rcHydrateSelects() {
     if (!def || !def.filters) return;
 
     def.filters.forEach((filter) => {
-        if (filter.type !== 'select' && filter.type !== 'account' && filter.type !== 'item') {
-            return;
+        if (filter.type !== 'select' && filter.type !== 'item') {
+            return;   // نوع account يديره مودال الدليل — لا يحتاج تحميل مصادر
         }
 
         const element = document.getElementById(`rcf-${filter.key}`);
@@ -170,11 +176,9 @@ function rcHydrateSelects() {
 
         const placeholder = document.createElement('option');
         placeholder.value = '';
-        placeholder.textContent = filter.type === 'account'
-            ? 'اختر الحساب...'
-            : filter.type === 'item'
-                ? 'اختر الصنف...'
-                : 'الكل';
+        placeholder.textContent = filter.type === 'item'
+            ? 'اختر الصنف...'
+            : 'الكل';
         element.appendChild(placeholder);
 
         options.forEach((option) => {
@@ -239,11 +243,9 @@ function rcRenderHeader() {
 
 function rcBuildSelect(filter, id) {
     const options = rcSourceOptions(filter.source);
-    const placeholder = filter.type === 'account'
-        ? 'اختر الحساب...'
-        : filter.type === 'item'
-            ? 'اختر الصنف...'
-            : 'الكل';
+    const placeholder = filter.type === 'item'
+        ? 'اختر الصنف...'
+        : 'الكل';
 
     let html = `<select id="${id}" class="form-select form-select-sm">
                     <option value="">${placeholder}</option>`;
@@ -291,8 +293,11 @@ function rcRenderFilters() {
                                   value="${rcEscape(filter.value ?? '')}">`;
                 break;
 
-            case 'select':
             case 'account':
+                control = rcBuildAccountPicker(filter, id);
+                break;
+
+            case 'select':
             case 'item':
                 control = rcBuildSelect(filter, id);
                 break;
@@ -332,8 +337,8 @@ function rcRenderFilters() {
     document.getElementById('rcBtnApply').addEventListener('click', () => rcRun(1));
     document.getElementById('rcBtnReset').addEventListener('click', rcResetFilters);
 
-    // Enter في أي حقل نصي/تاريخ → تشغيل التقرير
-    container.querySelectorAll('input[type="text"], input[type="date"]').forEach((input) => {
+    // Enter في أي حقل نصي/تاريخ → تشغيل التقرير (خارج حقل المودال)
+    container.querySelectorAll('input[type="text"]:not([data-picker-open]), input[type="date"]').forEach((input) => {
         input.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
                 event.preventDefault();
@@ -370,6 +375,10 @@ function rcResetFilters() {
 
         if (element) {
             element.value = filter.value ?? '';
+
+            // حقل عرض المودال (إن وُجد) يتبع إعادة التعيين
+            const pickerText = document.getElementById(`rcf-${filter.key}-text`);
+            if (pickerText) pickerText.value = '';
         }
     });
 
@@ -808,6 +817,50 @@ function rcInit() {
         });
     }
 
+    // ── مودال اختيار الحساب: فتح/مسح (تفويض — يتحمل إعادة بناء الفلاتر) ──
+    document.getElementById('rcFilters').addEventListener('click', (event) => {
+        const openTrigger = event.target.closest('[data-picker-open]');
+
+        if (openTrigger) {
+            rcOpenAccountPicker(openTrigger.dataset.pickerOpen);
+            return;
+        }
+
+        const clearTrigger = event.target.closest('[data-picker-clear]');
+
+        if (clearTrigger) {
+            const hiddenId = clearTrigger.dataset.pickerClear;
+            const hidden = document.getElementById(hiddenId);
+            const text = document.getElementById(`${hiddenId}-text`);
+
+            if (hidden) hidden.value = '';
+            if (text) text.value = '';
+        }
+    });
+
+    // ── مودال الدليل: التبويبات والبحث (مرة واحدة — المودال ثابت في DOM) ──
+    const rcPickerModalEl = document.getElementById('rcAccountPickerModal');
+
+    if (rcPickerModalEl) {
+        rcPickerModalEl.querySelectorAll('#rcPickerTabs .nav-link').forEach((tab) => {
+            tab.addEventListener('click', () => rcActivatePickerTab(tab.dataset.type));
+        });
+
+        document.getElementById('rcPickerSearch')?.addEventListener('input', () => {
+            clearTimeout(rcPickerSearchTimer);
+            rcPickerSearchTimer = setTimeout(rcRenderPickerList, 150);
+        });
+
+        document.getElementById('rcPickerClear')?.addEventListener('click', () => {
+            const search = document.getElementById('rcPickerSearch');
+            if (search) {
+                search.value = '';
+                search.focus();
+            }
+            rcRenderPickerList();
+        });
+    }
+
     rcRenderHeader();
 
     // ── 1) شاشة فورية: عنوان + فلاتر + هيكل تحميل + تشغيل البيانات ──
@@ -846,6 +899,246 @@ function rcShowSkeleton() {
             .map(() => '<td class="rc-skeleton-cell">&nbsp;</td>')
             .join('')}</tr>`)
         .join('');
+}
+
+/* ════════════════════════════════════════════════════════
+   12) مودال اختيار الحساب — دليل الحسابات (خاص بالشاشة)
+   ════════════════════════════════════════════════════════
+   مودال مستقل تماماً عن النظام الموحّد (shared/lookup):
+   - بيانات تُحمَّل مرة واحدة (sessionStorage + كاش الخادم)
+   - بحث وتبويبات محلية — بلا أي طلب شبكة أثناء الاستخدام
+   - يُملأ الحقل المخفي rcf-{key} (رقم الحساب) الذي يقرأه
+     rcCollectFilters — فيعمل العرض والطباعة والتصدير كما كانت
+   ════════════════════════════════════════════════════════ */
+
+const RC_PICKER_TAB_TITLES = {
+    ALL:      'اختيار حساب من دليل الحسابات',
+    CUSTOMER: 'اختيار حساب عميل',
+    SUPPLIER: 'اختيار حساب مورد',
+    CASH:     'اختيار حساب صندوق',
+    BANK:     'اختيار حساب بنك',
+};
+
+const RC_PICKER_CACHE_KEY = 'rc.picker.v1';
+const RC_PICKER_MAX_RENDER = 300;
+let rcPickerSearchTimer = null;
+
+/**
+ * حقل الفلتر: مخفي (رقم الحساب) + حقل عرض يفتح المودال.
+ * معرّف الحقل المخفي هو ما يلتقطه rcCollectFilters.
+ */
+function rcBuildAccountPicker(filter, id) {
+    return `
+        <input type="hidden" id="${id}" value="${rcEscape(filter.value ?? '')}">
+        <div class="input-group input-group-sm">
+            <input type="text"
+                   class="form-control"
+                   id="${id}-text"
+                   data-picker-open="${id}"
+                   placeholder="اضغط لاختيار حساباً من الدليل..."
+                   autocomplete="off"
+                   readonly>
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    data-picker-open="${id}"
+                    title="اختيار حساب">
+                <i class="bi bi-search"></i>
+            </button>
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    data-picker-clear="${id}"
+                    title="مسح الاختيار">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>`;
+}
+
+/**
+ * فتح المودال — تحميل كسول أولاً (مرة واحدة لكل جلسة).
+ */
+async function rcOpenAccountPicker(hiddenId) {
+    const modalEl = document.getElementById('rcAccountPickerModal');
+
+    if (!modalEl) return;
+
+    RC.pickerTargetId = hiddenId;
+
+    // فتح بحالة نظيفة: تبويب الكل + بحث فارغ
+    RC.pickerTab = 'ALL';
+    rcSyncPickerTabUi();
+
+    const search = document.getElementById('rcPickerSearch');
+    if (search) search.value = '';
+
+    rcRenderPickerLoading();
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false });
+    modal.show();
+
+    await rcLoadPickerAccounts();
+    rcRenderPickerList();
+
+    setTimeout(() => document.getElementById('rcPickerSearch')?.focus(), 250);
+}
+
+/**
+ * تحميل الحسابات مرة واحدة فقط:
+ * - نسخة فورية من sessionStorage (بلا شبكة).
+ * - يُعاد الوعد نفسه لكل الاستدعاءات المتزامنة (منع الطلبات المكرّرة).
+ */
+function rcLoadPickerAccounts() {
+    if (RC.pickerAccounts) return Promise.resolve(RC.pickerAccounts);
+    if (RC.pickerPromise) return RC.pickerPromise;
+
+    try {
+        const raw = sessionStorage.getItem(RC_PICKER_CACHE_KEY);
+
+        if (raw) {
+            RC.pickerAccounts = JSON.parse(raw);
+            return Promise.resolve(RC.pickerAccounts);
+        }
+    } catch {
+        /* ذاكرة ممتلئة أو محجوبة — نتجاهل */
+    }
+
+    RC.pickerPromise = fetch(RC.config.urls.accounts, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' },
+    })
+        .then((response) => response.json())
+        .then((payload) => {
+            RC.pickerAccounts = payload.data || [];
+
+            try {
+                sessionStorage.setItem(RC_PICKER_CACHE_KEY, JSON.stringify(RC.pickerAccounts));
+            } catch {
+                /* نتجاهل */
+            }
+
+            return RC.pickerAccounts;
+        })
+        .catch((error) => {
+            console.error('[Reports] فشل تحميل حسابات الدليل', error);
+            RC.pickerAccounts = [];
+            return RC.pickerAccounts;
+        })
+        .finally(() => {
+            RC.pickerPromise = null;
+        });
+
+    return RC.pickerPromise;
+}
+
+function rcRenderPickerLoading() {
+    const body = document.getElementById('rcPickerBody');
+    const empty = document.getElementById('rcPickerEmpty');
+    const template = document.getElementById('rcPickerLoadingTemplate');
+
+    if (!body || !template) return;
+
+    body.replaceChildren(template.content.cloneNode(true));
+    if (empty) empty.style.display = 'none';
+}
+
+function rcSyncPickerTabUi() {
+    const modalEl = document.getElementById('rcAccountPickerModal');
+    if (!modalEl) return;
+
+    modalEl.querySelectorAll('#rcPickerTabs .nav-link').forEach((tab) => {
+        tab.classList.toggle('active', tab.dataset.type === RC.pickerTab);
+    });
+
+    const title = document.getElementById('rcPickerTitle');
+    if (title) {
+        title.innerHTML = `<i class="bi bi-journal-bookmark text-primary me-2"></i> ${
+            RC_PICKER_TAB_TITLES[RC.pickerTab] || RC_PICKER_TAB_TITLES.ALL
+        }`;
+    }
+}
+
+function rcActivatePickerTab(type) {
+    RC.pickerTab = type || 'ALL';
+    rcSyncPickerTabUi();
+    rcRenderPickerList();
+}
+
+/**
+ * رسم القائمة — تصفية محلية بالتبويب والبحث (بلا شبكة).
+ */
+function rcRenderPickerList() {
+    const body = document.getElementById('rcPickerBody');
+    const empty = document.getElementById('rcPickerEmpty');
+    const template = document.getElementById('rcPickerRowTemplate');
+
+    if (!body || !template) return;
+
+    const search = (document.getElementById('rcPickerSearch')?.value || '').trim();
+    let rows = RC.pickerAccounts || [];
+
+    if (RC.pickerTab !== 'ALL') {
+        rows = rows.filter((account) => account.group === RC.pickerTab);
+    }
+
+    if (search !== '') {
+        rows = rows.filter(
+            (account) =>
+                String(account.accCode ?? '').includes(search) ||
+                String(account.accName ?? '').includes(search)
+        );
+    }
+
+    body.replaceChildren();
+
+    if (rows.length === 0) {
+        if (empty) empty.style.display = '';
+        return;
+    }
+
+    if (empty) empty.style.display = 'none';
+
+    const fragment = document.createDocumentFragment();
+    const visible = rows.slice(0, RC_PICKER_MAX_RENDER);
+
+    visible.forEach((account) => {
+        const row = template.content.cloneNode(true);
+        const tr = row.querySelector('tr');
+        const codeEl = row.querySelector('.rc-picker-code');
+        const nameEl = row.querySelector('.rc-picker-name');
+
+        if (codeEl) codeEl.textContent = account.accCode ?? '—';
+        if (nameEl) nameEl.textContent = account.accName ?? '—';
+
+        tr.addEventListener('click', () => rcSelectPickerRow(account));
+
+        fragment.appendChild(row);
+    });
+
+    // سطر تلميحي عند تجاوز الحد — حفاظاً على سرعة الرسم
+    if (rows.length > RC_PICKER_MAX_RENDER) {
+        const hint = document.createElement('tr');
+        hint.innerHTML = `<td colspan="2" class="text-center text-muted py-2 small">
+                يُعرض ${RC_PICKER_MAX_RENDER} من ${rows.length} — اكتب للبحث
+            </td>`;
+        fragment.appendChild(hint);
+    }
+
+    body.appendChild(fragment);
+}
+
+/**
+ * الاختيار: رقم الحساب في الحقل المخفي + العرض في الحقل الظاهر.
+ */
+function rcSelectPickerRow(account) {
+    const hiddenId = RC.pickerTargetId;
+    if (!hiddenId) return;
+
+    const hidden = document.getElementById(hiddenId);
+    const text = document.getElementById(`${hiddenId}-text`);
+
+    if (hidden) hidden.value = account.accountID;
+    if (text) text.value = `${account.accCode ?? ''} - ${account.accName ?? ''}`.trim();
+
+    const modalEl = document.getElementById('rcAccountPickerModal');
+    if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
 }
 
 // ✅ التهيئة الصحيحة — تعمل سواء كان DOM جاهزاً أم لا

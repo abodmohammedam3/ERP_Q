@@ -56,10 +56,11 @@ class ReportCenterController extends Controller
             'definitions' => $definitions,
             'activeKey'   => $report->key(),
             'urls'        => [
-                'data'    => url('/reports/data'),
-                'print'   => url('/reports/print'),
-                'export'  => url('/reports/export'),
-                'sources' => route('reports.sources'),
+                'data'     => url('/reports/data'),
+                'print'    => url('/reports/print'),
+                'export'   => url('/reports/export'),
+                'sources'  => route('reports.sources'),
+                'accounts' => route('reports.accounts'),
             ],
         ]);
     }
@@ -139,6 +140,102 @@ class ReportCenterController extends Controller
         });
 
         return $this->ok(['sources' => $sources]);
+    }
+
+    // ════════════════════════════════════════════════════
+    //  مودال اختيار الحساب — دليل الحسابات (خاص بالشاشة)
+    // ════════════════════════════════════════════════════
+
+    /**
+     * الحسابات التفصيلية القابلة للحركة (isPostable=1)
+     * مع استبعاد:
+     *  - الحسابات التجميعية (isPostable=0): لا حركة مباشرة لها.
+     *  - فرع المخزون كاملاً: حركته تُتابَع في كشف الأصناف لا بكشف حساب.
+     *
+     * كل حساب يحمل حقل group لتبويبات المودال
+     * (نفس اصطلاح OpeningBalanceController — بدون الربط به).
+     */
+    public function accounts(): JsonResponse
+    {
+        $accounts = Cache::remember('reports.picker-accounts.v1', 3600, function () {
+            $all = CharAccount::query()
+                ->orderBy('accCode')
+                ->get(['accountID', 'accParent', 'accCode', 'accName', 'isPostable', 'system_key']);
+
+            $childrenByParent = $all->groupBy('accParent');
+            $byId = $all->keyBy('accountID');
+
+            // ── كل أبناء الحساب (self + descendants) level by level ──
+            $subtreeIds = function (int $rootId) use ($childrenByParent): array {
+                $ids = [];
+                $stack = [$rootId];
+
+                while ($stack) {
+                    $current = array_pop($stack);
+                    $ids[] = $current;
+
+                    foreach ($childrenByParent[$current] ?? [] as $child) {
+                        $stack[] = (int) $child->accountID;
+                    }
+                }
+
+                return $ids;
+            };
+
+            // ── استبعاد فرع الحساب المخزني بالكامل ──
+            $inventoryRoot = $all->firstWhere('system_key', 'inventory');
+            $excluded = $inventoryRoot
+                ? array_flip($subtreeIds((int) $inventoryRoot->accountID))
+                : [];
+
+            // ── جذور التبويبات ──
+            $rootGroup = [];
+            foreach (['customers' => 'CUSTOMER', 'suppliers' => 'SUPPLIER', 'cash' => 'CASH', 'banks' => 'BANK'] as $key => $group) {
+                $root = $all->firstWhere('system_key', $key);
+
+                if ($root) {
+                    $rootGroup[(int) $root->accountID] = $group;
+                }
+            }
+
+            $rows = [];
+
+            foreach ($all as $account) {
+                if ((int) $account->isPostable !== 1) {
+                    continue;   // حساب تجميعي — بلا حركة مباشرة
+                }
+
+                if (isset($excluded[(int) $account->accountID])) {
+                    continue;   // حساب مخزني
+                }
+
+                // تحديد التبويب بالصعود حتى أول جذر معروف
+                $group = 'OTHER';
+                $cursor = $account;
+
+                for ($i = 0; $i < 20 && $cursor; $i++) {
+                    if (isset($rootGroup[(int) $cursor->accountID])) {
+                        $group = $rootGroup[(int) $cursor->accountID];
+                        break;
+                    }
+
+                    $cursor = $cursor->accParent
+                        ? ($byId[$cursor->accParent] ?? null)
+                        : null;
+                }
+
+                $rows[] = [
+                    'accountID' => (int) $account->accountID,
+                    'accCode'   => (string) $account->accCode,
+                    'accName'   => (string) $account->accName,
+                    'group'     => $group,
+                ];
+            }
+
+            return $rows;
+        });
+
+        return $this->ok(['data' => $accounts]);
     }
 
     // ════════════════════════════

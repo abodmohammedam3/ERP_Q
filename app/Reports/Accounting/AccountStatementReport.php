@@ -94,7 +94,9 @@ class AccountStatementReport implements Report
             return ['rows' => [], 'totals' => [], 'meta' => ['message' => 'الحساب غير موجود']];
         }
 
-        $isDebitNature = ((int) $account->nature) === 1;
+        // طبيعة الحساب في النظام: nature === 1 يعني "دائن"، و غيره يعني "مدين"
+        // (نفس اتفاقية AccountBalanceService::calculateBalance)
+        $isDebitNature = ((int) $account->nature) !== 1;
 
         $query = JournalEntryLine::query()
             ->join('Journal_Entries as je', 'je.entryID', '=', 'JournalEntrryLine.entryID')
@@ -115,7 +117,10 @@ class AccountStatementReport implements Report
         $openingCredit = 0.0;
 
         if (!empty($filters['date_from'])) {
-            $opening = (clone $query)
+            // نظّف الأعمدة العادية قبل إضافة SUM
+            // (وإلا خلط MySQL بينها ورفض الاستعلام — error 1140)
+            $opening = (clone $query)->toBase()
+                ->cloneWithout(['columns'])
                 ->whereDate('je.entryDate', '<', $filters['date_from'])
                 ->selectRaw('COALESCE(SUM(JournalEntrryLine.localDebit), 0) as d')
                 ->selectRaw('COALESCE(SUM(JournalEntrryLine.localCredit), 0) as c')

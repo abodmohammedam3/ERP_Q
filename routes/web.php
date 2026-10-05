@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\accounting\CharAccountController;
+use App\Http\Controllers\Reports\ReportCenterController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\SupplierController;
 
@@ -32,6 +33,16 @@ Route::get('/', function () {
 Route::get('/dashboard', function () {
     return view('dashboard.index');
 });
+
+// =====================================================
+// مركز التقارير
+// =====================================================
+Route::get('/reports', [ReportCenterController::class, 'index'])->name('reports.index');
+Route::get('/reports/definitions', [ReportCenterController::class, 'definitions'])->name('reports.definitions');
+Route::get('/reports/sources', [ReportCenterController::class, 'sources'])->name('reports.sources');
+Route::get('/reports/data/{key}', [ReportCenterController::class, 'data'])->name('reports.data');
+Route::get('/reports/print/{key}', [ReportCenterController::class, 'print'])->name('reports.print');
+Route::get('/reports/export/{key}', [ReportCenterController::class, 'export'])->name('reports.export');
 
 // =====================================================
 // دوال دليل الحسابات

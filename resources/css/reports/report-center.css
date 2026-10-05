@@ -2,7 +2,34 @@
    مركز التقارير — Report Center
    ═══════════════════════════════════════════════════════ */
 
-/* ── العمود الجانبي للشاشات ── */
+/* ════════════════════════════════════════════════════════
+   هيكل التحميل (Skeleton) — يملأ الفراغ أثناء جلب البيانات
+   ════════════════════════════════════════════════════════ */
+.rc-skeleton-cell {
+    height: 1.1rem;
+    border-radius: 0.35rem;
+    background: linear-gradient(
+        90deg,
+        #eef1f4 25%,
+        #f7f9fa 37%,
+        #eef1f4 63%
+    );
+    background-size: 400% 100%;
+    animation: rc-skeleton-pulse 1.3s ease-in-out infinite;
+}
+
+@keyframes rc-skeleton-pulse {
+    0% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0 50%;
+    }
+}
+
+/* ════════════════════════════════════════════════════════
+   العمود الجانبي للشاشات
+   ════════════════════════════════════════════════════════ */
 .rc-sidebar {
     width: 280px;
     position: sticky;

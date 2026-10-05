@@ -17,6 +17,7 @@ const RC = {
     definitions: [],
     activeKey: null,
     sources: null,       // مصادر القوائم المنسدلة (حسابات، أصناف، أنواع...)
+    sourcesPromise: null, // وعد التحميل الجاري (منع الطلبات المكرّرة)
     columns: [],
     rows: [],            // صفوف الصفحة الحالية (أصلية)
     totals: {},
@@ -80,23 +81,112 @@ function rcEndpoint(base, key, params = {}) {
    2) مصادر القوائم المنسدلة (تُحمَّل مرة واحدة)
    ════════════════════════════════════════════════════════ */
 
-async function rcLoadSources() {
-    if (RC.sources) return RC.sources;
+const RC_SOURCES_CACHE_KEY = 'rc.sources.v1';
 
+function rcReadSourcesCache() {
     try {
-        const response = await fetch(RC.config.urls.sources, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        });
+        const raw = sessionStorage.getItem(RC_SOURCES_CACHE_KEY);
 
-        const payload = await response.json();
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+}
 
-        RC.sources = payload.sources || {};
-    } catch (error) {
-        console.error('[Reports] فشل تحميل المصادر', error);
-        RC.sources = {};
+function rcWriteSourcesCache(sources) {
+    try {
+        sessionStorage.setItem(RC_SOURCES_CACHE_KEY, JSON.stringify(sources));
+    } catch {
+        /* التخزين ممتلئ أو محجوب — نتجاهل بهدوء */
+    }
+}
+
+/**
+ * تحميل مصادر القوائم المنسدلة مرة واحدة فقط.
+ * - نسخة فورية من sessionStorage (بلا شبكة) إن وُجدت.
+ * - يُعاد الوعد نفسه لكل الاستدعاءات المتزامنة (لا طلبات مكرّرة).
+ */
+function rcLoadSources() {
+    if (RC.sources) return Promise.resolve(RC.sources);
+
+    // تحميل فوري من ذاكرة الجلسة — بلا انتظار شبكة
+    const cached = rcReadSourcesCache();
+
+    if (cached) {
+        RC.sources = cached;
+
+        return Promise.resolve(RC.sources);
     }
 
-    return RC.sources;
+    // تفادي طلبات متوازية مكرّرة (نفس الوعد للجميع)
+    if (RC.sourcesPromise) return RC.sourcesPromise;
+
+    RC.sourcesPromise = fetch(RC.config.urls.sources, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    })
+        .then((response) => response.json())
+        .then((payload) => {
+            RC.sources = payload.sources || {};
+            rcWriteSourcesCache(RC.sources);
+
+            return RC.sources;
+        })
+        .catch((error) => {
+            console.error('[Reports] فشل تحميل المصادر', error);
+            RC.sources = {};
+
+            return RC.sources;
+        })
+        .finally(() => {
+            RC.sourcesPromise = null;
+        });
+
+    return RC.sourcesPromise;
+}
+
+/**
+ * تحديث القوائم المنسدلة بعد وصول المصادر — دون إعادة بناء كل الفلاتر
+ * (حفاظاً على القيم التي أدخلها المستخدم).
+ */
+function rcHydrateSelects() {
+    const def = rcActiveDef();
+
+    if (!def || !def.filters) return;
+
+    def.filters.forEach((filter) => {
+        if (filter.type !== 'select' && filter.type !== 'account' && filter.type !== 'item') {
+            return;
+        }
+
+        const element = document.getElementById(`rcf-${filter.key}`);
+
+        if (!element) return;
+
+        // القيمة المختارة حالياً (قد يكون المستخدم قد اختار شيئاً قبل التحميل)
+        const selected = element.value || String(filter.value ?? '');
+        const options = rcSourceOptions(filter.source);
+
+        element.innerHTML = '';
+
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = filter.type === 'account'
+            ? 'اختر الحساب...'
+            : filter.type === 'item'
+                ? 'اختر الصنف...'
+                : 'الكل';
+        element.appendChild(placeholder);
+
+        options.forEach((option) => {
+            const opt = document.createElement('option');
+            opt.value = option.value;
+            opt.textContent = option.text;
+            opt.selected = selected === option.value;
+            element.appendChild(opt);
+        });
+
+        element.value = selected;
+    });
 }
 
 /**
@@ -673,6 +763,9 @@ function rcSwitchReport(key) {
 
     rcRenderHeader();
     rcRenderFilters();
+
+    // هيكل تحميل فوري — يُظهر استجابة بصرية قبل وصول البيانات
+    rcShowSkeleton();
     rcRun(1);
 }
 
@@ -680,7 +773,7 @@ function rcSwitchReport(key) {
    11) التهيئة
    ════════════════════════════════════════════════════════ */
 
-async function rcInit() {
+function rcInit() {
     RC.config = window.REPORT_CENTER;
 
     if (!RC.config || !RC.config.definitions || RC.config.definitions.length === 0) {
@@ -717,11 +810,42 @@ async function rcInit() {
 
     rcRenderHeader();
 
-    // تحميل المصادر (حسابات/أصناف/أنواع) ثم بناء الفلاتر ثم التشغيل
-    await rcLoadSources();
-
+    // ── 1) شاشة فورية: عنوان + فلاتر + هيكل تحميل + تشغيل البيانات ──
+    //    البيانات والمصادر تُطلبان معاً بالتوازي بدل انتظار أحدهما للآخر.
     rcRenderFilters();
+    rcShowSkeleton();
     rcRun(1);
+
+    // ── 2) المصادر: بالتوازي، وتُحدِّث القوائم المنسدلة عند وصولها ──
+    rcLoadSources().then(() => {
+        if (RC.sources && Object.keys(RC.sources).length > 0) {
+            rcHydrateSelects();
+        }
+    });
+}
+
+/**
+ * هيكل تحميل مؤقت — يمنع الإحساس بشاشة ميتة/بيضاء أثناء جلب البيانات.
+ */
+function rcShowSkeleton() {
+    const head = document.getElementById('rcTableHead');
+    const body = document.getElementById('rcTableBody');
+    const foot = document.getElementById('rcTableFoot');
+    const def = rcActiveDef();
+
+    const span = (def && def.columns && def.columns.length) || 4;
+
+    head.innerHTML = `<tr>${Array.from({ length: span })
+        .map(() => '<th class="rc-skeleton-cell">&nbsp;</th>')
+        .join('')}</tr>`;
+
+    foot.innerHTML = '';
+
+    body.innerHTML = Array.from({ length: 5 })
+        .map(() => `<tr>${Array.from({ length: span })
+            .map(() => '<td class="rc-skeleton-cell">&nbsp;</td>')
+            .join('')}</tr>`)
+        .join('');
 }
 
 // ✅ التهيئة الصحيحة — تعمل سواء كان DOM جاهزاً أم لا

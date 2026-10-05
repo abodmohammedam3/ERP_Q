@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Reports;
 use App\Http\Controllers\Controller;
 use App\Models\Accounting\CharAccount;
 use App\Models\Accounting\Coin;
+use App\Models\Accounting\JournalEntry;
 use App\Models\Inventory\Item;
 use App\Reports\ReportEngine;
 use App\Reports\ReportRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * مركز التقارير — نقطة التحكم الواحدة لكل التقارير.
@@ -89,49 +91,54 @@ class ReportCenterController extends Controller
 
     public function sources(): JsonResponse
     {
-        $accounts = CharAccount::query()
-            ->where('isPostable', 1)
-            ->orderBy('accCode')
-            ->get(['accountID', 'accCode', 'accName']);
+        // المصادر ثابتة نسبياً (حسابات/أصناف/عملات) — تُخزَّن مؤقتاً
+        // لتفادي تنفيذ 4 استعلامات في كل فتح للشاشة.
+        $sources = Cache::remember('reports.sources.v1', 3600, function () {
 
-        $items = Item::query()
-            ->where('is_active', 1)
-            ->orderBy('itemID')
-            ->get(['itemID', 'itemName2']);
+            $accounts = CharAccount::query()
+                ->where('isPostable', 1)
+                ->orderBy('accCode')
+                ->get(['accountID', 'accCode', 'accName']);
 
-        $coins = Coin::query()
-            ->orderBy('coinsID')
-            ->get(['coinsID', 'coinsName', 'coinsCode']);
+            $items = Item::query()
+                ->where('is_active', 1)
+                ->orderBy('itemID')
+                ->get(['itemID', 'itemName2']);
 
-        $docTypes = \App\Models\Accounting\JournalEntry::query()
-            ->select('docType')
-            ->whereNotNull('docType')
-            ->distinct()
-            ->orderBy('docType')
-            ->pluck('docType');
+            $coins = Coin::query()
+                ->orderBy('coinsID')
+                ->get(['coinsID', 'coinsName', 'coinsCode']);
 
-        return $this->ok([
-            'sources' => [
+            $docTypes = JournalEntry::query()
+                ->select('docType')
+                ->whereNotNull('docType')
+                ->distinct()
+                ->orderBy('docType')
+                ->pluck('docType');
+
+            return [
                 'accounts'     => $accounts->map(fn ($a) => [
                     'id'   => $a->accountID,
                     'text' => trim($a->accCode . ' - ' . $a->accName),
-                ]),
+                ])->values()->all(),
                 'items'        => $items->map(fn ($i) => [
                     'id'   => $i->itemID,
                     'text' => $i->itemName2,
-                ]),
+                ])->values()->all(),
                 'coins'        => $coins->map(fn ($c) => [
                     'id'   => $c->coinsID,
                     'text' => $c->coinsName,
-                ]),
-                'docTypes'     => $docTypes,
+                ])->values()->all(),
+                'docTypes'     => $docTypes->values()->all(),
                 'voucherTypes' => [
                     ['id' => 0, 'text' => 'الكل'],
                     ['id' => 1, 'text' => 'سندات القبض'],
                     ['id' => 2, 'text' => 'سندات الصرف'],
                 ],
-            ],
-        ]);
+            ];
+        });
+
+        return $this->ok(['sources' => $sources]);
     }
 
     // ════════════════════════════

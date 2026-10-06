@@ -9,6 +9,7 @@ use App\Models\Accounting\JournalEntry;
 use App\Models\Inventory\Item;
 use App\Reports\ReportEngine;
 use App\Reports\ReportRegistry;
+use App\Services\ChartAccountScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -147,95 +148,28 @@ class ReportCenterController extends Controller
     // ════════════════════════════════════════════════════
 
     /**
-     * الحسابات التفصيلية القابلة للحركة (isPostable=1)
-     * مع استبعاد:
-     *  - الحسابات التجميعية (isPostable=0): لا حركة مباشرة لها.
-     *  - فرع المخزون كاملاً: حركته تُتابَع في كشف الأصناف لا بكشف حساب.
+     * بيانات مودال "3 حقول" (الحساب / من / إلى):
+     *  - parents: الأبواب القابلة للاختيار (+ صف "الكل" يُضاف في الواجهة).
+     *  - accounts: الحسابات التفصيلية المؤهلة مع حقل parent
+     *    (لعرض الأبناء المباشرين فقط لكل أب في الوضعين من/إلى).
      *
-     * كل حساب يحمل حقل group لتبويبات المودال
-     * (نفس اصطلاح OpeningBalanceController — بدون الربط به).
+     * الفلترة كلها محلية في المتصفح — طلب واحد لكل جلسة.
+     * المصدر المشترك: ChartAccountScope (نفسه يستخدمه كشف الحساب).
      */
     public function accounts(): JsonResponse
     {
-        $accounts = Cache::remember('reports.picker-accounts.v1', 3600, function () {
-            $all = CharAccount::query()
-                ->orderBy('accCode')
-                ->get(['accountID', 'accParent', 'accCode', 'accName', 'isPostable', 'system_key']);
+        $accounts = ChartAccountScope::eligible()->map(fn ($a) => [
+            'accountID' => $a['accountID'],
+            'accCode'   => $a['accCode'],
+            'accName'   => $a['accName'],
+            'parent'    => $a['accParent'],
+            'system_key'=> $a['system_key'],
+        ])->values();
 
-            $childrenByParent = $all->groupBy('accParent');
-            $byId = $all->keyBy('accountID');
-
-            // ── كل أبناء الحساب (self + descendants) level by level ──
-            $subtreeIds = function (int $rootId) use ($childrenByParent): array {
-                $ids = [];
-                $stack = [$rootId];
-
-                while ($stack) {
-                    $current = array_pop($stack);
-                    $ids[] = $current;
-
-                    foreach ($childrenByParent[$current] ?? [] as $child) {
-                        $stack[] = (int) $child->accountID;
-                    }
-                }
-
-                return $ids;
-            };
-
-            // ── استبعاد فرع الحساب المخزني بالكامل ──
-            $inventoryRoot = $all->firstWhere('system_key', 'inventory');
-            $excluded = $inventoryRoot
-                ? array_flip($subtreeIds((int) $inventoryRoot->accountID))
-                : [];
-
-            // ── جذور التبويبات ──
-            $rootGroup = [];
-            foreach (['customers' => 'CUSTOMER', 'suppliers' => 'SUPPLIER', 'cash' => 'CASH', 'banks' => 'BANK'] as $key => $group) {
-                $root = $all->firstWhere('system_key', $key);
-
-                if ($root) {
-                    $rootGroup[(int) $root->accountID] = $group;
-                }
-            }
-
-            $rows = [];
-
-            foreach ($all as $account) {
-                if ((int) $account->isPostable !== 1) {
-                    continue;   // حساب تجميعي — بلا حركة مباشرة
-                }
-
-                if (isset($excluded[(int) $account->accountID])) {
-                    continue;   // حساب مخزني
-                }
-
-                // تحديد التبويب بالصعود حتى أول جذر معروف
-                $group = 'OTHER';
-                $cursor = $account;
-
-                for ($i = 0; $i < 20 && $cursor; $i++) {
-                    if (isset($rootGroup[(int) $cursor->accountID])) {
-                        $group = $rootGroup[(int) $cursor->accountID];
-                        break;
-                    }
-
-                    $cursor = $cursor->accParent
-                        ? ($byId[$cursor->accParent] ?? null)
-                        : null;
-                }
-
-                $rows[] = [
-                    'accountID' => (int) $account->accountID,
-                    'accCode'   => (string) $account->accCode,
-                    'accName'   => (string) $account->accName,
-                    'group'     => $group,
-                ];
-            }
-
-            return $rows;
-        });
-
-        return $this->ok(['data' => $accounts]);
+        return $this->ok([
+            'accounts' => $accounts,
+            'parents'  => ChartAccountScope::parents(),
+        ]);
     }
 
     // ════════════════════════════

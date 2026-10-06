@@ -69,8 +69,8 @@ class ReportEngine
             $type = $filter['type'] ?? 'text';
             $value = $raw[$key] ?? null;
 
-            // القيمة الفارغة تُسقَط (لا يُطبَّق الفلتر)
-            if ($value === null || $value === '') {
+            // القيمة الفارغة تُسقَط (لا يُطبَّق الفلتر) — إلا للحقول الخفية (توافق خلفي)
+            if (($value === null || $value === '') && empty($filter['hidden'])) {
                 continue;
             }
 

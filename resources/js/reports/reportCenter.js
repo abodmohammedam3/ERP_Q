@@ -31,6 +31,9 @@ const RC = {
     pickerPromise: null,    // وعد التحميل الجاري (منع الطلبات المكرّرة)
     pickerTargetId: null,   // الحقل المخفي المستهدف للاختيار
     pickerTab: 'ALL',
+    pickerMode: 'all',       // parent | child | all
+    pickerScope: null,       // IDs أبناء الأب (لوضع child)
+    pickerScopeKey: null,    // مفتاح النطاق لتمييز الكاش
 };
 
 /* ════════════════════════════════════════════════════════
@@ -277,6 +280,8 @@ function rcRenderFilters() {
     }
 
     def.filters.forEach((filter) => {
+        if (filter.hidden) return;
+
         const id = `rcf-${filter.key}`;
         const col = filter.col || 'col-md-3';
 
@@ -355,6 +360,8 @@ function rcCollectFilters() {
     if (!def || !def.filters) return params;
 
     def.filters.forEach((filter) => {
+        if (filter.hidden) return;
+
         const element = document.getElementById(`rcf-${filter.key}`);
 
         if (element && element.value !== '') {
@@ -822,7 +829,7 @@ function rcInit() {
         const openTrigger = event.target.closest('[data-picker-open]');
 
         if (openTrigger) {
-            rcOpenAccountPicker(openTrigger.dataset.pickerOpen);
+            rcOpenAccountPicker(openTrigger.dataset.pickerOpen, openTrigger.dataset.pickerMode || 'all');
             return;
         }
 
@@ -917,6 +924,8 @@ const RC_PICKER_TAB_TITLES = {
     SUPPLIER: 'اختيار حساب مورد',
     CASH:     'اختيار حساب صندوق',
     BANK:     'اختيار حساب بنك',
+    PARENT:   'اختيار الحساب الرئيسي',
+    CHILD:    'اختيار حساب من النطاق',
 };
 
 const RC_PICKER_CACHE_KEY = 'rc.picker.v1';
@@ -928,6 +937,13 @@ let rcPickerSearchTimer = null;
  * معرّف الحقل المخفي هو ما يلتقطه rcCollectFilters.
  */
 function rcBuildAccountPicker(filter, id) {
+    const isParent = filter.mode === 'parent' || filter.key === 'account_parent';
+    const isChild = filter.mode === 'child';
+    const placeholder = isParent
+        ? 'اضغط لاختيار الحساب الرئيسي...'
+        : (isChild ? 'اضغط لاختيار حساب من النطاق...' : 'اضغط لاختيار حساباً من الدليل...');
+    const disabled = isChild ? ' disabled' : '';
+
     return `
         <input type="hidden" id="${id}" value="${rcEscape(filter.value ?? '')}">
         <div class="input-group input-group-sm">
@@ -935,18 +951,21 @@ function rcBuildAccountPicker(filter, id) {
                    class="form-control"
                    id="${id}-text"
                    data-picker-open="${id}"
-                   placeholder="اضغط لاختيار حساباً من الدليل..."
+                   data-picker-mode="${isParent ? 'parent' : (isChild ? 'child' : 'all')}"
+                   placeholder="${placeholder}"
                    autocomplete="off"
-                   readonly>
+                   readonly${disabled}>
             <button type="button"
                     class="btn btn-outline-secondary"
                     data-picker-open="${id}"
-                    title="اختيار حساب">
+                    data-picker-mode="${isParent ? 'parent' : (isChild ? 'child' : 'all')}"
+                    title="اختيار حساب"${disabled}>
                 <i class="bi bi-search"></i>
             </button>
             <button type="button"
                     class="btn btn-outline-secondary"
                     data-picker-clear="${id}"
+                    data-picker-mode="${isParent ? 'parent' : (isChild ? 'child' : 'all')}"
                     title="مسح الاختيار">
                 <i class="bi bi-x-lg"></i>
             </button>
@@ -955,13 +974,33 @@ function rcBuildAccountPicker(filter, id) {
 
 /**
  * فتح المودال — تحميل كسول أولاً (مرة واحدة لكل جلسة).
+ * mode: 'parent' (الأبواب + صف الكل) | 'child' (أبناء الأب فقط) | 'all' (الكل)
  */
-async function rcOpenAccountPicker(hiddenId) {
+async function rcOpenAccountPicker(hiddenId, mode = 'all') {
     const modalEl = document.getElementById('rcAccountPickerModal');
 
     if (!modalEl) return;
 
     RC.pickerTargetId = hiddenId;
+
+    // وضع child يتطلب أباً مختاراً — تقييد بالدليل المؤهل تحته فقط
+    if (mode === 'child') {
+        const parent = rcReadParentChoice();
+        const scope = rcChildrenOfParent(parent);
+
+        if (!scope || scope.length === 0) {
+            rcToast('اختر الحساب الرئيسي أولاً', 'warning');
+            return;
+        }
+
+        RC.pickerMode = 'child';
+        RC.pickerScope = scope.map((a) => String(a.accountID));
+        RC.pickerScopeKey = String(parent);
+    } else {
+        RC.pickerMode = mode;
+        RC.pickerScope = null;
+        RC.pickerScopeKey = null;
+    }
 
     // فتح بحالة نظيفة: تبويب الكل + بحث فارغ
     RC.pickerTab = 'ALL';
@@ -976,9 +1015,31 @@ async function rcOpenAccountPicker(hiddenId) {
     modal.show();
 
     await rcLoadPickerAccounts();
+
+    // وضع child: قُيّد القائمة مسبقاً على أبناء الأب
     rcRenderPickerList();
 
     setTimeout(() => document.getElementById('rcPickerSearch')?.focus(), 250);
+}
+
+/**
+ * قراءة اختيار الأب الحالي من حقول الفلاتر.
+ */
+function rcReadParentChoice() {
+    const el = document.getElementById('rcf-account_parent');
+    return el ? (el.value || '') : '';
+}
+
+/**
+ * أبناء الأب المباشرين من كاش المودال (الحسابات تحمل accParent).
+ */
+function rcChildrenOfParent(parent) {
+    if (!parent || parent === 'all') return (RC.pickerAccounts || []).slice();
+
+    // API يرسل parent (وليس accParent) — نقبل الاثنين للتوافق
+    return (RC.pickerAccounts || []).filter(
+        (a) => String(a.parent ?? a.accParent ?? '') === String(parent)
+    );
 }
 
 /**
@@ -1063,6 +1124,8 @@ function rcActivatePickerTab(type) {
 
 /**
  * رسم القائمة — تصفية محلية بالتبويب والبحث (بلا شبكة).
+ * وضع parent: يعرض الأبواب المباشرين + صف "كل الحسابات" أولاً.
+ * وضع child: يعرض أبناء الأب فقط.
  */
 function rcRenderPickerList() {
     const body = document.getElementById('rcPickerBody');
@@ -1072,10 +1135,15 @@ function rcRenderPickerList() {
     if (!body || !template) return;
 
     const search = (document.getElementById('rcPickerSearch')?.value || '').trim();
+    const isParentMode = RC.pickerMode === 'parent';
+    const isChildMode = RC.pickerMode === 'child';
     let rows = RC.pickerAccounts || [];
 
-    if (RC.pickerTab !== 'ALL') {
-        rows = rows.filter((account) => account.group === RC.pickerTab);
+    if (isParentMode) {
+        rows = rcPickerParents();
+    } else if (isChildMode && RC.pickerScope) {
+        const inScope = new Set(RC.pickerScope);
+        rows = rows.filter((a) => inScope.has(String(a.accountID)));
     }
 
     if (search !== '') {
@@ -1088,17 +1156,30 @@ function rcRenderPickerList() {
 
     body.replaceChildren();
 
-    if (rows.length === 0) {
-        if (empty) empty.style.display = '';
-        return;
-    }
-
-    if (empty) empty.style.display = 'none';
-
     const fragment = document.createDocumentFragment();
-    const visible = rows.slice(0, RC_PICKER_MAX_RENDER);
 
-    visible.forEach((account) => {
+    // صف "كل الحسابات التفصيلية" — أول القائمة في وضع parent
+    if (isParentMode && RC.pickerTab === 'ALL' && search === '') {
+        const allRow = template.content.cloneNode(true);
+        const allTr = allRow.querySelector('tr');
+        const allCode = allRow.querySelector('.rc-picker-code');
+        const allName = allRow.querySelector('.rc-picker-name');
+
+        if (allTr) allTr.classList.add('table-success', 'fw-bold');
+        if (allCode) allCode.textContent = '★';
+        if (allName) allName.textContent = 'كل الحسابات التفصيلية';
+
+        allTr.addEventListener('click', () => rcSelectPickerAll());
+        fragment.appendChild(allRow);
+    }
+    const hideEmpty = fragment.childNodes.length > 0;
+    if (empty) empty.style.display = hideEmpty ? 'none' : '';
+
+    const rest = isParentMode && RC.pickerTab === 'ALL' && search === ''
+        ? rows
+        : rows.slice(0, RC_PICKER_MAX_RENDER);
+
+    rest.slice(0, RC_PICKER_MAX_RENDER).forEach((account) => {
         const row = template.content.cloneNode(true);
         const tr = row.querySelector('tr');
         const codeEl = row.querySelector('.rc-picker-code');
@@ -1111,6 +1192,11 @@ function rcRenderPickerList() {
 
         fragment.appendChild(row);
     });
+
+    // التبويبات تتصرف على اسم الأب لأن API لا يرسل group مباشرة
+    if (RC.pickerTab !== 'ALL') {
+        rows = rows.filter((account) => rcAccountGroupOf(account) === RC.pickerTab);
+    }
 
     // سطر تلميحي عند تجاوز الحد — حفاظاً على سرعة الرسم
     if (rows.length > RC_PICKER_MAX_RENDER) {
@@ -1125,6 +1211,116 @@ function rcRenderPickerList() {
 }
 
 /**
+ * تصنيف الحساب لتبويب المودال — من system_key (لا النص العربي).
+ * يصعد الشجرة بحثاً عن أقرب جد بـ system_key معروف.
+ */
+const RC_GROUP_BY_SYSTEM_KEY = {
+    banks:     'BANK',
+    boxes:     'CASH',
+    customers: 'CUSTOMER',
+    suppliers: 'SUPPLIER',
+};
+
+function rcAccountGroupOf(account) {
+    const rows = RC.pickerAccounts || [];
+    const byId = new Map(rows.map((a) => [String(a.accountID), a]));
+
+    let current = account;
+    let hops = 0;
+
+    while (current && hops < 6) {
+        const group = RC_GROUP_BY_SYSTEM_KEY[current.system_key];
+        if (group) return group;
+
+        const pid = current.parent ?? current.accParent;
+        if (pid === null || pid === undefined || pid === '') break;
+
+        current = byId.get(String(pid));
+        hops += 1;
+    }
+
+    return null;
+}
+
+/**
+ * الأبواب القابلة للاختيار (وضع parent):
+ * فريدون من كاش المودال عبر حقل parent للحسابات المؤهلة.
+ */
+function rcPickerParents() {
+    const rows = RC.pickerAccounts || [];
+    const byId = new Map();
+    const order = [];
+
+    rows.forEach((account) => {
+        const pid = account.parent ?? account.accParent ?? null;
+        if (pid === null || pid === '') return;
+
+        const key = String(pid);
+        if (!byId.has(key)) {
+            order.push(key);
+            byId.set(key, { accountID: key, accCode: '', accName: '' });
+        }
+    });
+
+    // الاسم/الكود من صفوف الأبواب إذا كانت موجودة في الكاش، وإلا من أول ابن
+    rows.forEach((account) => {
+        const pid = String(account.parent ?? account.accParent ?? '');
+        if (byId.has(pid) && !byId.get(pid).accCode) {
+            byId.get(pid).accCode = account.accCode ?? '';
+            byId.get(pid).accName = account.accName ?? '';
+        }
+    });
+
+    return order.map((id) => byId.get(id));
+}
+
+/**
+ * اختيار "كل الحسابات التفصيلية" — القيمة 'all' تدخل الحقل المخفي،
+ * ويقرأها الخادم (parentRaw === 'all') كنطاق كامل.
+ */
+function rcSelectPickerAll() {
+    const hiddenId = RC.pickerTargetId;
+    if (!hiddenId) return;
+
+    const hidden = document.getElementById(hiddenId);
+    const text = document.getElementById(`${hiddenId}-text`);
+
+    if (hidden) hidden.value = 'all';
+    if (text) text.value = 'كل الحسابات التفصيلية';
+
+    // ث1: تغيير الأب → مسح النطاق (من/إلى) تلقائياً
+    rcClearChildRange(hiddenId);
+
+    const modalEl = document.getElementById('rcAccountPickerModal');
+    if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
+}
+
+/**
+ * ث1: مسح حقلَي النطاق (from/to) — يُستدعى عند تغيير الأب أو اختيار "الكل".
+ */
+function rcClearChildRange(parentHiddenId) {
+    ['rcf-account_from', 'rcf-account_to'].forEach((childId) => {
+        const childHidden = document.getElementById(childId);
+        const childText = document.getElementById(`${childId}-text`);
+
+        if (childHidden) {
+            childHidden.value = '';
+            // إعادة تفعيل حقلي النطاق بعد اختيار الأب
+            if (childId !== parentHiddenId) {
+                childHidden.removeAttribute('disabled');
+                const textInput = document.getElementById(`${childId}-text`);
+                const openBtn = childHidden.closest('.input-group')?.querySelector('[data-picker-open]');
+                const clearBtn = childHidden.closest('.input-group')?.querySelector('[data-picker-clear]');
+                if (textInput) textInput.removeAttribute('disabled');
+                if (openBtn) openBtn.removeAttribute('disabled');
+                if (clearBtn) clearBtn.removeAttribute('disabled');
+            }
+        }
+        if (childText) childText.value = '';
+    });
+}
+
+/**
  * الاختيار: رقم الحساب في الحقل المخفي + العرض في الحقل الظاهر.
  */
 function rcSelectPickerRow(account) {
@@ -1136,6 +1332,11 @@ function rcSelectPickerRow(account) {
 
     if (hidden) hidden.value = account.accountID;
     if (text) text.value = `${account.accCode ?? ''} - ${account.accName ?? ''}`.trim();
+
+    // ث1: تغيير الأب → مسح حقلَي النطاق (from/to) تلقائياً
+    if (RC.pickerMode === 'parent') {
+        rcClearChildRange(hiddenId);
+    }
 
     const modalEl = document.getElementById('rcAccountPickerModal');
     if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();

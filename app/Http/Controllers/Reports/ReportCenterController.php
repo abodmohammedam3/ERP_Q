@@ -158,7 +158,7 @@ class ReportCenterController extends Controller
      */
     public function accounts(): JsonResponse
     {
-        $accounts = ChartAccountScope::eligible()->map(fn ($a) => [
+        $eligible = ChartAccountScope::eligible()->map(fn ($a) => [
             'accountID' => $a['accountID'],
             'accCode'   => $a['accCode'],
             'accName'   => $a['accName'],
@@ -166,9 +166,25 @@ class ReportCenterController extends Controller
             'system_key'=> $a['system_key'],
         ])->values();
 
+        $tree = CharAccount::query()
+            ->orderBy('accCode')
+            ->get(['accountID', 'accParent', 'accCode', 'accName', 'isPostable', 'system_key'])
+            ->map(fn ($a) => [
+                'accountID'  => (int) $a->accountID,
+                'accParent'  => $a->accParent !== null ? (int) $a->accParent : null,
+                'accCode'    => (string) $a->accCode,
+                'accName'    => (string) $a->accName,
+                'isPostable' => (int) $a->isPostable,
+                'system_key' => $a->system_key,
+            ])
+            ->values();
+
         return $this->ok([
-            'accounts' => $accounts,
-            'parents'  => ChartAccountScope::parents(),
+            'parents'   => ChartAccountScope::parents(),
+            'eligible'  => $eligible,
+            'accounts'  => $eligible,
+            'tree'      => $tree,
+            'cached_at' => now()->toIso8601String(),
         ]);
     }
 

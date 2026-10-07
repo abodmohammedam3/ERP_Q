@@ -170,3 +170,34 @@
         flex-direction: column;
     }
 }
+
+/* ════════════════════════════════════════════════════════
+   القفل الذكي (Smart Lock) & المخزون الفارغ
+   ════════════════════════════════════════════════════════ */
+
+/* قفل بقية أعمدة الفلاتر أثناء الكتابة */
+body.rc-filter-locked .rc-filter-col:not(.rc-active-col) {
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+/* استثناء صريح: أزرار التطبيق/الإعادة والعمليات والقائمة الجانبية تبقى نشطة */
+body.rc-filter-locked #rcBtnRun,
+body.rc-filter-locked #rcBtnPrint,
+body.rc-filter-locked #rcBtnExport,
+body.rc-filter-locked #rcBtnApply,
+body.rc-filter-locked #rcBtnReset,
+body.rc-filter-locked .rc-sidebar {
+    pointer-events: auto !important;
+    opacity: 1 !important;
+}
+
+/* عند اختيار المخزون كأب (لا توجد بيانات): تعطيل أزرار العمليات */
+body.rc-empty-parent #rcBtnRun,
+body.rc-empty-parent #rcBtnPrint,
+body.rc-empty-parent #rcBtnExport,
+body.rc-empty-parent .rc-action-btn {
+    pointer-events: none !important;
+    opacity: 0.5 !important;
+}
+

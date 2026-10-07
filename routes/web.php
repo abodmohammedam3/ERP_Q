@@ -957,3 +957,23 @@ Route::get('/operation/purchases/returns/{id}', [PurchaseReturnController::class
 Route::post('/operation/purchases/returns', [PurchaseReturnController::class, 'store'])->name('purchases.returns.store');
 Route::put('/operation/purchases/returns/{id}', [PurchaseReturnController::class, 'update'])->name('purchases.returns.update');
 Route::delete('/operation/purchases/returns/{id}', [PurchaseReturnController::class, 'destroy'])->name('purchases.returns.destroy');
+
+
+// =====================================================
+// Entity CSV Exports
+// SECURITY GAP NOTE: These routes currently lack authentication/authorization middleware.
+// =====================================================
+Route::prefix('admin/export')->group(function () {
+    Route::get('/units', [\App\Http\Controllers\Admin\ExportController::class, 'units'])->name('admin.export.units');
+    Route::get('/type', [\App\Http\Controllers\Admin\ExportController::class, 'type'])->name('admin.export.type');
+    Route::get('/types', [\App\Http\Controllers\Admin\ExportController::class, 'type'])->name('admin.export.types');
+    Route::get('/coins', [\App\Http\Controllers\Admin\ExportController::class, 'coins'])->name('admin.export.coins');
+    Route::get('/characcount', [\App\Http\Controllers\Admin\ExportController::class, 'characcount'])->name('admin.export.characcount');
+    Route::get('/characcounts', [\App\Http\Controllers\Admin\ExportController::class, 'characcount'])->name('admin.export.characcounts');
+    Route::get('/boxes', [\App\Http\Controllers\Admin\ExportController::class, 'boxes'])->name('admin.export.boxes');
+    Route::get('/banks', [\App\Http\Controllers\Admin\ExportController::class, 'banks'])->name('admin.export.banks');
+    Route::get('/stocks', [\App\Http\Controllers\Admin\ExportController::class, 'stocks'])->name('admin.export.stocks');
+    Route::get('/items', [\App\Http\Controllers\Admin\ExportController::class, 'items'])->name('admin.export.items');
+    Route::get('/customers', [\App\Http\Controllers\Admin\ExportController::class, 'customers'])->name('admin.export.customers');
+    Route::get('/suppliers', [\App\Http\Controllers\Admin\ExportController::class, 'suppliers'])->name('admin.export.suppliers');
+});

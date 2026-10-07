@@ -8,6 +8,8 @@ use App\Reports\Accounting\GeneralLedgerReport;
 use App\Reports\Accounting\AccountStatementReport;
 use App\Reports\Vouchers\VouchersReport;
 use App\Reports\Inventory\ItemLedgerReport;
+use App\Reports\Sales\SalesInvoicesReport;
+use App\Reports\Purchases\PurchaseInvoicesReport;
 use InvalidArgumentException;
 
 /**
@@ -27,6 +29,8 @@ class ReportRegistry
         AccountStatementReport::class,
         VouchersReport::class,
         ItemLedgerReport::class,
+        SalesInvoicesReport::class,
+        PurchaseInvoicesReport::class,
     ];
 
     /**

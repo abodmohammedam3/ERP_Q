@@ -45,11 +45,11 @@ class JournalEntryController extends Controller
         }
 
         if ($dateFrom) {
-            $query->whereDate('entryDate', '>=', $dateFrom);
+            $query->where('entryDate', '>=', $dateFrom);
         }
 
         if ($dateTo) {
-            $query->whereDate('entryDate', '<=', $dateTo);
+            $query->where('entryDate', '<=', $dateTo);
         }
 
         if ($docType) {

@@ -33,6 +33,7 @@ export default defineConfig({
                 'resources/js/pages/chart-of-accounts.js',
                 'resources/js/pages/journal-entries.js',
                 'resources/js/pages/opening-balances.js',
+                'resources/js/pages/report-center.js',
             ],
             refresh: true,
         }),

@@ -555,6 +555,16 @@
                         <span>حركة المخزون</span>
                     </a>
 
+                {{-- ================================================= --}}
+                {{-- مركز التقارير --}}
+                {{-- ================================================= --}}
+                <a href="{{ route('reports.index') }}"
+                   class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2 mt-1
+                   {{ request()->routeIs('reports.*') ? 'bg-success text-white' : 'text-white-50' }}">
+                    <i class="bi bi-bar-chart-line"></i>
+                    <span>مركز التقارير</span>
+                </a>
+
                 </div>
             </div>
 

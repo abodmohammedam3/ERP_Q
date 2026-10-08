@@ -84,11 +84,11 @@ class TrialBalanceReport implements Report
             ->groupBy('ca.accountID', 'ca.accCode', 'ca.accName', 'ca.nature');
 
         if (!empty($filters['date_from'])) {
-            $query->whereDate('je.entryDate', '>=', $filters['date_from']);
+            $query->where('je.entryDate', '>=', $filters['date_from']);
         }
 
         if (!empty($filters['date_to'])) {
-            $query->whereDate('je.entryDate', '<=', $filters['date_to']);
+            $query->where('je.entryDate', '<=', $filters['date_to']);
         }
 
         $result = $query->orderBy('ca.accCode')->get();

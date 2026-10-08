@@ -99,8 +99,8 @@ class VouchersReport implements Report
                     'creditAccount:accountID,accCode,accName',
                     'currency:coinsID,coinsName',
                 ])
-                ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('voucherDate', '>=', $filters['date_from']))
-                ->when(!empty($filters['date_to']), fn ($q) => $q->whereDate('voucherDate', '<=', $filters['date_to']))
+                ->when(!empty($filters['date_from']), fn ($q) => $q->where('voucherDate', '>=', $filters['date_from']))
+                ->when(!empty($filters['date_to']), fn ($q) => $q->where('voucherDate', '<=', $filters['date_to']))
                 ->orderBy('voucherDate')
                 ->orderBy('receiptID')
                 ->get();
@@ -126,8 +126,8 @@ class VouchersReport implements Report
                     'beneficiaryAccount:accountID,accCode,accName',
                     'paymentAccount:accountID,accCode,accName',
                 ])
-                ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('voucherDate', '>=', $filters['date_from']))
-                ->when(!empty($filters['date_to']), fn ($q) => $q->whereDate('voucherDate', '<=', $filters['date_to']))
+                ->when(!empty($filters['date_from']), fn ($q) => $q->where('voucherDate', '>=', $filters['date_from']))
+                ->when(!empty($filters['date_to']), fn ($q) => $q->where('voucherDate', '<=', $filters['date_to']))
                 ->orderBy('voucherDate')
                 ->orderBy('paymentID')
                 ->get();

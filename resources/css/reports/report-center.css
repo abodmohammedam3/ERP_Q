@@ -222,3 +222,13 @@ body.rc-empty-parent .rc-action-btn {
 #rcTable td.amount-pos    { color: #198754; font-weight: 600; }
 #rcTable td.amount-neg    { color: #dc3545; font-weight: 600; }
 
+/* R2/M5: ألوان من حقل column.color الصريح في تعريف التقرير */
+.amount-red   { color: #dc3545; font-weight: 600; }
+.amount-green { color: #198754; font-weight: 600; }
+
+#rcTable td.amount-red    { color: #dc3545; font-weight: 600; }
+#rcTable td.amount-green  { color: #198754; font-weight: 600; }
+
+.rc-kpi-value.amount-red   { color: #dc3545; }
+.rc-kpi-value.amount-green { color: #198754; }
+

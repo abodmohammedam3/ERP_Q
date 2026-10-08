@@ -106,11 +106,11 @@ class GeneralLedgerReport implements Report
             ]);
 
         if (!empty($filters['date_from'])) {
-            $query->whereDate('je.entryDate', '>=', $filters['date_from']);
+            $query->where('je.entryDate', '>=', $filters['date_from']);
         }
 
         if (!empty($filters['date_to'])) {
-            $query->whereDate('je.entryDate', '<=', $filters['date_to']);
+            $query->where('je.entryDate', '<=', $filters['date_to']);
         }
 
         if (!empty($filters['doc_type'])) {

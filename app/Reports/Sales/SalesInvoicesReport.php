@@ -97,8 +97,8 @@ class SalesInvoicesReport implements Report
         $query = SalesInvoice::query()
             ->when($customerId > 0, fn ($q) => $q->where('account_id', $customerId))
             ->when($paymentMethod > 0, fn ($q) => $q->where('payment_method', $paymentMethod))
-            ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('invoice_date', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']), fn ($q) => $q->whereDate('invoice_date', '<=', $filters['date_to']));
+            ->when(!empty($filters['date_from']), fn ($q) => $q->where('invoice_date', '>=', $filters['date_from']))
+            ->when(!empty($filters['date_to']), fn ($q) => $q->where('invoice_date', '<=', $filters['date_to']));
 
         // ── الإجماليات على كل النتائج المطابقة (ليس الصفحة فقط) ──
         // نظّف الأعمدة قبل إضافة عمودي SUM (وإلا خلط MySQL بينهما ورفض الاستعلام)

@@ -110,11 +110,11 @@ class ItemLedgerReport implements Report
         }
 
         if (!empty($filters['date_from'])) {
-            $query->whereDate('im.movement_date', '>=', $filters['date_from']);
+            $query->where('im.movement_date', '>=', $filters['date_from']);
         }
 
         if (!empty($filters['date_to'])) {
-            $query->whereDate('im.movement_date', '<=', $filters['date_to']);
+            $query->where('im.movement_date', '<=', $filters['date_to']);
         }
 
         // ── الإجماليات على كل النتائج المطابقة ──

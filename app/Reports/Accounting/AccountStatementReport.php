@@ -238,11 +238,11 @@ class AccountStatementReport implements Report
         $openingCredit = 0.0;
 
         if (!empty($filters['date_from'])) {
-            $query->whereDate('je.entryDate', '>=', $filters['date_from']);
+            $query->where('je.entryDate', '>=', $filters['date_from']);
         }
 
         if (!empty($filters['date_to'])) {
-            $query->whereDate('je.entryDate', '<=', $filters['date_to']);
+            $query->where('je.entryDate', '<=', $filters['date_to']);
         }
 
         // صمام الصفوف: عدّاد خفيف قبل الجلب (رفض كامل — لا قصّ للأرصدة)
@@ -265,7 +265,7 @@ class AccountStatementReport implements Report
             $openRows = JournalEntryLine::query()
                 ->join('Journal_Entries as je', 'je.entryID', '=', 'JournalEntrryLine.entryID')
                 ->whereIn('JournalEntrryLine.accountID', $accountIds)
-                ->whereDate('je.entryDate', '<', $filters['date_from'])
+                ->where('je.entryDate', '<', $filters['date_from'])
                 ->toBase()
                 ->select('JournalEntrryLine.accountID')
                 ->selectRaw('COALESCE(SUM(JournalEntrryLine.localDebit), 0) as d')

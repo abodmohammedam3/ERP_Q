@@ -517,7 +517,7 @@ function rcRenderTotals() {
             return `
                 <div class="rc-kpi">
                     <small class="rc-kpi-label">${rcEscape(label)}</small>
-                    <span class="rc-kpi-value ${rcAmountClass({ key }, value)}">${rcFormatMoney(value)}</span>
+                    <span class="rc-kpi-value ${rcAmountClass(column || { key }, value)}">${rcFormatMoney(value)}</span>
                 </div>`;
         })
         .join('');
@@ -538,6 +538,10 @@ function rcAmountClass(column, value) {
     if (value === null || value === undefined || value === '') return '';
     const num = Number(value);
     if (isNaN(num) || num === 0) return '';
+
+    // R2/M5: الأولوية لحقل color الصريح (metadata من تعريف التقرير)
+    if (column.color === 'red')   return 'amount-red';
+    if (column.color === 'green') return 'amount-green';
 
     const key = column.key;
     if (key === 'debit')   return num > 0 ? 'amount-debit'  : '';
@@ -630,8 +634,13 @@ function rcRenderTable() {
         });
     });
 
-    // ── الجسم ──
-    const rows = rcSortedRows();
+    // M2: سقف عرض للجدول (500) — الفلترة/الترتيب على الكل ثم القصّ لتسريع الرسم
+    const RC_MAX_TABLE_ROWS = 500;
+    const allRows = rcSortedRows();
+    const totalRows = allRows.length;
+    const rows = totalRows > RC_MAX_TABLE_ROWS
+        ? allRows.slice(0, RC_MAX_TABLE_ROWS)
+        : allRows;
 
     if (rows.length === 0) {
         body.innerHTML = `
@@ -652,6 +661,14 @@ function rcRenderTable() {
                     .join('')}</tr>`
             )
             .join('');
+
+        // M2: رسالة سقف العرض — تحت الجدول (العدّاد في rcRenderPagination يبقى الكامل)
+        if (totalRows > RC_MAX_TABLE_ROWS) {
+            body.innerHTML += `<tr><td colspan="${RC.columns.length}" class="text-center text-muted small py-2">
+                تُعرض أول ${RC_MAX_TABLE_ROWS} من ${totalRows} نتيجة — طبّق فلاتر للوصول لبقية الصفوف.
+                (الطباعة والتصدير يشملان كل الصفوف)
+            </td></tr>`;
+        }
     }
 
     // ── تذييل الإجماليات ──
@@ -661,8 +678,6 @@ function rcRenderTable() {
         foot.innerHTML = '';
         return;
     }
-
-    const lastRow = rows[rows.length - 1] || {};
 
     // B: عدد الأعمدة غير الرقمية الرائدة — خانة "الإجمالي" تجمعها
     let labelSpan = 0;
@@ -687,12 +702,10 @@ function rcRenderTable() {
 
             let value = RC.totals[column.key];
 
-            if ((value === undefined || value === null) && column.footer === 'last') {
-                value = lastRow[column.key];
-            }
-
             if (value === undefined || value === null) {
-                return '<td></td>';
+                // M3: footer='last' بلا totals (وضع متعدد كشف الحساب)
+                // مطابقة لسلوك print.blade.php ("—")
+                return column.footer === 'last' ? '<td>—</td>' : '<td></td>';
             }
 
             const formatted = column.footer === 'sum' && column.type === 'number'
@@ -857,13 +870,18 @@ function rcInit() {
         button.addEventListener('click', () => rcSwitchReport(button.dataset.reportKey));
     });
 
-    // البحث السريع داخل النتائج المعروضة
+    // البحث السريع داخل النتائج المعروضة (M2: debounce 250ms — نفس نمط rcPickerSearchTimer)
     const searchInput = document.getElementById('rcQuickSearch');
     if (searchInput) {
+        let rcQuickSearchTimer = null;
+
         searchInput.addEventListener('input', () => {
-            RC.quickSearch = searchInput.value.trim();
-            rcRenderTable();
-            rcRenderPagination();
+            clearTimeout(rcQuickSearchTimer);
+            rcQuickSearchTimer = setTimeout(() => {
+                RC.quickSearch = searchInput.value.trim();
+                rcRenderTable();
+                rcRenderPagination();
+            }, 250);
         });
     }
 

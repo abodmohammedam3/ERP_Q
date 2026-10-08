@@ -121,6 +121,10 @@
         .amount-credit { color: #198754; font-weight: 600; } /* دائن */
         .amount-pos    { color: #198754; font-weight: 600; } /* رصيد موجب */
         .amount-neg    { color: #dc3545; font-weight: 600; } /* رصيد سالب */
+
+        /* R2/M5: ألوان من حقل column.color الصريح */
+        .amount-red    { color: #dc3545; font-weight: 600; }
+        .amount-green  { color: #198754; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -176,10 +180,14 @@
                             ? 'text-end'
                             : ($type === 'date' ? '' : 'text-start');
 
-                        // Fix #7 — لون خلية المبلغ حسب مفتاح العمود
+                        // Fix #7 + R2/M5 — لون خلية المبلغ: color الصريح أولاً ثم مفتاح العمود
                         $amountClass = '';
                         if ($value !== null && $value !== '' && (float) $value != 0) {
-                            if ($column['key'] === 'debit' && (float) $value > 0) {
+                            if (($column['color'] ?? '') === 'red') {
+                                $amountClass = 'amount-red';
+                            } elseif (($column['color'] ?? '') === 'green') {
+                                $amountClass = 'amount-green';
+                            } elseif ($column['key'] === 'debit' && (float) $value > 0) {
                                 $amountClass = 'amount-debit';
                             } elseif ($column['key'] === 'credit' && (float) $value > 0) {
                                 $amountClass = 'amount-credit';
@@ -218,10 +226,14 @@
                         $totalValue = $totals[$column['key']] ?? null;
                         $alignClass = in_array($column['type'] ?? '', ['money', 'number']) ? 'text-end' : '';
 
-                        // Fix #7 — لون خلية المبلغ في الإجماليات حسب مفتاح العمود
+                        // Fix #7 + R2/M5 — لون خلية المبلغ في الإجماليات: color الصريح أولاً ثم مفتاح العمود
                         $amountClass = '';
                         if ($totalValue !== null && (float) $totalValue != 0) {
-                            if ($column['key'] === 'debit' && (float) $totalValue > 0) {
+                            if (($column['color'] ?? '') === 'red') {
+                                $amountClass = 'amount-red';
+                            } elseif (($column['color'] ?? '') === 'green') {
+                                $amountClass = 'amount-green';
+                            } elseif ($column['key'] === 'debit' && (float) $totalValue > 0) {
                                 $amountClass = 'amount-debit';
                             } elseif ($column['key'] === 'credit' && (float) $totalValue > 0) {
                                 $amountClass = 'amount-credit';

@@ -74,7 +74,7 @@
         .totals td.label { background: #f8f9fa; color: #555; font-weight: 600; width: 25%; }
         .totals td.value { font-weight: 700; text-align: left; direction: ltr; }
 
-        /* Signatures + Footer */
+        /* Signatures */
         .signatures { display: flex; justify-content: space-around; margin-top: 40px; page-break-inside: avoid; }
         .signature {
             text-align: center;
@@ -84,16 +84,41 @@
             border-top: 1px dashed #000;
             padding-top: 6px;
         }
+
+        /* ══════════════════════════════════════════════════════════
+           Footer — ثابت أسفل الصفحة (نفس تذييل فاتورة البيع/الشراء)
+           ══════════════════════════════════════════════════════════ */
         .footer {
             position: fixed;
-            bottom: 0; right: 15px; left: 15px;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 8px 15px;
+            background: #fff;
+            border-top: 1px solid #dee2e6;
+            font-size: 9pt;
             display: flex;
             justify-content: space-between;
-            border-top: 1px solid #dee2e6;
-            padding-top: 5px;
-            font-size: 8.5pt;
+            align-items: center;
+            font-weight: 600;
+            z-index: 100;
+        }
+        .footer-left {
+            text-align: right;
             color: #6c757d;
-            background: #fff;
+            flex: 1;
+        }
+        .footer-center {
+            text-align: center;
+            color: #6c757d;
+            flex: 1;
+        }
+        /* المستخدم — أخضر */
+        .footer-right {
+            text-align: left;
+            color: #198754;
+            font-weight: 700;
+            flex: 1;
         }
 
         .no-print { margin-top: 30px; text-align: center; }
@@ -114,6 +139,21 @@
         @media print {
             .no-print { display: none !important; }
             body { padding-bottom: 40px; }
+
+            .footer {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                padding: 6px 0;
+                border-top: 1px solid #dee2e6;
+                background: #fff;
+            }
+
+            @page {
+                size: A4;
+                margin: 10mm;
+            }
         }
 
         /* ═══════════════ Amount colors (Fix #7) ═══════════════ */
@@ -277,11 +317,11 @@
     <div class="signature">مدير الحسابات</div>
 </div>
 
-{{-- التذييل --}}
+{{-- التذييل — نفس تذييل فاتورة البيع/الشراء --}}
 <div class="footer">
-    <span>نظام ERP — مركز التقارير</span>
-    <span>{{ $report->title() }}</span>
-    <span>{{ now()->format('Y-m-d') }}</span>
+    <span class="footer-left">جميع الحقوق محفوظة لشركة بيتاسيس ©</span>
+    <span class="footer-center">{{ now()->format('Y-m-d') }}</span>
+    <span class="footer-right">المستخدم: {{ auth()->user()?->name ?? 'مدير النظام' }}</span>
 </div>
 
 {{-- أزرار الطباعة (لا تُطبع) --}}

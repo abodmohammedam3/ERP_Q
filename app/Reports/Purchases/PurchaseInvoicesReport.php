@@ -93,21 +93,36 @@ class PurchaseInvoicesReport implements Report
         $supplierId = (int) ($filters['supplier_id'] ?? 0);
         $paymentMethod = (int) ($filters['payment_method'] ?? 0);
 
+        // فلاتر مشتركة فقط — بدون with/orderBy (لـ clone نظيف للإجماليات والعدّاد)
         $query = PurchaseInvoice::query()
-            ->with([
-                'supplierAccount:accountID,accCode,accName',
-                'coin:coinsID,coinsName',
-            ])
             ->when($supplierId > 0, fn ($q) => $q->where('account_id', $supplierId))
             ->when($paymentMethod > 0, fn ($q) => $q->where('payment_method', $paymentMethod))
             ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('invoice_date', '>=', $filters['date_from']))
             ->when(!empty($filters['date_to']), fn ($q) => $q->whereDate('invoice_date', '<=', $filters['date_to']));
+
+        // ── الإجماليات على كل النتائج المطابقة (ليس الصفحة فقط) ──
+        // نظّف الأعمدة قبل إضافة عمودي SUM (وإلا خلط MySQL بينهما ورفض الاستعلام)
+        // total_local = العمود الخام total_in_base_currency (ليس الـ accessor)
+        $totalsRow = (clone $query)->toBase()
+            ->cloneWithout(['columns'])
+            ->selectRaw('COALESCE(SUM(items_total), 0) as items_sum')
+            ->selectRaw('COALESCE(SUM(discount_total), 0) as discount_sum')
+            ->selectRaw('COALESCE(SUM(total_in_base_currency), 0) as total_local_sum')
+            ->first();
+
+        $itemsTotal    = round((float) ($totalsRow->items_sum ?? 0), 2);
+        $discountTotal = round((float) ($totalsRow->discount_sum ?? 0), 2);
+        $totalLocal    = round((float) ($totalsRow->total_local_sum ?? 0), 2);
 
         $total = (clone $query)->count();
         $lastPage = max(1, (int) ceil($total / self::PER_PAGE));
         $page = min($page, $lastPage);
 
         $invoices = $query
+            ->with([
+                'supplierAccount:accountID,accCode,accName',
+                'coin:coinsID,coinsName',
+            ])
             ->orderBy('invoice_date')
             ->orderBy('purchase_invoice_id')
             ->skip(($page - 1) * self::PER_PAGE)
@@ -122,19 +137,8 @@ class PurchaseInvoicesReport implements Report
         ];
 
         $rows = [];
-        $sumItems = 0.0;
-        $sumDiscount = 0.0;
-        $sumTotalLocal = 0.0;
 
         foreach ($invoices as $invoice) {
-            $itemsTotal = (float) $invoice->items_total;
-            $discountTotal = (float) $invoice->discount_total;
-            $totalLocal = (float) $invoice->total_in_base_currency;
-
-            $sumItems += $itemsTotal;
-            $sumDiscount += $discountTotal;
-            $sumTotalLocal += $totalLocal;
-
             $rows[] = [
                 'id'             => (int) $invoice->purchase_invoice_id,
                 'invoice_number' => $invoice->invoice_number ?? '',
@@ -145,18 +149,18 @@ class PurchaseInvoicesReport implements Report
                 'payment_method' => $paymentLabels[$invoice->payment_method] ?? '',
                 'currency'       => $invoice->coin->coinsName ?? '',
                 'statement'      => $invoice->statement ?? '',
-                'items_total'    => $itemsTotal,
-                'discount_total' => $discountTotal,
-                'total_local'    => $totalLocal,
+                'items_total'    => (float) $invoice->items_total,
+                'discount_total' => (float) $invoice->discount_total,
+                'total_local'    => (float) $invoice->total_in_base_currency,
             ];
         }
 
         return [
             'rows'   => $rows,
             'totals' => [
-                'items_total'    => $sumItems,
-                'discount_total' => $sumDiscount,
-                'total_local'    => $sumTotalLocal,
+                'items_total'    => $itemsTotal,
+                'discount_total' => $discountTotal,
+                'total_local'    => $totalLocal,
             ],
             'meta'   => [
                 'pagination' => [

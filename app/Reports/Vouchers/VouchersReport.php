@@ -146,6 +146,13 @@ class VouchersReport implements Report
             }
         }
 
+        // ── الإجماليات على كل السندات المطابقة (قبل قصّ الصفحة) ──
+        $total = 0.0;
+        foreach ($rows as $row) {
+            $total += (float) $row['local_amount'];
+        }
+        $total = round($total, 2);
+
         // ── ترتيب زمني موحّد + pagination في الذاكرة (النوعان من جداول مختلفة) ──
         usort($rows, fn ($a, $b) => [$a['date'], $a['id']] <=> [$b['date'], $b['id']]);
 
@@ -153,10 +160,6 @@ class VouchersReport implements Report
         $lastPage = max(1, (int) ceil($count / self::PER_PAGE));
         $page = min($page, $lastPage);
         $rows = array_slice($rows, ($page - 1) * self::PER_PAGE, self::PER_PAGE);
-
-        foreach ($rows as $row) {
-            $total += (float) $row['local_amount'];
-        }
 
         return [
             'rows'   => $rows,

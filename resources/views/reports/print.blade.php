@@ -115,6 +115,12 @@
             .no-print { display: none !important; }
             body { padding-bottom: 40px; }
         }
+
+        /* ═══════════════ Amount colors (Fix #7) ═══════════════ */
+        .amount-debit  { color: #dc3545; font-weight: 600; } /* مدين */
+        .amount-credit { color: #198754; font-weight: 600; } /* دائن */
+        .amount-pos    { color: #198754; font-weight: 600; } /* رصيد موجب */
+        .amount-neg    { color: #dc3545; font-weight: 600; } /* رصيد سالب */
     </style>
 </head>
 <body>
@@ -169,8 +175,20 @@
                         $alignClass = in_array($type, ['money', 'number'])
                             ? 'text-end'
                             : ($type === 'date' ? '' : 'text-start');
+
+                        // Fix #7 — لون خلية المبلغ حسب مفتاح العمود
+                        $amountClass = '';
+                        if ($value !== null && $value !== '' && (float) $value != 0) {
+                            if ($column['key'] === 'debit' && (float) $value > 0) {
+                                $amountClass = 'amount-debit';
+                            } elseif ($column['key'] === 'credit' && (float) $value > 0) {
+                                $amountClass = 'amount-credit';
+                            } elseif ($column['key'] === 'balance') {
+                                $amountClass = (float) $value < 0 ? 'amount-neg' : 'amount-pos';
+                            }
+                        }
                     @endphp
-                    <td class="{{ $alignClass }}">
+                    <td class="{{ trim($alignClass . ' ' . $amountClass) }}">
                         @if ($value === null || $value === '')
                             —
                         @elseif ($type === 'money')
@@ -199,8 +217,20 @@
                         $footer = $column['footer'] ?? '';
                         $totalValue = $totals[$column['key']] ?? null;
                         $alignClass = in_array($column['type'] ?? '', ['money', 'number']) ? 'text-end' : '';
+
+                        // Fix #7 — لون خلية المبلغ في الإجماليات حسب مفتاح العمود
+                        $amountClass = '';
+                        if ($totalValue !== null && (float) $totalValue != 0) {
+                            if ($column['key'] === 'debit' && (float) $totalValue > 0) {
+                                $amountClass = 'amount-debit';
+                            } elseif ($column['key'] === 'credit' && (float) $totalValue > 0) {
+                                $amountClass = 'amount-credit';
+                            } elseif ($column['key'] === 'balance') {
+                                $amountClass = (float) $totalValue < 0 ? 'amount-neg' : 'amount-pos';
+                            }
+                        }
                     @endphp
-                    <td class="{{ $alignClass }}">
+                    <td class="{{ trim($alignClass . ' ' . $amountClass) }}">
                         @if ($footer === 'sum' && $totalValue !== null)
                             {{ number_format((float) $totalValue, ($column['type'] ?? '') === 'number' ? 3 : 2) }}
                         @elseif ($footer === 'last')
@@ -230,9 +260,9 @@
 
 {{-- التوقيعات --}}
 <div class="signatures">
-    <div class="signature">أعد التقرير</div>
-    <div class="signature">راجع التقرير</div>
-    <div class="signature">اعتمد التقرير</div>
+    <div class="signature">المحاسب</div>
+    <div class="signature">المراجع</div>
+    <div class="signature">مدير الحسابات</div>
 </div>
 
 {{-- التذييل --}}

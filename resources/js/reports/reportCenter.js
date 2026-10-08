@@ -517,7 +517,7 @@ function rcRenderTotals() {
             return `
                 <div class="rc-kpi">
                     <small class="rc-kpi-label">${rcEscape(label)}</small>
-                    <span class="rc-kpi-value">${rcFormatMoney(value)}</span>
+                    <span class="rc-kpi-value ${rcAmountClass({ key }, value)}">${rcFormatMoney(value)}</span>
                 </div>`;
         })
         .join('');
@@ -531,6 +531,19 @@ function rcAlignClass(column) {
     if (column.type === 'money' || column.type === 'number') return 'text-end';
     if (column.type === 'date') return 'text-center';
     return 'text-start';
+}
+
+function rcAmountClass(column, value) {
+    // حماية من null/undefined/''/صفر (نص أو رقم)
+    if (value === null || value === undefined || value === '') return '';
+    const num = Number(value);
+    if (isNaN(num) || num === 0) return '';
+
+    const key = column.key;
+    if (key === 'debit')   return num > 0 ? 'amount-debit'  : '';
+    if (key === 'credit')  return num > 0 ? 'amount-credit' : '';
+    if (key === 'balance') return num < 0 ? 'amount-neg'    : 'amount-pos';
+    return '';
 }
 
 function rcFormatCell(column, value) {
@@ -634,7 +647,7 @@ function rcRenderTable() {
                 (row) => `<tr>${RC.columns
                     .map(
                         (column) =>
-                            `<td class="${rcAlignClass(column)}">${rcFormatCell(column, row[column.key])}</td>`
+                            `<td class="${rcAlignClass(column)} ${rcAmountClass(column, row[column.key])}">${rcFormatCell(column, row[column.key])}</td>`
                     )
                     .join('')}</tr>`
             )
@@ -651,7 +664,22 @@ function rcRenderTable() {
 
     const lastRow = rows[rows.length - 1] || {};
 
-    foot.innerHTML = `<tr class="rc-tfoot">${RC.columns
+    // B: عدد الأعمدة غير الرقمية الرائدة — خانة "الإجمالي" تجمعها
+    let labelSpan = 0;
+    while (
+        labelSpan < RC.columns.length &&
+        RC.columns[labelSpan].type !== 'money' &&
+        RC.columns[labelSpan].type !== 'number'
+    ) {
+        labelSpan++;
+    }
+
+    const labelCell = labelSpan > 0
+        ? `<td colspan="${labelSpan}" class="text-end fw-bold">الإجمالي</td>`
+        : '';
+
+    foot.innerHTML = `<tr class="rc-tfoot">${labelCell}${RC.columns
+        .slice(labelSpan)
         .map((column) => {
             if (!column.footer || column.footer === 'none') {
                 return '<td></td>';
@@ -671,7 +699,7 @@ function rcRenderTable() {
                 ? rcFormatNumber(value)
                 : rcFormatMoney(value);
 
-            return `<td class="${rcAlignClass(column)} fw-bold">${formatted}</td>`;
+            return `<td class="${rcAlignClass(column)} fw-bold ${rcAmountClass(column, value)}">${formatted}</td>`;
         })
         .join('')}</tr>`;
 }
@@ -1413,18 +1441,6 @@ function rcSelectPickerRow(account) {
     // ث1: تغيير الأب → مسح حقلَي النطاق (from/to) تلقائياً
     if (RC.pickerMode === 'parent') {
         rcClearChildRange(hiddenId);
-    }
-
-    // BR-E9: اختيار "من" → قفل "إلى"
-    if (hiddenId === 'rcf-account_from') {
-        const toHidden  = document.getElementById('rcf-account_to');
-        const toText    = document.getElementById('rcf-account_to-text');
-        const toOpenBtn = toHidden?.closest('.input-group')?.querySelector('[data-picker-open]');
-        const toClearBtn = toHidden?.closest('.input-group')?.querySelector('[data-picker-clear]');
-        if (toHidden)  toHidden.setAttribute('disabled', '');
-        if (toText)    toText.setAttribute('disabled', '');
-        if (toOpenBtn) toOpenBtn.setAttribute('disabled', '');
-        if (toClearBtn) toClearBtn.setAttribute('disabled', '');
     }
 
     // تسجيل الاختيار + فتح القفل

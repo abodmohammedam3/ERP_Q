@@ -201,3 +201,24 @@ body.rc-empty-parent .rc-action-btn {
     opacity: 0.5 !important;
 }
 
+/* ════════════════════════════════════════════════════════
+   ألوان المبالغ (Fix #7) — تُطبَّق على خلايا الأرقام فقط
+   ════════════════════════════════════════════════════════ */
+.amount-debit  { color: #dc3545; font-weight: 600; } /* مدين */
+.amount-credit { color: #198754; font-weight: 600; } /* دائن */
+.amount-pos    { color: #198754; font-weight: 600; } /* رصيد موجب */
+.amount-neg    { color: #dc3545; font-weight: 600; } /* رصيد سالب */
+
+/* KPI: توحيد بصري للمعلومة المالية فقط */
+.rc-kpi-value.amount-pos,
+.rc-kpi-value.amount-credit { color: #198754; }
+
+.rc-kpi-value.amount-neg,
+.rc-kpi-value.amount-debit { color: #dc3545; }
+
+/* Fix #7 follow-up: رفع specificity لتجاوز Bootstrap .table > * > * */
+#rcTable td.amount-debit  { color: #dc3545; font-weight: 600; }
+#rcTable td.amount-credit { color: #198754; font-weight: 600; }
+#rcTable td.amount-pos    { color: #198754; font-weight: 600; }
+#rcTable td.amount-neg    { color: #dc3545; font-weight: 600; }
+

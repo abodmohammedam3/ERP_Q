@@ -87,15 +87,15 @@ class ReportEngine
 
     /**
      * تحويل قيمة الفلتر حسب نوعه.
+     *
+     * القاعدة: select أو text يبقى نصاً دائماً ولا يُحوَّل إلى int،
+     * و number أو money يُحوَّل إلى float.
      */
     private static function castValue(string $type, mixed $value): mixed
     {
         return match ($type) {
-            'number' => (float) $value,
-            // select: رقم فقط إذا كانت القيمة رقمية (مثل voucher_type)
-            // وإلا تبقى نصاً (مثل doc_type: "سند قبض")
-            'select' => is_numeric($value) ? (int) $value : trim((string) $value),
-            // date / text / account / item تبقى نصاً —
+            'number' | 'money' => (float) $value,
+            // date / select / text / account / item تبقى نصاً دائماً —
             // والأمان يتحقق في التقرير نفسه عبر Eloquent bindings
             default => trim((string) $value),
         };

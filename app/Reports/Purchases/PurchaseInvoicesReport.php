@@ -139,7 +139,6 @@ class PurchaseInvoicesReport implements Report
             PurchaseInvoice::PAYMENT_CREDIT  => 'آجل',
             PurchaseInvoice::PAYMENT_CASH    => 'نقد',
             PurchaseInvoice::PAYMENT_BANK    => 'بنك',
-            PurchaseInvoice::PAYMENT_NETWORK => 'شبكة',
         ];
 
         $rows = [];

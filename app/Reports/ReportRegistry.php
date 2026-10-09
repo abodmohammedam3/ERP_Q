@@ -22,15 +22,17 @@ class ReportRegistry
 {
     /**
      * خريطة المفتاح => class.
+     *
+     * @var array<string, class-string<Report>>
      */
     private const REGISTRY = [
-        TrialBalanceReport::class,
-        GeneralLedgerReport::class,
-        AccountStatementReport::class,
-        VouchersReport::class,
-        ItemLedgerReport::class,
-        SalesInvoicesReport::class,
-        PurchaseInvoicesReport::class,
+        'trial-balance'     => TrialBalanceReport::class,
+        'general-ledger'    => GeneralLedgerReport::class,
+        'account-statement' => AccountStatementReport::class,
+        'vouchers'          => VouchersReport::class,
+        'item-ledger'       => ItemLedgerReport::class,
+        'sales-invoices'    => SalesInvoicesReport::class,
+        'purchase-invoices' => PurchaseInvoicesReport::class,
     ];
 
     /**
@@ -49,30 +51,21 @@ class ReportRegistry
     {
         $reports = [];
 
-        foreach (self::REGISTRY as $class) {
-            $report = self::make($class);
-            $reports[$report->key()] = $report;
+        foreach (self::REGISTRY as $key => $class) {
+            $reports[$key] = self::make($class);
         }
 
         return $reports;
     }
 
     /**
-     * جلب تقرير بمفتاحه.
-     *
-     * @throws InvalidArgumentException إذا كان المفتاح غير مسجل
+     * جلب تقرير بمفتاحه، أو null إن لم يكن مسجلاً.
      */
-    public static function get(string $key): Report
+    public static function get(string $key): ?Report
     {
-        foreach (self::REGISTRY as $class) {
-            $report = self::make($class);
+        $class = self::REGISTRY[$key] ?? null;
 
-            if ($report->key() === $key) {
-                return $report;
-            }
-        }
-
-        throw new InvalidArgumentException("التقرير غير موجود: {$key}");
+        return $class !== null ? self::make($class) : null;
     }
 
     /**
@@ -80,13 +73,7 @@ class ReportRegistry
      */
     public static function has(string $key): bool
     {
-        try {
-            self::get($key);
-
-            return true;
-        } catch (InvalidArgumentException) {
-            return false;
-        }
+        return isset(self::REGISTRY[$key]);
     }
 
     /**

@@ -69,6 +69,11 @@ class ReportEngine
             $type = $filter['type'] ?? 'text';
             $value = $raw[$key] ?? null;
 
+            // القيم غير المفردة (مصفوفات/كائنات) لا تُحوَّل إطلاقاً — تُتجاهل
+            if (!is_scalar($value)) {
+                continue;
+            }
+
             // القيمة الفارغة تُسقَط (لا يُطبَّق الفلتر) — إلا للحقول الخفية (توافق خلفي)
             if (($value === null || $value === '') && empty($filter['hidden'])) {
                 continue;

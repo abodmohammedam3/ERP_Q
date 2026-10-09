@@ -7,6 +7,8 @@ use App\Models\Accounting\CharAccount;
 use App\Models\Accounting\Coin;
 use App\Models\Accounting\JournalEntry;
 use App\Models\Inventory\Item;
+use App\Models\Purchases\PurchaseInvoice;
+use App\Models\Sales\SalesInvoice;
 use App\Reports\ReportEngine;
 use App\Reports\ReportRegistry;
 use App\Services\ChartAccountScope;
@@ -95,7 +97,7 @@ class ReportCenterController extends Controller
     {
         // المصادر ثابتة نسبياً (حسابات/أصناف/عملات) — تُخزَّن مؤقتاً
         // لتفادي تنفيذ 4 استعلامات في كل فتح للشاشة.
-        $sources = Cache::remember('reports.sources.v1', 3600, function () {
+        $sources = Cache::remember('reports.sources.v2', 3600, function () {
 
             $accounts = CharAccount::query()
                 ->where('isPostable', 1)
@@ -136,6 +138,18 @@ class ReportCenterController extends Controller
                     ['id' => 0, 'text' => 'الكل'],
                     ['id' => 1, 'text' => 'سندات القبض'],
                     ['id' => 2, 'text' => 'سندات الصرف'],
+                ],
+                // طرق الدفع تختلف بين الموديلين: المبيعات تدعم "شبكة" والمشتريات لا
+                'paymentMethodsSales' => [
+                    ['id' => SalesInvoice::PAYMENT_CREDIT,  'text' => 'آجل'],
+                    ['id' => SalesInvoice::PAYMENT_CASH,    'text' => 'نقد'],
+                    ['id' => SalesInvoice::PAYMENT_BANK,    'text' => 'بنك'],
+                    ['id' => SalesInvoice::PAYMENT_NETWORK, 'text' => 'شبكة'],
+                ],
+                'paymentMethodsPurchases' => [
+                    ['id' => PurchaseInvoice::PAYMENT_CREDIT, 'text' => 'آجل'],
+                    ['id' => PurchaseInvoice::PAYMENT_CASH,   'text' => 'نقد'],
+                    ['id' => PurchaseInvoice::PAYMENT_BANK,   'text' => 'بنك'],
                 ],
             ];
         });

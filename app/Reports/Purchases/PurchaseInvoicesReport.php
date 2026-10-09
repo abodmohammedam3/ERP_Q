@@ -66,7 +66,7 @@ class PurchaseInvoicesReport implements Report
                 'key'    => 'payment_method',
                 'label'  => 'طريقة الدفع',
                 'type'   => 'select',
-                'source' => 'paymentMethods',
+                'source' => 'paymentMethodsPurchases',
                 'col'    => 'col-md-2',
             ],
         ];

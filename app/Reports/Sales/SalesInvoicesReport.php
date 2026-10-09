@@ -48,6 +48,7 @@ class SalesInvoicesReport implements Report
                 'label'  => 'العميل',
                 'type'   => 'item',
                 'source' => 'customers',
+                'placeholder' => 'اختر العميل...',
                 'col'    => 'col-md-3',
             ],
             [

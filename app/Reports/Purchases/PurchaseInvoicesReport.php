@@ -48,6 +48,7 @@ class PurchaseInvoicesReport implements Report
                 'label'  => 'المورد',
                 'type'   => 'item',
                 'source' => 'suppliers',
+                'placeholder' => 'اختر المورد...',
                 'col'    => 'col-md-3',
             ],
             [

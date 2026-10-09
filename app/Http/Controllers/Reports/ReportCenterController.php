@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Accounting\CharAccount;
 use App\Models\Accounting\Coin;
 use App\Models\Accounting\JournalEntry;
+use App\Models\Customer;
 use App\Models\Inventory\Item;
 use App\Models\Purchases\PurchaseInvoice;
 use App\Models\Sales\SalesInvoice;
+use App\Models\Supplier;
 use App\Reports\ReportEngine;
 use App\Reports\ReportRegistry;
 use App\Services\ChartAccountScope;
@@ -155,6 +157,69 @@ class ReportCenterController extends Controller
         });
 
         return $this->ok(['sources' => $sources]);
+    }
+
+    // ════════════════════════════════════════════
+    //  بحث مصغّر (Lookup) — للعملاء/الموردين/الأصناف
+    // ════════════════════════════════════════════
+
+    /**
+     * بحث بحد أقصى 20 نتيجة عن عميل/مورد/صنف (للفلاتر التي لا تُحمَّل كلها).
+     *
+     * القواعد:
+     *  - الأنواع المسموحة فقط: customers, suppliers, items — وغيرها 404.
+     *  - q < حرفين → قائمة فارغة بلا استعلام.
+     *  - الهروب من % و _ في نمط LIKE عبر bindings (لا دمج في SQL خام).
+     *
+     * ملاحظة: تقريرا البيع والشراء يفلترون بـ account_id، لذا
+     * العملاء والموردون يُرجعون accountID كـ id ليستقيم استخدام الفلتر مباشرة.
+     */
+    public function lookup(Request $request, string $type): JsonResponse
+    {
+        $allowed = ['customers', 'suppliers', 'items'];
+
+        if (!in_array($type, $allowed, true)) {
+            return $this->fail('نوع البحث غير مدعوم', 404);
+        }
+
+        $q = trim((string) $request->query('q', ''));
+
+        if (mb_strlen($q) < 2) {
+            return $this->ok(['items' => []]);
+        }
+
+        $pattern = '%' . addcslashes($q, '%_') . '%';
+
+        $rows = match ($type) {
+            'customers' => Customer::query()
+                ->whereNotNull('accountID')
+                ->where('CustomersName2', 'like', $pattern)
+                ->limit(20)
+                ->get()
+                ->map(fn ($c) => [
+                    'id'   => (int) $c->accountID,
+                    'text' => (string) $c->CustomersName2,
+                ]),
+            'suppliers' => Supplier::query()
+                ->whereNotNull('accountID')
+                ->where('supName', 'like', $pattern)
+                ->limit(20)
+                ->get()
+                ->map(fn ($s) => [
+                    'id'   => (int) $s->accountID,
+                    'text' => (string) $s->supName,
+                ]),
+            default => Item::query()
+                ->where('itemName2', 'like', $pattern)
+                ->limit(20)
+                ->get()
+                ->map(fn ($i) => [
+                    'id'   => (int) $i->itemID,
+                    'text' => (string) $i->itemName2,
+                ]),
+        };
+
+        return $this->ok(['items' => $rows->values()->all()]);
     }
 
     // ════════════════════════════════════════════════════

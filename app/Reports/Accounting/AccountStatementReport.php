@@ -176,10 +176,10 @@ class AccountStatementReport implements Report
         $swapped = false;
 
         if ($fromRaw !== '' && $toRaw === '') {
-            $toRaw = $fromRaw;                       // ❸: من وحدها = حساب واحد
+            $toRaw = $fromRaw;                       // من وحدها = حساب واحد
         } elseif ($fromRaw === '' && $toRaw !== '') {
-            $fromRaw = $toRaw;                       // ❹: تطبيع صامت + سجل
-            Log::warning('[Reports] account_to بدون account_from — طُبّع', [
+            $fromRaw = $toRaw;                       // تطبيع صامت + سجل
+            Log::debug('[Reports] account_to بدون account_from — طُبّع', [
                 'account_to' => $toRaw, 'parent' => $parentRaw,
             ]);
         }
@@ -289,7 +289,7 @@ class AccountStatementReport implements Report
             ->get()
             ->groupBy('accountID');
 
-        // صمام الزمن ❻
+        // صمام الزمن
         $elapsed = microtime(true) - $startedAt;
 
         if ($elapsed > $maxSeconds) {

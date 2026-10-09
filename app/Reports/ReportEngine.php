@@ -19,6 +19,8 @@ class ReportEngine
      * تنفيذ تقرير بمفتاحه على فلاتر الطلب الخام.
      *
      * @param  array<string, mixed> $rawFilters فلاتر من الطلب (غير موثوقة)
+     * @param  bool $all طبقة الطباعة/التصدير: تلغي ترقيم الصفحة وتمشي التقرير على كل الصفوف
+     *                  (حتى حدّ reports.export_max_rows) عبر فلتر مخفي _all
      * @return array{
      *   rows: array<int, array<string, mixed>>,
      *   totals: array<string, float>,
@@ -28,10 +30,17 @@ class ReportEngine
      *
      * @throws InvalidArgumentException إذا كان المفتاح غير مسجل
      */
-    public static function execute(string $key, array $rawFilters): array
+    public static function execute(string $key, array $rawFilters, bool $all = false): array
     {
         $report = ReportRegistry::get($key);
         $filters = self::sanitizeFilters($report, $rawFilters);
+
+        // B1: الطباعة/التصدير يشملان كل الصفوف — نسقط page ونفعّل _all
+        // داخل الفلاتر بعد التنظيف (لأنه مفتاح مخفي لا يحتاج إعلاناً في تعريف التقرير)
+        if ($all) {
+            unset($filters['page']);
+            $filters['_all'] = true;
+        }
 
         $result = $report->run($filters);
 

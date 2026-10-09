@@ -213,7 +213,8 @@ class ReportCenterController extends Controller
             abort(404);
         }
 
-        $result = ReportEngine::execute($key, $request->query->all());
+        // B1: الطباعة تشمل كل الصفوف (all=true → التقرير يتجاوز pagination)
+        $result = ReportEngine::execute($key, $request->query->all(), all: true);
         $report = ReportRegistry::get($key);
 
         return view('reports.print', [
@@ -236,7 +237,8 @@ class ReportCenterController extends Controller
             abort(404);
         }
 
-        $result = ReportEngine::execute($key, $request->query->all());
+        // B1: التصدير يشمل كل الصفوف (all=true → التقرير يتجاوز pagination)
+        $result = ReportEngine::execute($key, $request->query->all(), all: true);
         $report = ReportRegistry::get($key);
 
         $filename = $report->key() . '-' . now()->format('Y-m-d') . '.csv';

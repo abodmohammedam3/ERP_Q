@@ -11,6 +11,9 @@ return [
     // أقصى عدد صفوف لكشف الحساب قبل الرفض (حماية الأداء والذاكرة)
     'statement_max_rows' => (int) env('REPORTS_STATEMENT_MAX_ROWS', 20000),
 
+    // أقصى عدد صفوف يُصدَّر/يُطبع دفعة واحدة (طبقة all=true) — صمام أمان للذاكرة
+    'export_max_rows' => (int) env('REPORTS_EXPORT_MAX_ROWS', 50000),
+
     // أقصى زمن (بالثواني) لتنفيذ استعلامات كشف الحساب قبل الرفض
     'statement_max_seconds' => (float) env('REPORTS_STATEMENT_MAX_SECONDS', 5),
 

@@ -127,14 +127,20 @@ class ItemLedgerReport implements Report
             ->first();
 
         $count = (clone $query)->count();
-        $lastPage = max(1, (int) ceil($count / self::PER_PAGE));
+
+        // B1: الطباعة/التصدير (all=true) تتجاوز الترقيم — كل الصفوف حتى حدّ export_max_rows
+        $perPage = !empty($filters['_all'])
+            ? max(1, min($count, (int) config('reports.export_max_rows', 50000)))
+            : self::PER_PAGE;
+
+        $lastPage = max(1, (int) ceil($count / $perPage));
         $page = min($page, $lastPage);
 
         $details = $query
             ->orderBy('im.movement_date')
             ->orderBy('im.movement_id')
-            ->skip(($page - 1) * self::PER_PAGE)
-            ->take(self::PER_PAGE)
+            ->skip(($page - 1) * $perPage)
+            ->take($perPage)
             ->get();
 
         $typeLabels = [

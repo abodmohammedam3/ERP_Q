@@ -178,7 +178,8 @@
     </div>
     <div class="header-left">
         <div class="meta-line">تاريخ الطباعة: {{ now()->format('Y-m-d H:i') }}</div>
-        <div class="meta-line">عدد السجلات: {{ count($rows) }}</div>
+        {{-- B1: الإجمالي الحقيقي من meta (يشمل كل الصفوف في الطباعة) مع احتياطي count($rows) --}}
+        <div class="meta-line">عدد السجلات: {{ data_get($meta, 'pagination.total', count($rows)) }}</div>
     </div>
 </div>
 

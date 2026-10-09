@@ -157,9 +157,15 @@ class VouchersReport implements Report
         usort($rows, fn ($a, $b) => [$a['date'], $a['id']] <=> [$b['date'], $b['id']]);
 
         $count = count($rows);
-        $lastPage = max(1, (int) ceil($count / self::PER_PAGE));
+
+        // B1: الطباعة/التصدير (all=true) تتجاوز الترقيم — كل الصفوف حتى حدّ export_max_rows
+        $perPage = !empty($filters['_all'])
+            ? max(1, min($count, (int) config('reports.export_max_rows', 50000)))
+            : self::PER_PAGE;
+
+        $lastPage = max(1, (int) ceil($count / $perPage));
         $page = min($page, $lastPage);
-        $rows = array_slice($rows, ($page - 1) * self::PER_PAGE, self::PER_PAGE);
+        $rows = array_slice($rows, ($page - 1) * $perPage, $perPage);
 
         return [
             'rows'   => $rows,

@@ -195,7 +195,7 @@ class ReportCenterController extends Controller
     public function data(Request $request, string $key): JsonResponse
     {
         if (!ReportRegistry::has($key)) {
-            return $this->fail('التقرير غير موجود');
+            return $this->fail('التقرير غير موجود', 404);
         }
 
         $result = ReportEngine::execute($key, $request->query->all());

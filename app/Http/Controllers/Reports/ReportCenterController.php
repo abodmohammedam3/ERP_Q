@@ -263,13 +263,29 @@ class ReportCenterController extends Controller
                 fputcsv($out, $line);
             }
 
-            // صف الإجماليات (تحت الأعمدة ذات footer=sum)
-            if (!empty($result['totals'])) {
+            // صف الإجماليات (footer=sum) وصف الختام (footer=last = آخر صف مرئي)
+            $hasFooter = !empty($result['totals'])
+                || collect($result['columns'])->contains(fn ($c) => ($c['footer'] ?? '') === 'last');
+
+            if ($hasFooter) {
+                $lastRow = $result['rows'] !== []
+                    ? $result['rows'][array_key_last($result['rows'])]
+                    : null;
+
                 $line = [];
                 foreach ($result['columns'] as $col) {
-                    $line[] = $safe(($col['footer'] ?? '') === 'sum'
-                        ? ($result['totals'][$col['key']] ?? '')
-                        : '');
+                    $footer = $col['footer'] ?? '';
+
+                    if ($footer === 'sum') {
+                        $value = $result['totals'][$col['key']] ?? '';
+                    } elseif ($footer === 'last') {
+                        // قيمة آخر صف مرئي — وإن لم يوجد صف تبقى فارغة
+                        $value = $lastRow[$col['key']] ?? '';
+                    } else {
+                        $value = '';
+                    }
+
+                    $line[] = $safe($value);
                 }
                 fputcsv($out, $line);
             }

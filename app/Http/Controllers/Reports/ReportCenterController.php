@@ -244,17 +244,21 @@ class ReportCenterController extends Controller
         return response()->streamDownload(function () use ($result) {
             $out = fopen('php://output', 'w');
 
+            // مكافحة حقن CSV: خلية نصية تبدأ برمز تنفيذ محتمل (=+-@ tab CR)
+            // تُسبَق بعلامة اقتباس حتى تتعامل معها Excel كنص
+            $safe = fn ($v) => is_string($v) && preg_match('/^[=+\-@\t\r]/u', $v) ? "'" . $v : $v;
+
             // BOM لعرض العربية بشكل صحيح في Excel
             fwrite($out, "\xEF\xBB\xBF");
 
             // رأس الجدول
-            fputcsv($out, array_column($result['columns'], 'label'));
+            fputcsv($out, array_map($safe, array_column($result['columns'], 'label')));
 
             // الصفوف
             foreach ($result['rows'] as $row) {
                 $line = [];
                 foreach ($result['columns'] as $col) {
-                    $line[] = $row[$col['key']] ?? '';
+                    $line[] = $safe($row[$col['key']] ?? '');
                 }
                 fputcsv($out, $line);
             }
@@ -263,9 +267,9 @@ class ReportCenterController extends Controller
             if (!empty($result['totals'])) {
                 $line = [];
                 foreach ($result['columns'] as $col) {
-                    $line[] = ($col['footer'] ?? '') === 'sum'
+                    $line[] = $safe(($col['footer'] ?? '') === 'sum'
                         ? ($result['totals'][$col['key']] ?? '')
-                        : '';
+                        : '');
                 }
                 fputcsv($out, $line);
             }

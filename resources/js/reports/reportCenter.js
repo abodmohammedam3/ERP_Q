@@ -182,9 +182,8 @@ function rcHydrateSelects() {
 
         const placeholder = document.createElement('option');
         placeholder.value = '';
-        placeholder.textContent = filter.type === 'item'
-            ? 'اختر الصنف...'
-            : 'الكل';
+        placeholder.textContent = filter.placeholder
+            ?? (filter.type === 'item' ? 'اختر الصنف...' : 'الكل');
         element.appendChild(placeholder);
 
         options.forEach((option) => {
@@ -249,9 +248,8 @@ function rcRenderHeader() {
 
 function rcBuildSelect(filter, id) {
     const options = rcSourceOptions(filter.source);
-    const placeholder = filter.type === 'item'
-        ? 'اختر الصنف...'
-        : 'الكل';
+    const placeholder = filter.placeholder
+        ?? (filter.type === 'item' ? 'اختر الصنف...' : 'الكل');
 
     let html = `<select id="${id}" class="form-select form-select-sm">
                     <option value="">${placeholder}</option>`;

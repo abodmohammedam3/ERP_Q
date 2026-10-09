@@ -29,10 +29,9 @@ const RC = {
     // مودال اختيار الحساب (دليل الحسابات) — خاص بهذه الشاشة
     pickerAccounts: null,        // الحسابات المؤهلة — تُحمَّل مرة واحدة
     pickerParents: null,         // الآباء القابلون للاختيار (من API) — مرة واحدة
-    pickerTree: null,            // كامل الشجرة (للتحقق من المخزون وتبويبات المودال)
+    pickerTree: null,            // كامل الشجرة (للتحقق من المخزون)
     pickerPromise: null,         // وعد التحميل الجاري (منع الطلبات المكرّرة)
     pickerTargetId: null,        // الحقل المخفي المستهدف للاختيار
-    pickerTab: 'ALL',
     pickerMode: 'all',           // parent | child | all
     pickerScope: null,           // IDs أبناء الأب (لوضع child)
     pickerScopeKey: null,        // مفتاح النطاق لتمييز الكاش
@@ -540,13 +539,13 @@ function rcAmountClass(column, value) {
     if (isNaN(num) || num === 0) return '';
 
     // R2/M5: الأولوية لحقل color الصريح (metadata من تعريف التقرير)
-    if (column.color === 'red')   return 'amount-red';
+    if (column.color === 'red') return 'amount-red';
     if (column.color === 'green') return 'amount-green';
 
     const key = column.key;
-    if (key === 'debit')   return num > 0 ? 'amount-debit'  : '';
-    if (key === 'credit')  return num > 0 ? 'amount-credit' : '';
-    if (key === 'balance') return num < 0 ? 'amount-neg'    : 'amount-pos';
+    if (key === 'debit') return num > 0 ? 'amount-debit' : '';
+    if (key === 'credit') return num > 0 ? 'amount-credit' : '';
+    if (key === 'balance') return num < 0 ? 'amount-neg' : 'amount-pos';
     return '';
 }
 
@@ -891,7 +890,7 @@ function rcInit() {
 
         if (openTrigger) {
             const hiddenId = openTrigger.dataset.pickerOpen;
-            const mode     = openTrigger.dataset.pickerMode || 'all';
+            const mode = openTrigger.dataset.pickerMode || 'all';
             // نمرّر ما كتبه المستخدم ليُطبَّق كفلترة أولية داخل المودال (يتطابق مع مسار Enter)
             const textInput = openTrigger.matches('input[type="text"]')
                 ? openTrigger
@@ -910,14 +909,10 @@ function rcInit() {
         }
     });
 
-    // ── مودال الدليل: التبويبات والبحث (مرة واحدة — المودال ثابت في DOM) ──
+    // ── مودال الدليل: البحث (مرة واحدة — المودال ثابت في DOM) ──
     const rcPickerModalEl = document.getElementById('rcAccountPickerModal');
 
     if (rcPickerModalEl) {
-        rcPickerModalEl.querySelectorAll('#rcPickerTabs .nav-link').forEach((tab) => {
-            tab.addEventListener('click', () => rcActivatePickerTab(tab.dataset.type));
-        });
-
         document.getElementById('rcPickerSearch')?.addEventListener('input', () => {
             clearTimeout(rcPickerSearchTimer);
             rcPickerSearchTimer = setTimeout(rcRenderPickerList, 150);
@@ -938,7 +933,7 @@ function rcInit() {
             if (RC.pickerTargetId && !RC.pickerSelectionMade) {
                 // لم يتم اختيار → إذا الحقل فارغ، أبقِه فارغاً وافتح القفل
                 const hidden = document.getElementById(RC.pickerTargetId);
-                const text   = document.getElementById(`${RC.pickerTargetId}-text`);
+                const text = document.getElementById(`${RC.pickerTargetId}-text`);
                 if (hidden && !hidden.value && text) {
                     text.value = '';
                 }
@@ -992,20 +987,10 @@ function rcShowSkeleton() {
    ════════════════════════════════════════════════════════
    مودال مستقل تماماً عن النظام الموحّد (shared/lookup):
    - بيانات تُحمَّل مرة واحدة (sessionStorage + كاش الخادم)
-   - بحث وتبويبات محلية — بلا أي طلب شبكة أثناء الاستخدام
+   - بحث محلي — بلا أي طلب شبكة أثناء الاستخدام
    - يُملأ الحقل المخفي rcf-{key} (رقم الحساب) الذي يقرأه
      rcCollectFilters — فيعمل العرض والطباعة والتصدير كما كانت
    ════════════════════════════════════════════════════════ */
-
-const RC_PICKER_TAB_TITLES = {
-    ALL:      'اختيار حساب من دليل الحسابات',
-    CUSTOMER: 'اختيار حساب عميل',
-    SUPPLIER: 'اختيار حساب مورد',
-    CASH:     'اختيار حساب صندوق',
-    BANK:     'اختيار حساب بنك',
-    PARENT:   'اختيار الحساب الرئيسي',
-    CHILD:    'اختيار حساب من النطاق',
-};
 
 const RC_PICKER_CACHE_KEY = 'rc.picker.v1';
 const RC_PICKER_MAX_RENDER = 300;
@@ -1017,8 +1002,8 @@ let rcPickerSearchTimer = null;
  */
 function rcBuildAccountPicker(filter, id) {
     const isParent = filter.mode === 'parent' || filter.key === 'account_parent';
-    const isChild  = filter.mode === 'child';
-    const mode     = isParent ? 'parent' : (isChild ? 'child' : 'all');
+    const isChild = filter.mode === 'child';
+    const mode = isParent ? 'parent' : (isChild ? 'child' : 'all');
     const placeholder = isParent
         ? 'اكتب أو اضغط Enter لاختيار الحساب الرئيسي...'
         : (isChild ? 'اكتب أو اضغط Enter لاختيار حساب...' : 'اكتب أو اضغط Enter لاختيار حساباً...');
@@ -1060,14 +1045,14 @@ async function rcOpenAccountPicker(hiddenId, mode = 'all', initialSearch = '') {
 
     if (!modalEl) return;
 
-    RC.pickerTargetId      = hiddenId;
+    RC.pickerTargetId = hiddenId;
     RC.pickerSelectionMade = false; // إعادة تعيين قبل كل فتح
-    RC.pickerIsOpen        = true;
+    RC.pickerIsOpen = true;
 
     // وضع child يتطلب أباً مختاراً — تقييد بالدليل المؤهل تحته فقط
     if (mode === 'child') {
         const parent = rcReadParentChoice();
-        const scope  = rcChildrenOfParent(parent);
+        const scope = rcChildrenOfParent(parent);
 
         if (!scope || scope.length === 0) {
             rcToast('اختر الحساب الرئيسي أولاً', 'warning');
@@ -1075,19 +1060,16 @@ async function rcOpenAccountPicker(hiddenId, mode = 'all', initialSearch = '') {
             return;
         }
 
-        RC.pickerMode     = 'child';
-        RC.pickerScope    = scope.map((a) => String(a.accountID));
+        RC.pickerMode = 'child';
+        RC.pickerScope = scope.map((a) => String(a.accountID));
         RC.pickerScopeKey = String(parent);
     } else {
-        RC.pickerMode     = mode;
-        RC.pickerScope    = null;
+        RC.pickerMode = mode;
+        RC.pickerScope = null;
         RC.pickerScopeKey = null;
     }
 
-    // فتح بحالة نظيفة: تبويب الكل + تعبئة بحث بما كتبه المستخدم
-    RC.pickerTab = 'ALL';
-    rcSyncPickerTabUi();
-
+    // فتح بحالة نظيفة: تعبئة بحث بما كتبه المستخدم
     const search = document.getElementById('rcPickerSearch');
     if (search) search.value = initialSearch.trim();
 
@@ -1131,7 +1113,7 @@ function rcChildrenOfParent(parent) {
  */
 function rcLoadPickerAccounts() {
     if (RC.pickerAccounts) return Promise.resolve(RC.pickerAccounts);
-    if (RC.pickerPromise)  return RC.pickerPromise;
+    if (RC.pickerPromise) return RC.pickerPromise;
 
     try {
         const raw = sessionStorage.getItem(RC_PICKER_CACHE_KEY);
@@ -1143,8 +1125,8 @@ function rcLoadPickerAccounts() {
                 RC.pickerAccounts = cached;
             } else {
                 RC.pickerAccounts = cached.accounts || [];
-                RC.pickerParents  = cached.parents  || [];
-                RC.pickerTree     = cached.tree      || [];
+                RC.pickerParents = cached.parents || [];
+                RC.pickerTree = cached.tree || [];
             }
             return Promise.resolve(RC.pickerAccounts);
         }
@@ -1159,14 +1141,14 @@ function rcLoadPickerAccounts() {
         .then((payload) => {
             // API الجديد يرسل: { success, accounts, parents, eligible, tree, cached_at }
             RC.pickerAccounts = payload.accounts || payload.eligible || payload.data || [];
-            RC.pickerParents  = payload.parents  || [];
-            RC.pickerTree     = payload.tree      || [];
+            RC.pickerParents = payload.parents || [];
+            RC.pickerTree = payload.tree || [];
 
             try {
                 sessionStorage.setItem(RC_PICKER_CACHE_KEY, JSON.stringify({
                     accounts: RC.pickerAccounts,
-                    parents:  RC.pickerParents,
-                    tree:     RC.pickerTree,
+                    parents: RC.pickerParents,
+                    tree: RC.pickerTree,
                 }));
             } catch {
                 /* نتجاهل */
@@ -1177,8 +1159,8 @@ function rcLoadPickerAccounts() {
         .catch((error) => {
             console.error('[Reports] فشل تحميل حسابات الدليل', error);
             RC.pickerAccounts = [];
-            RC.pickerParents  = [];
-            RC.pickerTree     = [];
+            RC.pickerParents = [];
+            RC.pickerTree = [];
             return RC.pickerAccounts;
         })
         .finally(() => {
@@ -1199,43 +1181,21 @@ function rcRenderPickerLoading() {
     if (empty) empty.style.display = 'none';
 }
 
-function rcSyncPickerTabUi() {
-    const modalEl = document.getElementById('rcAccountPickerModal');
-    if (!modalEl) return;
-
-    modalEl.querySelectorAll('#rcPickerTabs .nav-link').forEach((tab) => {
-        tab.classList.toggle('active', tab.dataset.type === RC.pickerTab);
-    });
-
-    const title = document.getElementById('rcPickerTitle');
-    if (title) {
-        title.innerHTML = `<i class="bi bi-journal-bookmark text-primary me-2"></i> ${
-            RC_PICKER_TAB_TITLES[RC.pickerTab] || RC_PICKER_TAB_TITLES.ALL
-        }`;
-    }
-}
-
-function rcActivatePickerTab(type) {
-    RC.pickerTab = type || 'ALL';
-    rcSyncPickerTabUi();
-    rcRenderPickerList();
-}
-
 /**
- * رسم القائمة — تصفية محلية بالتبويب والبحث (بلا شبكة).
+ * رسم القائمة — تصفية محلية بالبحث (بلا شبكة).
  * وضع parent: يعرض الأبواب المباشرين + صف "كل الحسابات" أولاً.
  * وضع child: يعرض أبناء الأب فقط.
  */
 function rcRenderPickerList() {
-    const body     = document.getElementById('rcPickerBody');
-    const empty    = document.getElementById('rcPickerEmpty');
+    const body = document.getElementById('rcPickerBody');
+    const empty = document.getElementById('rcPickerEmpty');
     const template = document.getElementById('rcPickerRowTemplate');
 
     if (!body || !template) return;
 
-    const search      = (document.getElementById('rcPickerSearch')?.value || '').trim();
+    const search = (document.getElementById('rcPickerSearch')?.value || '').trim();
     const isParentMode = RC.pickerMode === 'parent';
-    const isChildMode  = RC.pickerMode === 'child';
+    const isChildMode = RC.pickerMode === 'child';
     let rows = RC.pickerAccounts || [];
 
     if (isParentMode) {
@@ -1243,11 +1203,6 @@ function rcRenderPickerList() {
     } else if (isChildMode && RC.pickerScope) {
         const inScope = new Set(RC.pickerScope);
         rows = rows.filter((a) => inScope.has(String(a.accountID)));
-    }
-
-    // تطبيق فلتر التبويب قبل الرسم (ليس بعده)
-    if (RC.pickerTab !== 'ALL' && !isParentMode) {
-        rows = rows.filter((account) => rcAccountGroupOf(account) === RC.pickerTab);
     }
 
     if (search !== '') {
@@ -1264,13 +1219,13 @@ function rcRenderPickerList() {
     const fragment = document.createDocumentFragment();
 
     // صف "كل الحسابات التفصيلية" — أول القائمة في وضع parent (بلا بحث)
-    if (isParentMode && RC.pickerTab === 'ALL' && search === '') {
-        const allRow  = template.content.cloneNode(true);
-        const allTr   = allRow.querySelector('tr');
+    if (isParentMode && search === '') {
+        const allRow = template.content.cloneNode(true);
+        const allTr = allRow.querySelector('tr');
         const allCode = allRow.querySelector('.rc-picker-code');
         const allName = allRow.querySelector('.rc-picker-name');
 
-        if (allTr)   allTr.classList.add('table-success', 'fw-bold');
+        if (allTr) allTr.classList.add('table-success', 'fw-bold');
         if (allCode) allCode.textContent = '★';
         if (allName) allName.textContent = 'كل الحسابات التفصيلية';
 
@@ -1281,8 +1236,8 @@ function rcRenderPickerList() {
     if (empty) empty.style.display = (rows.length === 0 && fragment.childNodes.length === 0) ? '' : 'none';
 
     rows.slice(0, RC_PICKER_MAX_RENDER).forEach((account) => {
-        const row    = template.content.cloneNode(true);
-        const tr     = row.querySelector('tr');
+        const row = template.content.cloneNode(true);
+        const tr = row.querySelector('tr');
         const codeEl = row.querySelector('.rc-picker-code');
         const nameEl = row.querySelector('.rc-picker-name');
 
@@ -1307,38 +1262,6 @@ function rcRenderPickerList() {
 }
 
 /**
- * تصنيف الحساب لتبويب المودال — من system_key (لا النص العربي).
- * يصعد الشجرة بحثاً عن أقرب جد بـ system_key معروف.
- */
-const RC_GROUP_BY_SYSTEM_KEY = {
-    banks:     'BANK',
-    boxes:     'CASH',
-    customers: 'CUSTOMER',
-    suppliers: 'SUPPLIER',
-};
-
-function rcAccountGroupOf(account) {
-    const rows = RC.pickerAccounts || [];
-    const byId = new Map(rows.map((a) => [String(a.accountID), a]));
-
-    let current = account;
-    let hops = 0;
-
-    while (current && hops < 6) {
-        const group = RC_GROUP_BY_SYSTEM_KEY[current.system_key];
-        if (group) return group;
-
-        const pid = current.parent ?? current.accParent;
-        if (pid === null || pid === undefined || pid === '') break;
-
-        current = byId.get(String(pid));
-        hops += 1;
-    }
-
-    return null;
-}
-
-/**
  * الأبواب القابلة للاختيار (وضع parent):
  * يستخدم قائمة الآباء من API إن توفرت (أدق — بيانات مباشرة من الخادم).
  * Fallback: اشتقاقها من حقل parent للحسابات المؤهلة.
@@ -1350,8 +1273,8 @@ function rcPickerParents() {
     }
 
     // Fallback: اشتقاق الآباء من الحسابات المؤهلة (الطريقة القديمة)
-    const rows  = RC.pickerAccounts || [];
-    const byId  = new Map();
+    const rows = RC.pickerAccounts || [];
+    const byId = new Map();
     const order = [];
 
     rows.forEach((account) => {
@@ -1386,10 +1309,10 @@ function rcSelectPickerAll() {
     if (!hiddenId) return;
 
     const hidden = document.getElementById(hiddenId);
-    const text   = document.getElementById(`${hiddenId}-text`);
+    const text = document.getElementById(`${hiddenId}-text`);
 
     if (hidden) hidden.value = 'all';
-    if (text)   text.value   = 'كل الحسابات التفصيلية';
+    if (text) text.value = 'كل الحسابات التفصيلية';
 
     // ث1: تغيير الأب → مسح النطاق (من/إلى) + تفعيل حقول الأبناء
     rcClearChildRange(hiddenId);
@@ -1444,10 +1367,10 @@ function rcSelectPickerRow(account) {
     if (!hiddenId) return;
 
     const hidden = document.getElementById(hiddenId);
-    const text   = document.getElementById(`${hiddenId}-text`);
+    const text = document.getElementById(`${hiddenId}-text`);
 
     if (hidden) hidden.value = account.accountID;
-    if (text)   text.value   = `${account.accCode ?? ''} - ${account.accName ?? ''}`.trim();
+    if (text) text.value = `${account.accCode ?? ''} - ${account.accName ?? ''}`.trim();
 
     // BR-E8: فحص المخزون — إذا كان الحساب المختار مخزوناً
     if (rcIsInventoryAccount(account)) {
@@ -1480,15 +1403,15 @@ function rcSelectPickerRow(account) {
  */
 function rcDisableChildFields() {
     ['rcf-account_from', 'rcf-account_to'].forEach((childId) => {
-        const childHidden  = document.getElementById(childId);
-        const childText    = document.getElementById(`${childId}-text`);
-        const openBtn      = childHidden?.closest('.input-group')?.querySelector('[data-picker-open]');
-        const clearBtn     = childHidden?.closest('.input-group')?.querySelector('[data-picker-clear]');
+        const childHidden = document.getElementById(childId);
+        const childText = document.getElementById(`${childId}-text`);
+        const openBtn = childHidden?.closest('.input-group')?.querySelector('[data-picker-open]');
+        const clearBtn = childHidden?.closest('.input-group')?.querySelector('[data-picker-clear]');
 
-        if (childHidden)  { childHidden.value = '';  childHidden.setAttribute('disabled', ''); }
-        if (childText)    { childText.value   = '';  childText.setAttribute('disabled', ''); }
-        if (openBtn)      openBtn.setAttribute('disabled', '');
-        if (clearBtn)     clearBtn.setAttribute('disabled', '');
+        if (childHidden) { childHidden.value = ''; childHidden.setAttribute('disabled', ''); }
+        if (childText) { childText.value = ''; childText.setAttribute('disabled', ''); }
+        if (openBtn) openBtn.setAttribute('disabled', '');
+        if (clearBtn) clearBtn.setAttribute('disabled', '');
     });
 }
 
@@ -1529,10 +1452,10 @@ function rcCancelPicker(hiddenId) {
     if (!hiddenId) return;
 
     const hidden = document.getElementById(hiddenId);
-    const text   = document.getElementById(`${hiddenId}-text`);
+    const text = document.getElementById(`${hiddenId}-text`);
 
     if (hidden) hidden.value = '';
-    if (text)   text.value   = '';
+    if (text) text.value = '';
 
     document.body.classList.remove('rc-empty-parent');
     RC.pickerSelectionMade = false;
@@ -1610,7 +1533,7 @@ function rcAttachPickerFieldEvents(textInput, hiddenId, mode) {
 
 /**
  * BR-E8: هل الحساب ينتمي لمجموعة المخزون؟
- * يفحص system_key في بيانات الشجرة المخزّنة.
+ * يفحص system_key في بيانات الشجرة المخزّرة.
  */
 function rcIsInventoryAccount(account) {
     if (!account) return false;

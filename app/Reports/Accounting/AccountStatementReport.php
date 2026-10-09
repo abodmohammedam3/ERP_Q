@@ -370,6 +370,7 @@ class AccountStatementReport implements Report
             }
 
             // صف إقفال لكل حساب في الوضع المتعدد فقط
+            // A+E: الأرقام تبقى تراكمية (حجم التعامل)، والنص يوضّح أنه رصيد ختامي
             if (!$isSingle && ($accDebit > 0 || $accCredit > 0 || ($lines->get($accId) ?? collect())->isNotEmpty())) {
                 $rows[] = [
                     'id' => -1,
@@ -377,7 +378,7 @@ class AccountStatementReport implements Report
                     'date' => '',
                     'doc_type' => 'closing',
                     'doc_number' => '',
-                    'description' => $accLabel,
+                    'description' => 'رصيد ختامي',
                     'debit' => round($accDebit, 2),
                     'credit' => round($accCredit, 2),
                     'balance' => round($balance, 2),

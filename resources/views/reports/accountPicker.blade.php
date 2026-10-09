@@ -1,6 +1,6 @@
 {{-- ═══════════════════════════════════════════════════════════
      مودال اختيار الحساب من دليل الحسابات — خاص بمركز التقارير
-     الشكل مطابق لمودال الرصيد الافتتاحي (تبويبات + بحث + جدول)
+     الشكل مطابق لمودال الرصيد الافتتاحي (بحث + جدول)
      مستقل تماماً عن النظام الموحّد shared/lookup — لا يمسّه ولا يُمسّ به
      ═══════════════════════════════════════════════════════════ --}}
 
@@ -23,61 +23,6 @@
 
             {{-- الجسم --}}
             <div class="modal-body d-flex flex-column overflow-hidden">
-
-                {{-- التبويبات (الكل + التصنيفات الرئيسية) --}}
-                <ul class="nav nav-tabs mb-3" id="rcPickerTabs" role="tablist">
-
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active"
-                                data-type="ALL"
-                                type="button"
-                                role="tab">
-                            <i class="bi bi-list-ul"></i>
-                            الكل
-                        </button>
-                    </li>
-
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link"
-                                data-type="CUSTOMER"
-                                type="button"
-                                role="tab">
-                            <i class="bi bi-people"></i>
-                            العملاء
-                        </button>
-                    </li>
-
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link"
-                                data-type="SUPPLIER"
-                                type="button"
-                                role="tab">
-                            <i class="bi bi-truck"></i>
-                            الموردون
-                        </button>
-                    </li>
-
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link"
-                                data-type="CASH"
-                                type="button"
-                                role="tab">
-                            <i class="bi bi-cash-stack"></i>
-                            الصناديق
-                        </button>
-                    </li>
-
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link"
-                                data-type="BANK"
-                                type="button"
-                                role="tab">
-                            <i class="bi bi-bank"></i>
-                            البنوك
-                        </button>
-                    </li>
-
-                </ul>
 
                 {{-- شريط البحث (بحث محلي — بلا شبكة) --}}
                 <div class="input-group mb-3">

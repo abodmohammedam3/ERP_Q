@@ -34,6 +34,8 @@ export default defineConfig({
                 'resources/js/pages/journal-entries.js',
                 'resources/js/pages/opening-balances.js',
                 'resources/js/pages/report-center.js',
+                // ⚠️ خارج الـ 14 ملفاً — مُضاف لأن index.blade.php يستخدمه في @vite
+                'resources/js/pages/system-settings.js',
             ],
             refresh: true,
         }),

@@ -565,6 +565,14 @@
                     <span>مركز التقارير</span>
                 </a>
 
+                {{-- إعدادات النظام --}}
+                <a href="{{ url('/settings/system') }}"
+                   class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2 mt-1
+                   {{ request()->is('settings/system*') ? 'bg-success text-white' : 'text-white-50' }}">
+                    <i class="bi bi-gear-wide-connected"></i>
+                    <span>إعدادات النظام</span>
+                </a>
+
                 </div>
             </div>
 

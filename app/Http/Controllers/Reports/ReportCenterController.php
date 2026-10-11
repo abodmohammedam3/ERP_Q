@@ -17,6 +17,7 @@ use App\Services\ChartAccountScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 /**
  * مركز التقارير — نقطة التحكم الواحدة لكل التقارير.
@@ -277,9 +278,19 @@ class ReportCenterController extends Controller
             return $this->fail('التقرير غير موجود', 404);
         }
 
-        $result = ReportEngine::execute($key, $request->query->all());
+        try {
+            $result = ReportEngine::execute($key, $request->query->all());
 
-        return $this->ok($result);
+            return $this->ok($result);
+        } catch (\InvalidArgumentException $e) {
+            Log::warning('[Reports] invalid filter', ['key' => $key, 'error' => $e->getMessage()]);
+
+            return $this->fail('فلتر غير صالح', 422);
+        } catch (\Throwable $e) {
+            Log::error('[Reports] execution failed', ['key' => $key, 'error' => $e->getMessage()]);
+
+            return $this->fail('تعذّر تنفيذ التقرير', 500);
+        }
     }
 
     // ════════════════════════════
@@ -293,7 +304,12 @@ class ReportCenterController extends Controller
         }
 
         // B1: الطباعة تشمل كل الصفوف (all=true → التقرير يتجاوز pagination)
-        $result = ReportEngine::execute($key, $request->query->all(), all: true);
+        try {
+            $result = ReportEngine::execute($key, $request->query->all(), all: true);
+        } catch (\Throwable $e) {
+            Log::error('[Reports] execution failed', ['key' => $key, 'error' => $e->getMessage()]);
+            abort(500, 'تعذّر تنفيذ التقرير');
+        }
         $report = ReportRegistry::get($key);
 
         return view('reports.print', [
@@ -317,7 +333,12 @@ class ReportCenterController extends Controller
         }
 
         // B1: التصدير يشمل كل الصفوف (all=true → التقرير يتجاوز pagination)
-        $result = ReportEngine::execute($key, $request->query->all(), all: true);
+        try {
+            $result = ReportEngine::execute($key, $request->query->all(), all: true);
+        } catch (\Throwable $e) {
+            Log::error('[Reports] execution failed', ['key' => $key, 'error' => $e->getMessage()]);
+            abort(500, 'تعذّر تصدير التقرير');
+        }
         $report = ReportRegistry::get($key);
 
         $filename = $report->key() . '-' . now()->format('Y-m-d') . '.csv';

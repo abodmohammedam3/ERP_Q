@@ -33,6 +33,9 @@ class ReportEngine
     public static function execute(string $key, array $rawFilters, bool $all = false): array
     {
         $report = ReportRegistry::get($key);
+        if ($report === null) {
+            throw new \InvalidArgumentException("التقرير غير مسجّل: {$key}");
+        }
         $filters = self::sanitizeFilters($report, $rawFilters);
 
         // B1: الطباعة/التصدير يشملان كل الصفوف — نسقط page ونفعّل _all

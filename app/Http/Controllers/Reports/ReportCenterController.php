@@ -189,7 +189,7 @@ class ReportCenterController extends Controller
             return $this->ok(['items' => []]);
         }
 
-        $pattern = '%' . addcslashes($q, '%_') . '%';
+        $pattern = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q) . '%';
 
         $rows = match ($type) {
             'customers' => Customer::query()

@@ -232,3 +232,12 @@ body.rc-empty-parent .rc-action-btn {
 .rc-kpi-value.amount-red   { color: #dc3545; }
 .rc-kpi-value.amount-green { color: #198754; }
 
+.rc-statement-group-header td {
+    background: linear-gradient(90deg, #cfe2ff 0%, #e7f1ff 100%);
+    color: #084298;
+    padding: 10px 14px;
+    border-top: 2px solid #0d6efd;
+    border-bottom: 1px solid #9ec5fe;
+    font-size: 0.95rem;
+}
+

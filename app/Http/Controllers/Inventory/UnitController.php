@@ -3,119 +3,130 @@
 namespace App\Http\Controllers\Inventory;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Inventory\UnitStoreRequest;
+use App\Http\Requests\Inventory\UnitUpdateRequest;
+use App\Http\Resources\Inventory\UnitResource;
 use App\Models\Inventory\Unit;
+use App\Services\Inventory\UnitService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\View\View;
 
+/**
+ * Controller نحيف — كل منطق الأعمال في UnitService (نموذج الوحدة 1).
+ */
 class UnitController extends Controller
 {
-    public function index()
+    public function __construct(private readonly UnitService $service)
     {
-        $units = Unit::orderBy('UnitID', 'asc')->get();
+    }
+
+    public function index(): View
+    {
+        $units = $this->service->allForView();
+
         return view('setting.inventory.units.index', compact('units'));
     }
 
-    public function list(Request $request)
+    public function list(Request $request): JsonResponse
     {
-        $limit = min((int) $request->input('limit', 500), 1000);
-        
-        $units = Unit::orderBy('UnitID', 'asc')
-            ->limit($limit)
-            ->get();
-        
-        return response()->json([
-            'success' => true,
-            'data'    => $units,
-        ]);
-    }
+        $page   = max(1, (int) $request->input('page', 1));
+        $search = trim((string) $request->input('search', ''));
+        $full   = $request->boolean('full');
 
-    public function store(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'UnitName' => 'required|string|max:255|unique:units,UnitName',
-        ], [
-            'UnitName.unique' => 'هذه الوحدة موجودة بالفعل',
-            'UnitName.required' => 'اسم الوحدة مطلوب',
-        ]);
+        // full=1: القائمة الكاملة (طباعة/تصدير) — عقد متوافق مع الواجهة الحالية
+        if ($full) {
+            $units = $this->service->allForView();
 
-        if ($validator->fails()) {
             return response()->json([
-                'success' => false,
-                'message' => $validator->errors()->first('UnitName'),
-                'errors' => $validator->errors()
-            ], 422);
+                'success' => true,
+                'data'    => UnitResource::collection($units),
+            ]);
         }
 
-        $unit = Unit::create([
-            'UnitName' => $request->UnitName,
-            'is_active' => 1,
-        ]);
+        $paginator = $this->service->list($search ?: null, $page);
 
         return response()->json([
             'success' => true,
-            'message' => 'تم إضافة الوحدة بنجاح',
-            'data' => $unit,
-        ]);
-    }
-
-    public function update(Request $request, $id)
-    {
-        $unit = Unit::findOrFail($id);
-
-        $validator = Validator::make($request->all(), [
-            'UnitName' => [
-                'required',
-                'string',
-                'max:255',
-                Rule::unique('units', 'UnitName')->ignore($unit->UnitID, 'UnitID'),
+            'data'    => UnitResource::collection($paginator->items()),
+            'meta'    => [
+                'current_page' => $paginator->currentPage(),
+                'last_page'    => $paginator->lastPage(),
+                'per_page'     => $paginator->perPage(),
+                'total'        => $paginator->total(),
             ],
-        ], [
-            'UnitName.unique' => 'هذه الوحدة موجودة بالفعل',
-            'UnitName.required' => 'اسم الوحدة مطلوب',
         ]);
+    }
 
-        if ($validator->fails()) {
+    public function store(UnitStoreRequest $request): JsonResponse
+    {
+        try {
+            $unit = $this->service->store($request->validated());
+
             return response()->json([
-                'success' => false,
-                'message' => $validator->errors()->first('UnitName'),
-                'errors' => $validator->errors()
-            ], 422);
+                'success' => true,
+                'message' => 'تم إضافة الوحدة بنجاح',
+                'data'    => new UnitResource($unit),
+            ]);
+        } catch (\RuntimeException $e) {
+            return $this->fail($e);
         }
-
-        $unit->update([
-            'UnitName' => $request->UnitName,
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'تم تحديث الوحدة بنجاح',
-            'data' => $unit,
-        ]);
     }
 
-    public function destroy($id)
+    public function update(UnitUpdateRequest $request, $id): JsonResponse
     {
-        $unit = Unit::findOrFail($id);
-        $unit->delete();
+        try {
+            $unit = $this->service->update((int) $id, $request->validated());
 
-        return response()->json([
-            'success' => true,
-            'message' => 'تم حذف الوحدة بنجاح',
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'تم تحديث الوحدة بنجاح',
+                'data'    => new UnitResource($unit),
+            ]);
+        } catch (\RuntimeException $e) {
+            return $this->fail($e);
+        }
     }
 
-    public function toggleStatus($id)
+    public function destroy($id): JsonResponse
     {
-        $unit = Unit::findOrFail($id);
-        $newStatus = !$unit->is_active;
-        $unit->update(['is_active' => $newStatus]);
+        try {
+            $this->service->delete((int) $id);
 
-        $statusText = $newStatus ? 'تم التفعيل' : 'تم التعطيل';
+            return response()->json([
+                'success' => true,
+                'message' => 'تم حذف الوحدة بنجاح',
+            ]);
+        } catch (\RuntimeException $e) {
+            return $this->fail($e);
+        }
+    }
+
+    public function toggleStatus($id): JsonResponse
+    {
+        try {
+            $unit = $this->service->toggleStatus((int) $id);
+
+            $statusText = $unit->is_active ? 'تم التفعيل' : 'تم التعطيل';
+
+            return response()->json([
+                'success' => true,
+                'message' => $statusText . ' بنجاح',
+                'data'    => new UnitResource($unit),
+            ]);
+        } catch (\RuntimeException $e) {
+            return $this->fail($e);
+        }
+    }
+
+    /**
+     * رسالة استثناء موحّدة → عقد الواجهة {success,message} مع 422.
+     */
+    private function fail(\RuntimeException $e): JsonResponse
+    {
         return response()->json([
-            'success' => true,
-            'message' => $statusText . ' بنجاح',
-            'data' => $unit,
-        ]);
+            'success' => false,
+            'message' => $e->getMessage(),
+        ], 422);
     }
 }

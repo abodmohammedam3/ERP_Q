@@ -48,6 +48,7 @@ class PurchaseInvoicesReport implements Report
                 'label'  => 'المورد',
                 'type'   => 'item',
                 'source' => 'suppliers',
+                'placeholder' => 'اختر المورد...',
                 'col'    => 'col-md-3',
             ],
             [
@@ -66,7 +67,7 @@ class PurchaseInvoicesReport implements Report
                 'key'    => 'payment_method',
                 'label'  => 'طريقة الدفع',
                 'type'   => 'select',
-                'source' => 'paymentMethods',
+                'source' => 'paymentMethodsPurchases',
                 'col'    => 'col-md-2',
             ],
         ];
@@ -115,7 +116,13 @@ class PurchaseInvoicesReport implements Report
         $totalLocal    = round((float) ($totalsRow->total_local_sum ?? 0), 2);
 
         $total = (clone $query)->count();
-        $lastPage = max(1, (int) ceil($total / self::PER_PAGE));
+
+        // B1: الطباعة/التصدير (all=true) تتجاوز الترقيم — كل الصفوف حتى حدّ export_max_rows
+        $perPage = !empty($filters['_all'])
+            ? max(1, min($total, (int) config('reports.export_max_rows', 50000)))
+            : self::PER_PAGE;
+
+        $lastPage = max(1, (int) ceil($total / $perPage));
         $page = min($page, $lastPage);
 
         $invoices = $query
@@ -125,15 +132,14 @@ class PurchaseInvoicesReport implements Report
             ])
             ->orderBy('invoice_date')
             ->orderBy('purchase_invoice_id')
-            ->skip(($page - 1) * self::PER_PAGE)
-            ->take(self::PER_PAGE)
+            ->skip(($page - 1) * $perPage)
+            ->take($perPage)
             ->get();
 
         $paymentLabels = [
             PurchaseInvoice::PAYMENT_CREDIT  => 'آجل',
             PurchaseInvoice::PAYMENT_CASH    => 'نقد',
             PurchaseInvoice::PAYMENT_BANK    => 'بنك',
-            PurchaseInvoice::PAYMENT_NETWORK => 'شبكة',
         ];
 
         $rows = [];
@@ -166,7 +172,7 @@ class PurchaseInvoicesReport implements Report
                 'pagination' => [
                     'current_page' => $page,
                     'last_page'    => $lastPage,
-                    'per_page'     => self::PER_PAGE,
+                    'per_page'     => $perPage,
                     'total'        => $total,
                 ],
             ],

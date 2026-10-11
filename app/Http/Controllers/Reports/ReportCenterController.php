@@ -6,13 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Models\Accounting\CharAccount;
 use App\Models\Accounting\Coin;
 use App\Models\Accounting\JournalEntry;
+use App\Models\Customer;
 use App\Models\Inventory\Item;
+use App\Models\Purchases\PurchaseInvoice;
+use App\Models\Sales\SalesInvoice;
+use App\Models\Supplier;
 use App\Reports\ReportEngine;
 use App\Reports\ReportRegistry;
 use App\Services\ChartAccountScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 /**
  * مركز التقارير — نقطة التحكم الواحدة لكل التقارير.
@@ -95,7 +100,7 @@ class ReportCenterController extends Controller
     {
         // المصادر ثابتة نسبياً (حسابات/أصناف/عملات) — تُخزَّن مؤقتاً
         // لتفادي تنفيذ 4 استعلامات في كل فتح للشاشة.
-        $sources = Cache::remember('reports.sources.v1', 3600, function () {
+        $sources = Cache::remember('reports.sources.v2', 3600, function () {
 
             $accounts = CharAccount::query()
                 ->where('isPostable', 1)
@@ -137,10 +142,85 @@ class ReportCenterController extends Controller
                     ['id' => 1, 'text' => 'سندات القبض'],
                     ['id' => 2, 'text' => 'سندات الصرف'],
                 ],
+                // طرق الدفع تختلف بين الموديلين: المبيعات تدعم "شبكة" والمشتريات لا
+                'paymentMethodsSales' => [
+                    ['id' => SalesInvoice::PAYMENT_CREDIT,  'text' => 'آجل'],
+                    ['id' => SalesInvoice::PAYMENT_CASH,    'text' => 'نقد'],
+                    ['id' => SalesInvoice::PAYMENT_BANK,    'text' => 'بنك'],
+                    ['id' => SalesInvoice::PAYMENT_NETWORK, 'text' => 'شبكة'],
+                ],
+                'paymentMethodsPurchases' => [
+                    ['id' => PurchaseInvoice::PAYMENT_CREDIT, 'text' => 'آجل'],
+                    ['id' => PurchaseInvoice::PAYMENT_CASH,   'text' => 'نقد'],
+                    ['id' => PurchaseInvoice::PAYMENT_BANK,   'text' => 'بنك'],
+                ],
             ];
         });
 
         return $this->ok(['sources' => $sources]);
+    }
+
+    // ════════════════════════════════════════════
+    //  بحث مصغّر (Lookup) — للعملاء/الموردين/الأصناف
+    // ════════════════════════════════════════════
+
+    /**
+     * بحث بحد أقصى 20 نتيجة عن عميل/مورد/صنف (للفلاتر التي لا تُحمَّل كلها).
+     *
+     * القواعد:
+     *  - الأنواع المسموحة فقط: customers, suppliers, items — وغيرها 404.
+     *  - q < حرفين → قائمة فارغة بلا استعلام.
+     *  - الهروب من % و _ في نمط LIKE عبر bindings (لا دمج في SQL خام).
+     *
+     * ملاحظة: تقريرا البيع والشراء يفلترون بـ account_id، لذا
+     * العملاء والموردون يُرجعون accountID كـ id ليستقيم استخدام الفلتر مباشرة.
+     */
+    public function lookup(Request $request, string $type): JsonResponse
+    {
+        $allowed = ['customers', 'suppliers', 'items'];
+
+        if (!in_array($type, $allowed, true)) {
+            return $this->fail('نوع البحث غير مدعوم', 404);
+        }
+
+        $q = trim((string) $request->query('q', ''));
+
+        if (mb_strlen($q) < 2) {
+            return $this->ok(['items' => []]);
+        }
+
+        $pattern = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q) . '%';
+
+        $rows = match ($type) {
+            'customers' => Customer::query()
+                ->whereNotNull('accountID')
+                ->where('CustomersName2', 'like', $pattern)
+                ->limit(20)
+                ->get()
+                ->map(fn ($c) => [
+                    'id'   => (int) $c->accountID,
+                    'text' => (string) $c->CustomersName2,
+                ]),
+            'suppliers' => Supplier::query()
+                ->whereNotNull('accountID')
+                ->where('supName', 'like', $pattern)
+                ->limit(20)
+                ->get()
+                ->map(fn ($s) => [
+                    'id'   => (int) $s->accountID,
+                    'text' => (string) $s->supName,
+                ]),
+            default => Item::query()
+                ->where('itemName2', 'like', $pattern)
+                ->limit(20)
+                ->get()
+                ->map(fn ($i) => [
+                    'id'   => (int) $i->itemID,
+                    'text' => (string) $i->itemName2,
+                ]),
+        };
+
+        return $this->ok(['items' => $rows->values()->all()]);
     }
 
     // ════════════════════════════════════════════════════
@@ -195,12 +275,22 @@ class ReportCenterController extends Controller
     public function data(Request $request, string $key): JsonResponse
     {
         if (!ReportRegistry::has($key)) {
-            return $this->fail('التقرير غير موجود');
+            return $this->fail('التقرير غير موجود', 404);
         }
 
-        $result = ReportEngine::execute($key, $request->query->all());
+        try {
+            $result = ReportEngine::execute($key, $request->query->all());
 
-        return $this->ok($result);
+            return $this->ok($result);
+        } catch (\InvalidArgumentException $e) {
+            Log::warning('[Reports] invalid filter', ['key' => $key, 'error' => $e->getMessage()]);
+
+            return $this->fail('فلتر غير صالح', 422);
+        } catch (\Throwable $e) {
+            Log::error('[Reports] execution failed', ['key' => $key, 'error' => $e->getMessage()]);
+
+            return $this->fail('تعذّر تنفيذ التقرير', 500);
+        }
     }
 
     // ════════════════════════════
@@ -213,8 +303,35 @@ class ReportCenterController extends Controller
             abort(404);
         }
 
-        $result = ReportEngine::execute($key, $request->query->all());
+        // B1: الطباعة تشمل كل الصفوف (all=true → التقرير يتجاوز pagination)
+        try {
+            $result = ReportEngine::execute($key, $request->query->all(), all: true);
+        } catch (\Throwable $e) {
+            Log::error('[Reports] execution failed', ['key' => $key, 'error' => $e->getMessage()]);
+            abort(500, 'تعذّر تنفيذ التقرير');
+        }
         $report = ReportRegistry::get($key);
+
+        $resolved = app(\App\Services\ReportViewResolver::class)->for($report, $result['meta']);
+
+        if ($resolved['mode'] === 'multi') {
+            $rowsByAcc = collect($result['rows'])->groupBy('_account_id');
+            $accounts = [];
+            foreach ($result['meta']['accounts'] ?? [] as $acc) {
+                $accounts[] = array_merge($acc, [
+                    'rows' => $rowsByAcc->get($acc['id'], collect())->all(),
+                ]);
+            }
+
+            return view('reports.multi-statement', [
+                'report'   => $report,
+                'columns'  => $result['columns'],
+                'accounts' => $accounts,
+                'meta'     => $result['meta'],
+                'filters'  => $request->query->all(),
+                'totals'   => $result['totals'],
+            ]);
+        }
 
         return view('reports.print', [
             'report'  => $report,
@@ -236,7 +353,13 @@ class ReportCenterController extends Controller
             abort(404);
         }
 
-        $result = ReportEngine::execute($key, $request->query->all());
+        // B1: التصدير يشمل كل الصفوف (all=true → التقرير يتجاوز pagination)
+        try {
+            $result = ReportEngine::execute($key, $request->query->all(), all: true);
+        } catch (\Throwable $e) {
+            Log::error('[Reports] execution failed', ['key' => $key, 'error' => $e->getMessage()]);
+            abort(500, 'تعذّر تصدير التقرير');
+        }
         $report = ReportRegistry::get($key);
 
         $filename = $report->key() . '-' . now()->format('Y-m-d') . '.csv';
@@ -244,28 +367,48 @@ class ReportCenterController extends Controller
         return response()->streamDownload(function () use ($result) {
             $out = fopen('php://output', 'w');
 
+            // مكافحة حقن CSV: خلية نصية تبدأ برمز تنفيذ محتمل (=+-@ tab CR)
+            // تُسبَق بعلامة اقتباس حتى تتعامل معها Excel كنص
+            $safe = fn ($v) => is_string($v) && preg_match('/^[=+\-@\t\r]/u', $v) ? "'" . $v : $v;
+
             // BOM لعرض العربية بشكل صحيح في Excel
             fwrite($out, "\xEF\xBB\xBF");
 
             // رأس الجدول
-            fputcsv($out, array_column($result['columns'], 'label'));
+            fputcsv($out, array_map($safe, array_column($result['columns'], 'label')));
 
             // الصفوف
             foreach ($result['rows'] as $row) {
                 $line = [];
                 foreach ($result['columns'] as $col) {
-                    $line[] = $row[$col['key']] ?? '';
+                    $line[] = $safe($row[$col['key']] ?? '');
                 }
                 fputcsv($out, $line);
             }
 
-            // صف الإجماليات (تحت الأعمدة ذات footer=sum)
-            if (!empty($result['totals'])) {
+            // صف الإجماليات (footer=sum) وصف الختام (footer=last = آخر صف مرئي)
+            $hasFooter = !empty($result['totals'])
+                || collect($result['columns'])->contains(fn ($c) => ($c['footer'] ?? '') === 'last');
+
+            if ($hasFooter) {
+                $lastRow = $result['rows'] !== []
+                    ? $result['rows'][array_key_last($result['rows'])]
+                    : null;
+
                 $line = [];
                 foreach ($result['columns'] as $col) {
-                    $line[] = ($col['footer'] ?? '') === 'sum'
-                        ? ($result['totals'][$col['key']] ?? '')
-                        : '';
+                    $footer = $col['footer'] ?? '';
+
+                    if ($footer === 'sum') {
+                        $value = $result['totals'][$col['key']] ?? '';
+                    } elseif ($footer === 'last') {
+                        // قيمة آخر صف مرئي — وإن لم يوجد صف تبقى فارغة
+                        $value = $lastRow[$col['key']] ?? '';
+                    } else {
+                        $value = '';
+                    }
+
+                    $line[] = $safe($value);
                 }
                 fputcsv($out, $line);
             }

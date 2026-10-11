@@ -19,6 +19,8 @@ class ReportEngine
      * تنفيذ تقرير بمفتاحه على فلاتر الطلب الخام.
      *
      * @param  array<string, mixed> $rawFilters فلاتر من الطلب (غير موثوقة)
+     * @param  bool $all طبقة الطباعة/التصدير: تلغي ترقيم الصفحة وتمشي التقرير على كل الصفوف
+     *                  (حتى حدّ reports.export_max_rows) عبر فلتر مخفي _all
      * @return array{
      *   rows: array<int, array<string, mixed>>,
      *   totals: array<string, float>,
@@ -28,10 +30,20 @@ class ReportEngine
      *
      * @throws InvalidArgumentException إذا كان المفتاح غير مسجل
      */
-    public static function execute(string $key, array $rawFilters): array
+    public static function execute(string $key, array $rawFilters, bool $all = false): array
     {
         $report = ReportRegistry::get($key);
+        if ($report === null) {
+            throw new \InvalidArgumentException("التقرير غير مسجّل: {$key}");
+        }
         $filters = self::sanitizeFilters($report, $rawFilters);
+
+        // B1: الطباعة/التصدير يشملان كل الصفوف — نسقط page ونفعّل _all
+        // داخل الفلاتر بعد التنظيف (لأنه مفتاح مخفي لا يحتاج إعلاناً في تعريف التقرير)
+        if ($all) {
+            unset($filters['page']);
+            $filters['_all'] = true;
+        }
 
         $result = $report->run($filters);
 
@@ -69,6 +81,11 @@ class ReportEngine
             $type = $filter['type'] ?? 'text';
             $value = $raw[$key] ?? null;
 
+            // القيم غير المفردة (مصفوفات/كائنات) لا تُحوَّل إطلاقاً — تُتجاهل
+            if (!is_scalar($value)) {
+                continue;
+            }
+
             // القيمة الفارغة تُسقَط (لا يُطبَّق الفلتر) — إلا للحقول الخفية (توافق خلفي)
             if (($value === null || $value === '') && empty($filter['hidden'])) {
                 continue;
@@ -82,15 +99,15 @@ class ReportEngine
 
     /**
      * تحويل قيمة الفلتر حسب نوعه.
+     *
+     * القاعدة: select أو text يبقى نصاً دائماً ولا يُحوَّل إلى int،
+     * و number أو money يُحوَّل إلى float.
      */
     private static function castValue(string $type, mixed $value): mixed
     {
         return match ($type) {
-            'number' => (float) $value,
-            // select: رقم فقط إذا كانت القيمة رقمية (مثل voucher_type)
-            // وإلا تبقى نصاً (مثل doc_type: "سند قبض")
-            'select' => is_numeric($value) ? (int) $value : trim((string) $value),
-            // date / text / account / item تبقى نصاً —
+            'number', 'money' => (float) $value,
+            // date / select / text / account / item تبقى نصاً دائماً —
             // والأمان يتحقق في التقرير نفسه عبر Eloquent bindings
             default => trim((string) $value),
         };

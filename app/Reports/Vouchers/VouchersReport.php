@@ -98,6 +98,7 @@ class VouchersReport implements Report
                     'debitAccount:accountID,accCode,accName',
                     'creditAccount:accountID,accCode,accName',
                     'currency:coinsID,coinsName',
+                    'entry:entryID,entryNo',
                 ])
                 ->when(!empty($filters['date_from']), fn ($q) => $q->where('voucherDate', '>=', $filters['date_from']))
                 ->when(!empty($filters['date_to']), fn ($q) => $q->where('voucherDate', '<=', $filters['date_to']))
@@ -115,6 +116,8 @@ class VouchersReport implements Report
                     'credit_account' => $this->accountLabel($v->creditAccount),
                     'entry_no'       => $v->entry ? (string) $v->entry->entryNo : '',
                     'local_amount'   => (float) $v->localAmount,
+                    '_sort_kind'     => 0,
+                    '_sort_id'       => (int) $v->receiptID,
                 ];
             }
         }
@@ -125,6 +128,7 @@ class VouchersReport implements Report
                 ->with([
                     'beneficiaryAccount:accountID,accCode,accName',
                     'paymentAccount:accountID,accCode,accName',
+                    'entry:entryID,entryNo',
                 ])
                 ->when(!empty($filters['date_from']), fn ($q) => $q->where('voucherDate', '>=', $filters['date_from']))
                 ->when(!empty($filters['date_to']), fn ($q) => $q->where('voucherDate', '<=', $filters['date_to']))
@@ -142,6 +146,8 @@ class VouchersReport implements Report
                     'credit_account' => $this->accountLabel($v->paymentAccount),
                     'entry_no'       => $v->entry ? (string) $v->entry->entryNo : '',
                     'local_amount'   => (float) $v->localAmount,
+                    '_sort_kind'     => 1,
+                    '_sort_id'       => (int) $v->paymentID,
                 ];
             }
         }
@@ -154,12 +160,26 @@ class VouchersReport implements Report
         $total = round($total, 2);
 
         // ── ترتيب زمني موحّد + pagination في الذاكرة (النوعان من جداول مختلفة) ──
-        usort($rows, fn ($a, $b) => [$a['date'], $a['id']] <=> [$b['date'], $b['id']]);
+        usort($rows, fn ($a, $b) =>
+            [$a['date'], $a['_sort_kind'], $a['_sort_id']]
+            <=> [$b['date'], $b['_sort_kind'], $b['_sort_id']]
+        );
 
         $count = count($rows);
-        $lastPage = max(1, (int) ceil($count / self::PER_PAGE));
+
+        // B1: الطباعة/التصدير (all=true) تتجاوز الترقيم — كل الصفوف حتى حدّ export_max_rows
+        $perPage = !empty($filters['_all'])
+            ? max(1, min($count, (int) config('reports.export_max_rows', 50000)))
+            : self::PER_PAGE;
+
+        $lastPage = max(1, (int) ceil($count / $perPage));
         $page = min($page, $lastPage);
-        $rows = array_slice($rows, ($page - 1) * self::PER_PAGE, self::PER_PAGE);
+        $rows = array_slice($rows, ($page - 1) * $perPage, $perPage);
+
+        $rows = array_map(function ($r) {
+            unset($r['_sort_kind'], $r['_sort_id']);
+            return $r;
+        }, $rows);
 
         return [
             'rows'   => $rows,
@@ -168,7 +188,7 @@ class VouchersReport implements Report
                 'pagination' => [
                     'current_page' => $page,
                     'last_page'    => $lastPage,
-                    'per_page'     => self::PER_PAGE,
+                    'per_page'     => $perPage,
                     'total'        => $count,
                 ],
             ],

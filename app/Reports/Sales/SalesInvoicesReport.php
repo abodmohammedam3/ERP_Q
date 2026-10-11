@@ -48,6 +48,7 @@ class SalesInvoicesReport implements Report
                 'label'  => 'العميل',
                 'type'   => 'item',
                 'source' => 'customers',
+                'placeholder' => 'اختر العميل...',
                 'col'    => 'col-md-3',
             ],
             [
@@ -66,7 +67,7 @@ class SalesInvoicesReport implements Report
                 'key'    => 'payment_method',
                 'label'  => 'طريقة الدفع',
                 'type'   => 'select',
-                'source' => 'paymentMethods',
+                'source' => 'paymentMethodsSales',
                 'col'    => 'col-md-2',
             ],
         ];
@@ -114,7 +115,13 @@ class SalesInvoicesReport implements Report
         $grandTotal    = round($itemsTotal - $discountTotal, 2);
 
         $total = (clone $query)->count();
-        $lastPage = max(1, (int) ceil($total / self::PER_PAGE));
+
+        // B1: الطباعة/التصدير (all=true) تتجاوز الترقيم — كل الصفوف حتى حدّ export_max_rows
+        $perPage = !empty($filters['_all'])
+            ? max(1, min($total, (int) config('reports.export_max_rows', 50000)))
+            : self::PER_PAGE;
+
+        $lastPage = max(1, (int) ceil($total / $perPage));
         $page = min($page, $lastPage);
 
         $invoices = $query
@@ -124,8 +131,8 @@ class SalesInvoicesReport implements Report
             ])
             ->orderBy('invoice_date')
             ->orderBy('sales_invoice_id')
-            ->skip(($page - 1) * self::PER_PAGE)
-            ->take(self::PER_PAGE)
+            ->skip(($page - 1) * $perPage)
+            ->take($perPage)
             ->get();
 
         $paymentLabels = [
@@ -165,7 +172,7 @@ class SalesInvoicesReport implements Report
                 'pagination' => [
                     'current_page' => $page,
                     'last_page'    => $lastPage,
-                    'per_page'     => self::PER_PAGE,
+                    'per_page'     => $perPage,
                     'total'        => $total,
                 ],
             ],

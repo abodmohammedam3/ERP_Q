@@ -5,6 +5,7 @@ namespace App\Providers;
 use Illuminate\Support\ServiceProvider;
 
 use App\Models\Accounting\CharAccount;
+use App\Models\Accounting\JournalEntry;
 use App\Models\Accounting\Bank;
 use App\Models\Accounting\Box;
 use App\Models\Inventory\Stock;
@@ -24,6 +25,8 @@ use App\Observers\SupplierObserver;
 use App\Observers\PurchaseInvoiceObserver;
 use App\Observers\SalesInvoiceObserver;
 use App\Observers\CoinObserver;
+use App\Listeners\RecordSystemActivity;
+use Illuminate\Support\Facades\Event;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -45,6 +48,22 @@ class AppServiceProvider extends ServiceProvider
         PurchaseInvoice::observe(PurchaseInvoiceObserver::class);
         SalesInvoice::observe(SalesInvoiceObserver::class);
         Coin::observe(CoinObserver::class);
+
+        // مؤشر النشاط منذ آخر نسخة احتياطية (شاشة الإعدادات → النسخ الاحتياطي)
+        // يقرأها BackupController::index() ويعرضها بطاقة "مؤشر النشاط"
+        foreach ([
+            'eloquent.created: '.SalesInvoice::class,
+            'eloquent.updated: '.SalesInvoice::class,
+            'eloquent.deleted: '.SalesInvoice::class,
+            'eloquent.created: '.PurchaseInvoice::class,
+            'eloquent.updated: '.PurchaseInvoice::class,
+            'eloquent.deleted: '.PurchaseInvoice::class,
+            'eloquent.created: '.JournalEntry::class,
+            'eloquent.updated: '.JournalEntry::class,
+            'eloquent.deleted: '.JournalEntry::class,
+        ] as $activityEvent) {
+            Event::listen($activityEvent, RecordSystemActivity::class);
+        }
          if ($this->app->environment('testing')) {
         $bacPath = database_path('bac');
         if (is_dir($bacPath)) {

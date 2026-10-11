@@ -6,6 +6,11 @@ let unitsData = [];
 let editingUnitId = null;
 let deletingUnitId = null;
 
+/* Pagination (limit 100 + بحث prefix من الخادم) */
+let unitsPage = 1;
+let unitsLastPage = 1;
+let unitsSearchTerm = '';
+
 const unitsApi = {
     list: '/setting/inventory/units/list',
     store: '/setting/inventory/units',
@@ -24,14 +29,25 @@ const csrfToken = document
 
 async function loadUnits() {
     try {
-        const res = await fetch(unitsApi.list, {
+        const params = new URLSearchParams({
+            page: unitsPage,
+        });
+
+        if (unitsSearchTerm) {
+            params.set('search', unitsSearchTerm);
+        }
+
+        const res = await fetch(`${unitsApi.list}?${params}`, {
             headers: { 'Accept': 'application/json' },
         });
         const json = await res.json();
 
         if (json.success) {
             unitsData = json.data || [];
-            renderUnits();
+            unitsLastPage = json.meta?.last_page || 1;
+
+            renderUnits(unitsData);
+            renderUnitsPagination();
         }
     } catch (e) {
         console.error('خطأ في تحميل الوحدات:', e);
@@ -134,21 +150,54 @@ function renderUnits(data) {
 
 function filterUnits() {
 
-    const term =
+    /* بحث prefix من الخادم — الوحدة هي النموذج المعياري */
+    unitsSearchTerm =
         document
             .getElementById('searchUnitInput')
             ?.value
-            .trim()
-            .toLowerCase() || '';
+            .trim() || '';
 
-    const filtered =
-        unitsData.filter(u =>
-            (u.UnitName || '')
-                .toLowerCase()
-                .includes(term)
-        );
+    unitsPage = 1;
 
-    renderUnits(filtered);
+    loadUnits();
+}
+
+/* =========================================================
+   Pagination
+========================================================= */
+
+function renderUnitsPagination() {
+
+    const container =
+        document.getElementById('unitsPagination');
+
+    if (!container) return;
+
+    /* صفحة واحدة = لا نُظهر أزرار التنقل */
+    if (unitsLastPage <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+
+    let html = '';
+
+    for (let p = 1; p <= unitsLastPage; p++) {
+        html += `
+            <button type="button"
+                    class="btn btn-sm ${p === unitsPage ? 'btn-primary' : 'btn-outline-primary'}"
+                    onclick="goToUnitPage(${p})">
+                ${p}
+            </button>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+async function goToUnitPage(page) {
+
+    unitsPage = page;
+    await loadUnits();
 }
 
 /* =========================================================
@@ -484,4 +533,5 @@ Object.assign(window, {
     printUnits,
     filterUnits,
     loadUnits,
+    goToUnitPage,
 });

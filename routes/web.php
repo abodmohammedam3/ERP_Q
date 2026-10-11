@@ -44,6 +44,7 @@ Route::get('/reports/data/{key}', [ReportCenterController::class, 'data'])->name
 Route::get('/reports/print/{key}', [ReportCenterController::class, 'print'])->name('reports.print');
 Route::get('/reports/export/{key}', [ReportCenterController::class, 'export'])->name('reports.export');
 Route::get('/reports/accounts', [ReportCenterController::class, 'accounts'])->name('reports.accounts');
+Route::get('/lookup/{type}', [ReportCenterController::class, 'lookup'])->name('reports.lookup');
 
 // =====================================================
 // دوال دليل الحسابات
@@ -976,4 +977,48 @@ Route::prefix('admin/export')->group(function () {
     Route::get('/items', [\App\Http\Controllers\Admin\ExportController::class, 'items'])->name('admin.export.items');
     Route::get('/customers', [\App\Http\Controllers\Admin\ExportController::class, 'customers'])->name('admin.export.customers');
     Route::get('/suppliers', [\App\Http\Controllers\Admin\ExportController::class, 'suppliers'])->name('admin.export.suppliers');
-});
+});// ═══════════════════════════════════════
+//  إعدادات النظام — النسخ الاحتياطي
+// ═══════════════════════════════════════
+
+Route::prefix('settings/system')
+    ->name('settings.system.')
+    ->middleware(['web', 'can-manage-backup'])
+    ->group(function () {
+
+        // صفحة الإعدادات (مؤجلة — ترجع JSON مؤقتاً)
+        Route::get('/', [\App\Http\Controllers\Settings\SystemSettingsController::class, 'index'])
+            ->name('index');
+
+        // النسخ الاحتياطي
+        Route::prefix('backup')
+            ->name('backup.')
+            ->group(function () {
+
+                Route::get('/', [\App\Http\Controllers\Settings\BackupController::class, 'index'])
+                    ->name('index');
+
+                Route::post('/export', [\App\Http\Controllers\Settings\BackupController::class, 'export'])
+                    ->name('export');
+
+                Route::post('/import', [\App\Http\Controllers\Settings\BackupController::class, 'import'])
+                    ->name('import');
+
+                Route::get('/operations/{operationId}', [\App\Http\Controllers\Settings\BackupController::class, 'operation'])
+                    ->name('operation');
+
+                Route::get('/download/{operationId}', [\App\Http\Controllers\Settings\BackupController::class, 'download'])
+                    ->name('download');
+
+                Route::get('/files/{filename}', [\App\Http\Controllers\Settings\BackupController::class, 'downloadExisting'])
+                    ->where('filename', '.*')
+                    ->name('download-existing');
+
+                Route::delete('/files/{filename}', [\App\Http\Controllers\Settings\BackupController::class, 'destroy'])
+                    ->where('filename', '.*')
+                    ->name('destroy');
+
+                Route::post('/cleanup', [\App\Http\Controllers\Settings\BackupController::class, 'cleanup'])
+                    ->name('cleanup');
+            });
+    });

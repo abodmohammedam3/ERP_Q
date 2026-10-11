@@ -41,6 +41,15 @@ class BackupProcessRunner
         $command[] = '--single-transaction';
         $command[] = '--routines';
         $command[] = '--triggers';
+
+        // استبعاد الجداول النظامية من النسخة (لا wildcards — خيار لكل جدول)
+        // حتى لا يحذف الاستيراد القديم هذه الجداول عبر DROP TABLE في اللقطة
+        foreach ((array) config('backup.excluded_tables', []) as $protectedTable) {
+            if (is_string($protectedTable) && $protectedTable !== '') {
+                $command[] = "--ignore-table={$database}.{$protectedTable}";
+            }
+        }
+
         $command[] = $database;
 
         $handle = @fopen($outputPath, 'w');

@@ -14,6 +14,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'can-manage-backup' => \App\Http\Middleware\CanManageBackup::class,
         ]);
+
+        // السماح بمتابعة عمليات النسخ الاحتياطي وتنزيل النتائج
+        // حتى أثناء وضع الصيانة (الذي يُفعَّل أثناء الاستيراد في الإنتاج)
+        $middleware->preventRequestsDuringMaintenance(except: [
+            'settings/system/backup/operations/*',
+            'settings/system/backup/download/*',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

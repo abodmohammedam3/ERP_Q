@@ -11,17 +11,32 @@ class ExportBackupRequest extends FormRequest
         return true;
     }
 
+    /**
+     * قواعد التحقق — مطابقة تماماً لما يتوقعه BackupController::export()
+     * - format : sql (الافتراضي) — zip مخطط له لاحقاً
+     */
     public function rules(): array
     {
         return [
-            'format' => ['nullable', 'in:sql'],
+            'format' => [
+                'nullable',
+                'string',
+                'in:sql',
+            ],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'format.in' => 'صيغة التصدير غير مدعومة، الصيغ المتاحة: sql.',
+            'format.in' => 'الصيغة المدعومة حالياً هي SQL فقط.',
+        ];
+    }
+
+    public function attributes(): array
+    {
+        return [
+            'format' => 'صيغة الملف',
         ];
     }
 }

@@ -29,29 +29,33 @@ class BackupStatusService
         ?int $sizeBytes = null,
         ?string $errorMessage = null
     ): void {
+        // updateOrCreate: حتى لو حذف الاستيراد الصف (لقطة قديمة كانت تحتوي
+        // backup_operations ودهست صف العملية الجارية) تُعاد كتابته وتستمر
+        // المتابعة في الواجهة بدل رؤية 404 "العملية غير موجودة".
         $op = BackupOperation::where('operation_id', $operationId)->first();
 
-        if (!$op) {
-            return;
-        }
+        $values = [
+            'status'   => $status,
+            'progress' => max(0, min(100, $progress)),
+            'stage'    => $stage,
+        ];
 
-        $op->status   = $status;
-        $op->progress = max(0, min(100, $progress));
-        $op->stage    = $stage;
+        if ($filePath !== null)      $values['file_path'] = $filePath;
+        if ($sizeBytes !== null)     $values['size_bytes'] = $sizeBytes;
+        if ($errorMessage !== null)  $values['error_message'] = $errorMessage;
 
-        if ($filePath !== null)     $op->file_path = $filePath;
-        if ($sizeBytes !== null)    $op->size_bytes = $sizeBytes;
-        if ($errorMessage !== null) $op->error_message = $errorMessage;
-
-        if ($status === 'running' && !$op->started_at) {
-            $op->started_at = now();
+        if ($status === 'running' && (!$op || !$op->started_at)) {
+            $values['started_at'] = now();
         }
 
         if (in_array($status, ['done', 'failed'], true)) {
-            $op->finished_at = now();
+            $values['finished_at'] = now();
         }
 
-        $op->save();
+        BackupOperation::updateOrCreate(
+            ['operation_id' => $operationId],
+            $values
+        );
     }
 
     public function find(string $operationId): ?BackupOperation
@@ -62,8 +66,8 @@ class BackupStatusService
     public function logResult(BackupOperation $op): void
     {
         $duration = $op->started_at && $op->finished_at
-            ? $op->finished_at->diffInSeconds($op->started_at)
-            : null;
+             ? (int) abs($op->finished_at->diffInSeconds($op->started_at))
+             : null;
 
         BackupLog::create([
             'operation'        => $op->type,

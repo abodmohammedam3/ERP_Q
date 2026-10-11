@@ -17,7 +17,10 @@ use Illuminate\Support\Facades\Cache;
 class BackupController extends Controller
 {
     private const LOCK_KEY = 'backup.operation.lock';
-    private const LOCK_TTL = 3600;
+    // ⚠️ مهلة قصيرة (5 دقائق) عمداً: إن تعطّل Worker بعد إرسال Job يبقى
+    // القفل محتراً ويمنع كل العمليات. إن استغرقت العملية أطول من ذلك فقد
+    // يُفتح القفل أثناء التنفيذ (acceptance محسوبة للخطر الأقل).
+    private const LOCK_TTL = 300;
 
     public function __construct(
         private BackupStatusService $status,
@@ -25,9 +28,9 @@ class BackupController extends Controller
         private BackupRetention $retention,
     ) {}
 
-    // ═══════════════════════════════════════════════════════
-    //  Response Helpers (لا توجد في Base Controller)
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
+    //  Response Helpers
+    // ═══════════════════════════════════════════════════════════════
 
     private function ok(array $data = [], int $status = 200): JsonResponse
     {
@@ -45,9 +48,9 @@ class BackupController extends Controller
         ], $status);
     }
 
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
     //  GET  /settings/system/backup
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
 
     public function index(): JsonResponse
     {
@@ -76,9 +79,9 @@ class BackupController extends Controller
         ]);
     }
 
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
     //  POST  /settings/system/backup/export
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
 
     public function export(ExportBackupRequest $request): JsonResponse
     {
@@ -103,9 +106,9 @@ class BackupController extends Controller
         }
     }
 
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
     //  POST  /settings/system/backup/import
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
 
     public function import(ImportBackupRequest $request): JsonResponse
     {
@@ -135,7 +138,6 @@ class BackupController extends Controller
             $path = $uploadDir . DIRECTORY_SEPARATOR . $filename;
 
             $op = $this->status->create('import', 'sql');
-
             ImportBackupJob::dispatch($op->operation_id, $path)->onQueue('backups');
 
             return $this->ok([
@@ -149,9 +151,9 @@ class BackupController extends Controller
         }
     }
 
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
     //  GET  /settings/system/backup/operations/{id}
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
 
     public function operation(string $operationId): JsonResponse
     {
@@ -182,9 +184,9 @@ class BackupController extends Controller
         ]);
     }
 
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
     //  GET  /settings/system/backup/download/{operationId}
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
 
     public function download(string $operationId)
     {
@@ -205,9 +207,9 @@ class BackupController extends Controller
         );
     }
 
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
     //  GET  /settings/system/backup/files/{filename}
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
 
     public function downloadExisting(string $filename)
     {
@@ -222,9 +224,9 @@ class BackupController extends Controller
         return response()->download($path, $filename);
     }
 
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
     //  DELETE  /settings/system/backup/files/{filename}
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
 
     public function destroy(string $filename): JsonResponse
     {
@@ -245,20 +247,19 @@ class BackupController extends Controller
         return $this->ok(['message' => 'تم الحذف بنجاح']);
     }
 
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
     //  POST  /settings/system/backup/cleanup
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
 
     public function cleanup(): JsonResponse
     {
         try {
-            $deleted = $this->retention->cleanup(config('backup.path'));
-
+            // التنظيف في الخلفية فقط (CleanupBackupJob ينفّذ: الاحتفاظ بالملفات
+            // + حذف سجلات العمليات الأقدم من 7 أيام) — تجنّب للتنفيذ المزدوج.
             CleanupBackupJob::dispatch()->onQueue('backups');
 
             return $this->ok([
-                'deleted_count' => count($deleted),
-                'message'       => sprintf('تم حذف %d ملف', count($deleted)),
+                'message' => 'تم جدولة التنظيف في الخلفية',
             ]);
 
         } catch (\Throwable $e) {
@@ -266,21 +267,25 @@ class BackupController extends Controller
         }
     }
 
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
     //  Lock Helpers
-    // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
 
     private function acquireLock(): bool
     {
         return Cache::lock(self::LOCK_KEY, self::LOCK_TTL)->get();
     }
 
+    /**
+     * تحرير القفل — يستخدم forceRelease() لأنه بعد dispatch الـ Job
+     * لا يكون Controller مالك القفل، بل الـ Worker.
+     */
     private function releaseLock(): void
     {
         try {
-            Cache::lock(self::LOCK_KEY)->release();
+            Cache::lock(self::LOCK_KEY)->forceRelease();
         } catch (\Throwable $e) {
-            // تجاهل
+            // تجاهل — لا نريد أن يفشل الـ Request بسبب تحرير القفل
         }
     }
 }

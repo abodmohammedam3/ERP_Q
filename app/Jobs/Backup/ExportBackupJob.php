@@ -10,6 +10,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class ExportBackupJob implements ShouldQueue
@@ -18,6 +19,8 @@ class ExportBackupJob implements ShouldQueue
 
     public int $timeout = 1800;
     public int $tries   = 1;
+
+    private const LOCK_KEY = 'backup.operation.lock';
 
     public function __construct(
         public string $operationId,
@@ -33,7 +36,6 @@ class ExportBackupJob implements ShouldQueue
 
         try {
             $status->update($this->operationId, 'running', 10, 'جاري التحضير...');
-
             $binary = $detector->detectMysqldump();
 
             if (!$binary) {
@@ -43,7 +45,6 @@ class ExportBackupJob implements ShouldQueue
             }
 
             $status->update($this->operationId, 'running', 20, 'جاري التصدير...');
-
             $filename  = 'backup_' . now()->format('Y-m-d_His') . '.sql';
             $backupDir = config('backup.path');
 
@@ -108,6 +109,34 @@ class ExportBackupJob implements ShouldQueue
             }
 
             throw $e;
+        } finally {
+            // ✅ يُنفَّذ دائماً — نجاح أو فشل
+            $this->releaseLock();
+        }
+    }
+
+    /**
+     * يُستدعى تلقائياً عند الفشل النهائي (بعد استنفاد tries).
+     */
+    public function failed(\Throwable $e): void
+    {
+        $this->releaseLock();
+
+        Log::error('[Backup] Export failed permanently', [
+            'operation_id' => $this->operationId,
+            'error'        => $e->getMessage(),
+        ]);
+    }
+
+    /**
+     * تحرير القفل بعد انتهاء العملية.
+     */
+    private function releaseLock(): void
+    {
+        try {
+            Cache::lock(self::LOCK_KEY)->forceRelease();
+        } catch (\Throwable $ignore) {
+            // تجاهل — لا نريد أن يفشل الـ Job بسبب تحرير القفل
         }
     }
 }

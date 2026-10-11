@@ -26,7 +26,7 @@ class BackupLog extends Model
         'duration_seconds' => 'integer',
         'created_at'       => 'datetime',
         'updated_at'       => 'datetime',
-    ];
+    ];                                   // ← ✅ السطر الحاسم
 
     public function user()
     {

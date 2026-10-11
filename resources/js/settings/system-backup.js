@@ -372,6 +372,9 @@
         if (State.pollAbort) State.pollAbort.abort();
         State.pollAbort = new AbortController();
 
+        let failures = 0;
+        let notFoundCount = 0;
+
         const doFetch = async () => {
             try {
                 const res = await fetch(API.operation(operationId), {
@@ -379,7 +382,41 @@
                     headers: { 'Accept': 'application/json' },
                 });
 
+                // 404 متكرر = غالباً استبدل الاستيراد صف العملية (لقطة قديمة).
+                // بعد ~30 ثانية نتوقف ونحدّث الصفحة بدل المتابعة للأبد.
+                if (res.status === 404) {
+                    notFoundCount++;
+
+                    if (notFoundCount > 9) {
+                        hideProgress();
+                        toast('اكتملت العملية على الخادم — سيتم تحديث الصفحة', 'info');
+                        setTimeout(() => window.location.reload(), 5000);
+                        return;
+                    }
+
+                    State.pollTimer = setTimeout(doFetch, 3000);
+                    return;
+                }
+
+                notFoundCount = 0;
+
+                // رد غير ناجح (مثلاً 503 أثناء وضع الصيانة) — نواصل المتابعة
+                // بدل إخفاء شريط التقدم صامتاً كما كان سابقاً
+                if (!res.ok) {
+                    failures++;
+
+                    if (failures > 100) { // ≈ 5 دقائق
+                        hideProgress();
+                        toast('انتهت مهلة المتابعة — حدّث الصفحة لاحقاً للنتيجة', 'warning');
+                        return;
+                    }
+
+                    State.pollTimer = setTimeout(doFetch, 3000);
+                    return;
+                }
+
                 const json = await res.json();
+                failures = 0;
 
                 if (!json.success) {
                     hideProgress();
@@ -420,7 +457,17 @@
             } catch (error) {
                 if (error.name === 'AbortError') return;
                 console.error(error);
-                hideProgress();
+
+                // خطأ شبكة مؤقت (صيانة/إعادة تشغيل الخادم) — نواصل المحاولة
+                failures++;
+
+                if (failures > 20) {
+                    hideProgress();
+                    toast('انقطع الاتصال بالخادم — حدّث الصفحة لاحقاً للنتيجة', 'warning');
+                    return;
+                }
+
+                State.pollTimer = setTimeout(doFetch, 3000);
             }
         };
 

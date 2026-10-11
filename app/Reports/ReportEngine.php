@@ -106,7 +106,7 @@ class ReportEngine
     private static function castValue(string $type, mixed $value): mixed
     {
         return match ($type) {
-            'number' | 'money' => (float) $value,
+            'number', 'money' => (float) $value,
             // date / select / text / account / item تبقى نصاً دائماً —
             // والأمان يتحقق في التقرير نفسه عبر Eloquent bindings
             default => trim((string) $value),

@@ -15,5 +15,7 @@ class Unit extends Model
     protected $fillable = [
         'UnitName',
         'is_active',
+        'created_by',
+        'updated_by',
     ];
 }

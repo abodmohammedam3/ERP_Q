@@ -2,12 +2,18 @@
    مرتجع المشتريات — إدارة مرتجعات الشراء
    ========================================================================= */
 
-const PURCHASE_RETURN_PAYMENT_TO_INT = { credit: 1, cash: 2, bank: 3, network: 4 };
-const PURCHASE_RETURN_PAYMENT_TO_STR = { 1: 'credit', 2: 'cash', 3: 'bank', 4: 'network' };
+const PURCHASE_RETURN_PAYMENT_TO_INT = { credit: 1, cash: 2, bank: 3 };
+const PURCHASE_RETURN_PAYMENT_TO_STR = { 1: 'credit', 2: 'cash', 3: 'bank' };
+const PURCHASE_RETURN_PAYMENT_LABELS = { 1: 'أجل', 2: 'نقدي', 3: 'بنك' };
 
 let purchaseReturnMode = 'view';
 let currentPurchaseReturnId = null;
+let currentPurchaseReturnIsPosted = false;
 let isSavingPurchaseReturn = false;
+
+/* ✅ مؤقتات البحث */
+let originalInvoiceSearchTimer = null;
+let purchaseReturnSearchTimer = null;
 
 const PURCHASE_RETURN_CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
@@ -62,18 +68,78 @@ function purchaseReturnSetValue(id, value) {
     el.value = value ?? '';
 }
 
+function purchaseReturnExtractPayload(res) {
+    if (res && res.header) {
+        return { header: res.header, details: res.details || [] };
+    }
+    if (res && res.data && res.data.header) {
+        return { header: res.data.header, details: res.data.details || [] };
+    }
+    return { header: {}, details: [] };
+}
+
+/* =========================================================
+   ✅ تنظيف الـ modals العالقة
+   ========================================================= */
+function cleanupStuckModals() {
+    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('padding-right');
+
+    document.querySelectorAll('.modal.show').forEach(modalEl => {
+        const instance = bootstrap.Modal.getInstance(modalEl);
+        if (instance) {
+            try { instance.hide(); } catch (e) { /* ignore */ }
+        }
+        modalEl.classList.remove('show');
+        modalEl.style.display = 'none';
+        modalEl.setAttribute('aria-hidden', 'true');
+    });
+
+    document.querySelectorAll('.offcanvas-backdrop').forEach(el => el.remove());
+}
+
+/* =========================================================
+   ✅ التهيئة عند التحميل
+   ========================================================= */
 document.addEventListener('DOMContentLoaded', () => {
+    cleanupStuckModals();
+
     setPurchaseReturnMode('view');
     clearPurchaseReturnForm();
+
+    setTimeout(cleanupStuckModals, 100);
+    setTimeout(cleanupStuckModals, 500);
 });
+
+window.addEventListener('load', () => {
+    setTimeout(cleanupStuckModals, 200);
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        cleanupStuckModals();
+    }
+});
+
+/* =========================================================
+   ✅ عند الضغط على حقل الفاتورة الأصلية
+   ========================================================= */
+
+function onOriginalInvoiceFieldClick() {
+    if (purchaseReturnMode === 'view') {
+        return;
+    }
+    searchOriginalPurchaseInvoice();
+}
+
+/* =========================================================
+   أوضاع الشاشة
+   ========================================================= */
 
 function setPurchaseReturnMode(mode) {
     purchaseReturnMode = mode;
-
-    document.querySelectorAll(
-        '#PurchaseReturnDate, #PurchaseReturnPaymentMethod, #purchaseReturnPaymentAccount, ' +
-        '#PurchaseReturnStatement, #PurchaseReturnReference'
-    ).forEach(el => { el.disabled = (mode === 'view'); });
 
     document.querySelectorAll('#purchaseReturnDetails .return-detail-row')
         .forEach(row => enablePurchaseReturnRow(row));
@@ -81,38 +147,82 @@ function setPurchaseReturnMode(mode) {
     const newBtn = document.getElementById('btnNewPurchaseReturn');
     if (newBtn) newBtn.disabled = (mode !== 'view');
 
-    const searchBtn = document.getElementById('btnSearchPurchaseReturn');
-    if (searchBtn) searchBtn.disabled = (mode !== 'view');
-
-    const selectInvoiceBtn = document.getElementById('btnSelectOriginalPurchaseInvoice');
-    if (selectInvoiceBtn) selectInvoiceBtn.disabled = (mode === 'view');
-
     const saveBtn = document.getElementById('btnSavePurchaseReturn');
     const saveNewBtn = document.getElementById('btnSaveAndNewPurchaseReturn');
     const cancelBtn = document.getElementById('btnCancelPurchaseReturn');
-    const editBtn = document.getElementById('btnEditPurchaseReturn');
-    const printBtn = document.getElementById('btnPrintPurchaseReturn');
 
     if (mode === 'view') {
         if (saveBtn) saveBtn.disabled = true;
         if (saveNewBtn) saveNewBtn.disabled = true;
         if (cancelBtn) cancelBtn.classList.add('d-none');
-        if (editBtn) editBtn.disabled = !hasPurchaseReturnData();
-        if (printBtn) printBtn.disabled = !hasPurchaseReturnData();
-
-        const payContainer = document.getElementById('purchaseReturnPaymentAccountContainer');
-        if (payContainer) payContainer.classList.add('d-none');
     } else {
         if (saveBtn) saveBtn.disabled = false;
         if (saveNewBtn) saveNewBtn.disabled = false;
         if (cancelBtn) cancelBtn.classList.remove('d-none');
-        if (editBtn) editBtn.disabled = true;
-        if (printBtn) printBtn.disabled = true;
-        purchaseReturnPaymentMethodChanged();
+    }
+
+    const invoiceWrapper = document.getElementById('originalPurchaseInvoiceWrapper');
+    if (invoiceWrapper) {
+        invoiceWrapper.style.cursor = (mode === 'view') ? 'default' : 'pointer';
+    }
+
+    updatePurchaseReturnSearchButton();
+    updatePurchaseReturnPostingButtons();
+}
+
+/* =========================================================
+   ✅ إدارة زر البحث
+   ========================================================= */
+
+function updatePurchaseReturnSearchButton() {
+    const searchBtn = document.getElementById('btnSearchPurchaseReturn');
+    if (!searchBtn) return;
+
+    const hasReturn = !!currentPurchaseReturnId;
+    const isViewMode = purchaseReturnMode === 'view';
+
+    searchBtn.disabled = !isViewMode || hasReturn;
+}
+
+/* =========================================================
+   ✅ إدارة أزرار الترحيل / إلغاء الترحيل
+   ========================================================= */
+
+function updatePurchaseReturnPostingButtons() {
+    const editBtn   = document.getElementById('btnEditPurchaseReturn');
+    const postBtn   = document.getElementById('btnPostPurchaseReturn');
+    const unpostBtn = document.getElementById('btnUnpostPurchaseReturn');
+    const printBtn  = document.getElementById('btnPrintPurchaseReturn');
+
+    const hasData  = hasPurchaseReturnData();
+    const isPosted = currentPurchaseReturnIsPosted;
+    const isView   = purchaseReturnMode === 'view';
+
+    if (editBtn) {
+        editBtn.disabled = !hasData || isPosted || !isView;
+        editBtn.classList.toggle('d-none', isPosted);
+    }
+
+    if (postBtn) {
+        const show = hasData && !isPosted;
+        postBtn.classList.toggle('d-none', !show);
+        postBtn.disabled = !hasData || isPosted || !isView;
+    }
+
+    if (unpostBtn) {
+        const show = hasData && isPosted;
+        unpostBtn.classList.toggle('d-none', !show);
+        unpostBtn.disabled = !hasData || !isPosted || !isView;
+    }
+
+    if (printBtn) {
+        printBtn.disabled = !hasData;
     }
 }
 
 async function resetPurchaseReturn() {
+    cleanupStuckModals();
+
     clearPurchaseReturnForm();
     setPurchaseReturnMode('add');
 
@@ -129,19 +239,18 @@ async function resetPurchaseReturn() {
 }
 
 function clearPurchaseReturnForm() {
-    document.querySelectorAll(
-        '#PurchaseReturnNo, #PurchaseReturnDate, #originalPurchaseInvoiceNo, ' +
-        '#PurchaseReturnPaymentMethod, #purchaseReturnPaymentAccount, ' +
-        '#purchaseReturnSupplierName, #purchaseReturnCurrencyName, ' +
-        '#purchaseReturnWarehouseName, #PurchaseReturnExchangeRate, ' +
-        '#PurchaseReturnStatement, #PurchaseReturnReference'
-    ).forEach(el => {
-        if (el.tagName === 'SELECT') el.selectedIndex = 0;
-        else el.value = '';
-    });
+    [
+        'PurchaseReturnNo', 'PurchaseReturnDate', 'originalPurchaseInvoiceNo',
+        'PurchaseReturnPaymentMethod', 'PurchaseReturnPaymentMethodValue',
+        'purchaseReturnPaymentAccount', 'purchaseReturnSupplierName',
+        'purchaseReturnCurrencyName', 'purchaseReturnWarehouseName',
+        'PurchaseReturnExchangeRate', 'PurchaseReturnStatement', 'PurchaseReturnReference'
+    ].forEach(id => purchaseReturnSetValue(id, ''));
 
-    ['originalPurchaseInvoiceId', 'purchaseReturnSupplierID', 'purchaseReturnCoinsID', 'purchaseReturnWarehouseID', 'purchaseReturnPaymentAccountId']
-        .forEach(id => purchaseReturnSetValue(id, ''));
+    [
+        'originalPurchaseInvoiceId', 'purchaseReturnSupplierID', 'purchaseReturnCoinsID',
+        'purchaseReturnWarehouseID', 'purchaseReturnPaymentAccountId'
+    ].forEach(id => purchaseReturnSetValue(id, ''));
 
     setEmptyPurchaseReturnMessage();
 
@@ -152,8 +261,11 @@ function clearPurchaseReturnForm() {
     if (totalEl) totalEl.textContent = '0.00';
 
     hidePurchaseReturnPaymentAccounts();
-    setPurchaseReturnMode('view');
+
     currentPurchaseReturnId = null;
+    currentPurchaseReturnIsPosted = false;
+
+    setPurchaseReturnMode('view');
 }
 
 function setEmptyPurchaseReturnMessage() {
@@ -164,9 +276,9 @@ function setEmptyPurchaseReturnMessage() {
 
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 12;
+    td.colSpan = 11;
     td.className = 'text-center text-muted py-4';
-    td.textContent = 'اختر الفاتورة الأصلية لإدراج الأصناف المتاحة للإرجاع';
+    td.textContent = 'لا توجد أصناف. اضغط "مرتجع جديد" للبدء.';
     tr.appendChild(td);
     tbody.appendChild(tr);
 }
@@ -175,8 +287,16 @@ function enablePurchaseReturnRow(row) {
     if (!row) return;
 
     row.querySelectorAll('input, select, button').forEach(el => {
-        if (el.classList.contains('row-total') || el.classList.contains('row-available')) return;
+        if (el.classList.contains('row-total')) return;
+        if (el.classList.contains('row-available')) return;
+        if (el.classList.contains('row-discount')) return;
+        if (el.classList.contains('row-price')) return;
+        if (el.classList.contains('row-item')) return;
+        if (el.classList.contains('row-type')) return;
+        if (el.classList.contains('row-code')) return;
+        if (el.classList.contains('row-unit')) return;
         if (el.type === 'hidden') return;
+
         el.disabled = (purchaseReturnMode === 'view');
     });
 }
@@ -209,7 +329,9 @@ function calculatePurchaseReturnRow(input) {
     const available = parseFloat(row.querySelector('.row-available')?.value) || 0;
     let qty = parseFloat(row.querySelector('.row-measure')?.value) || 0;
     const price = parseFloat(row.querySelector('.row-price')?.value) || 0;
-    const disc = parseFloat(row.querySelector('.row-discount')?.value) || 0;
+
+    const originalQty = parseFloat(row.querySelector('.row-original-qty')?.value) || 0;
+    const originalDiscount = parseFloat(row.querySelector('.row-original-discount')?.value) || 0;
 
     if (qty > available) {
         purchaseReturnNotify(`الكمية المراد إرجاعها (${qty}) أكبر من الكمية المتاحة (${available})`, 'warning');
@@ -217,8 +339,16 @@ function calculatePurchaseReturnRow(input) {
         qty = available;
     }
 
+    let discount = 0;
+    if (originalQty > 0) {
+        discount = (qty / originalQty) * originalDiscount;
+    }
+
+    const discountEl = row.querySelector('.row-discount');
+    if (discountEl) discountEl.value = discount.toFixed(2);
+
     const totalEl = row.querySelector('.row-total');
-    if (totalEl) totalEl.value = Math.max(0, qty * price - disc).toFixed(2);
+    if (totalEl) totalEl.value = Math.max(0, qty * price - discount).toFixed(2);
 
     calculatePurchaseReturnTotals();
 }
@@ -247,38 +377,27 @@ function calculatePurchaseReturnTotals() {
 }
 
 function purchaseReturnPaymentMethodChanged() {
-    hidePurchaseReturnPaymentAccounts();
-
-    const methodEl = document.getElementById('PurchaseReturnPaymentMethod');
+    const methodValue = parseInt(purchaseReturnGetValue('PurchaseReturnPaymentMethodValue')) || 0;
+    const displayEl = document.getElementById('PurchaseReturnPaymentMethod');
     const container = document.getElementById('purchaseReturnPaymentAccountContainer');
-    const input = document.getElementById('purchaseReturnPaymentAccount');
+    const label = document.getElementById('purchaseReturnPaymentAccountLabel');
 
-    if (!methodEl || !container || !input) return;
-
-    const method = methodEl.value;
-
-    if (!method || method === 'credit') {
-        container.classList.add('d-none');
-        input.disabled = true;
-        input.value = '';
-        purchaseReturnSetValue('purchaseReturnPaymentAccountId', '');
-        return;
+    if (displayEl) {
+        displayEl.value = PURCHASE_RETURN_PAYMENT_LABELS[methodValue] || '';
     }
 
-    container.classList.remove('d-none');
-    input.disabled = (purchaseReturnMode === 'view');
-
-    if (method === 'bank') {
-        input.dataset.lookup = 'bank';
-        input.dataset.lookupDisplayField = 'bankName';
-    } else {
-        input.dataset.lookup = 'box';
-        input.dataset.lookupDisplayField = 'boxName';
+    if (container) {
+        if (methodValue === 2 || methodValue === 3) {
+            container.classList.remove('d-none');
+            if (label) {
+                label.textContent = methodValue === 3 ? 'الحساب البنكي' : 'الصندوق';
+            }
+        } else {
+            container.classList.add('d-none');
+            purchaseReturnSetValue('purchaseReturnPaymentAccount', '');
+            purchaseReturnSetValue('purchaseReturnPaymentAccountId', '');
+        }
     }
-
-    const labels = { cash: 'الصندوق', bank: 'الحساب البنكي', network: 'حساب المحفظة' };
-    const lbl = container.querySelector('label');
-    if (lbl) lbl.textContent = labels[method] || 'الحساب';
 }
 
 function hidePurchaseReturnPaymentAccounts() {
@@ -287,27 +406,55 @@ function hidePurchaseReturnPaymentAccounts() {
 }
 
 /* =========================================================
-   البحث عن فاتورة شراء أصلية
+   ✅ البحث عن فاتورة شراء أصلية
    ========================================================= */
 
 function searchOriginalPurchaseInvoice() {
     const modalEl = document.getElementById('originalPurchaseInvoiceSearchModal');
     if (!modalEl) return;
 
-    purchaseReturnSetValue('originalPurchaseInvoiceSearchInput', '');
+    const searchInput = document.getElementById('originalPurchaseInvoiceSearchInput');
+    if (searchInput) searchInput.value = '';
+
     const tb = document.getElementById('originalPurchaseInvoiceSearchResults');
     tb.replaceChildren();
 
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 6;
+    td.colSpan = 7;
     td.className = 'text-center text-muted py-4';
-    td.textContent = 'أدخل بيانات البحث ثم اضغط بحث';
+    td.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري التحميل...';
     tr.appendChild(td);
     tb.appendChild(tr);
 
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
-    setTimeout(() => document.getElementById('originalPurchaseInvoiceSearchInput')?.focus(), 200);
+
+    setTimeout(() => {
+        searchInput?.focus();
+        performOriginalPurchaseInvoiceSearch();
+    }, 250);
+}
+
+/**
+ * ✅ بحث مؤجّل (Debounced) عن الفاتورة الأصلية
+ */
+function debouncedOriginalPurchaseInvoiceSearch() {
+    clearTimeout(originalInvoiceSearchTimer);
+    originalInvoiceSearchTimer = setTimeout(performOriginalPurchaseInvoiceSearch, 350);
+}
+
+/**
+ * ✅ تفريغ البحث — إعادة عرض كل الفواتير
+ */
+function clearOriginalPurchaseInvoiceSearch() {
+    const searchInput = document.getElementById('originalPurchaseInvoiceSearchInput');
+    if (searchInput) searchInput.value = '';
+
+    performOriginalPurchaseInvoiceSearch();
+
+    setTimeout(() => {
+        searchInput?.focus();
+    }, 100);
 }
 
 async function performOriginalPurchaseInvoiceSearch() {
@@ -318,16 +465,40 @@ async function performOriginalPurchaseInvoiceSearch() {
     try {
         const raw = await purchaseReturnApiGet(`/operation/purchases/invoicesPurch/list?search=${encodeURIComponent(search)}`);
         const rows = Array.isArray(raw) ? raw : (raw.data || []);
-        const labels = { 1: 'أجل', 2: 'نقد', 3: 'بنك', 4: 'شبكة' };
+
+        if (rows.length === 0) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 7;
+            td.className = 'text-center text-muted py-4';
+            td.textContent = 'لا توجد نتائج مطابقة';
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+            return;
+        }
 
         rows.forEach(inv => {
             const tr = document.createElement('tr');
+            tr.className = 'text-center';
+            tr.style.cursor = 'pointer';
+            tr.title = 'اضغط لاختيار هذه الفاتورة';
+
+            // ✅ النقر على الصف = فحص الحالة ثم الاختيار
+            tr.addEventListener('click', () => onInvoiceRowClick(inv));
+
+            tr.addEventListener('mouseenter', () => {
+                tr.classList.add('table-primary');
+            });
+            tr.addEventListener('mouseleave', () => {
+                tr.classList.remove('table-primary');
+            });
+
             [
                 inv.invoice_number,
                 inv.invoice_date,
                 inv.supplier_name,
                 inv.coin_name,
-                labels[inv.payment_method] || '',
+                PURCHASE_RETURN_PAYMENT_LABELS[inv.payment_method] || '',
                 Number(inv.total).toFixed(2)
             ].forEach(v => {
                 const td = document.createElement('td');
@@ -335,14 +506,20 @@ async function performOriginalPurchaseInvoiceSearch() {
                 tr.appendChild(td);
             });
 
-            const tdBtn = document.createElement('td');
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'btn btn-sm btn-primary';
-            btn.textContent = 'اختيار الفاتورة';
-            btn.addEventListener('click', () => selectOriginalPurchaseInvoice(inv.purchase_invoice_id));
-            tdBtn.appendChild(btn);
-            tr.appendChild(tdBtn);
+            // ✅ عمود الحالة
+            const tdStatus = document.createElement('td');
+            const badge = document.createElement('span');
+            if (inv.is_posted) {
+                badge.className = 'badge bg-success';
+                badge.textContent = 'مرحّلة';
+            } else {
+                badge.className = 'badge bg-secondary';
+                badge.textContent = 'مسودة';
+                tr.classList.add('opacity-75');
+            }
+            tdStatus.appendChild(badge);
+            tr.appendChild(tdStatus);
+
             tbody.appendChild(tr);
         });
     } catch (e) {
@@ -351,11 +528,41 @@ async function performOriginalPurchaseInvoiceSearch() {
     }
 }
 
+/* =========================================================
+   ✅ عند النقر على صف فاتورة — فحص الحالة
+   ========================================================= */
+
+function onInvoiceRowClick(inv) {
+    // ✅ فحص: هل الفاتورة مرحّلة؟
+    if (!inv.is_posted) {
+        purchaseReturnNotify(
+            'لا يمكن اختيار فاتورة غير مرحّلة. قم بترحيلها أولًا من شاشة فواتير الشراء.',
+            'warning'
+        );
+        return;  // ← لا تفعل شيئًا
+    }
+
+    // ✅ الفاتورة مرحّلة — اخترها
+    selectOriginalPurchaseInvoice(inv.purchase_invoice_id);
+}
+
+/* =========================================================
+   ✅ اختيار الفاتورة — تحميل التفاصيل
+   ========================================================= */
+
 async function selectOriginalPurchaseInvoice(invoiceId) {
     try {
         const res = await purchaseReturnApiGet(`/operation/purchases/invoicesPurch/${invoiceId}`);
-        const h = res.header;
-        const details = res.details || [];
+        const { header: h, details } = purchaseReturnExtractPayload(res);
+
+        // ✅ فحص إضافي على مستوى الـ API (حماية مزدوجة)
+        if (!h.is_posted) {
+            purchaseReturnNotify(
+                'لا يمكن اختيار فاتورة غير مرحّلة.',
+                'warning'
+            );
+            return;
+        }
 
         purchaseReturnSetValue('originalPurchaseInvoiceId', h.purchase_invoice_id);
         purchaseReturnSetValue('originalPurchaseInvoiceNo', h.invoice_number);
@@ -366,7 +573,8 @@ async function selectOriginalPurchaseInvoice(invoiceId) {
         purchaseReturnSetValue('purchaseReturnWarehouseID', h.warehouse_id || '');
         purchaseReturnSetValue('purchaseReturnWarehouseName', h.warehouse_name || '');
         purchaseReturnSetValue('PurchaseReturnExchangeRate', h.exchange_rate);
-        purchaseReturnSetValue('PurchaseReturnPaymentMethod', PURCHASE_RETURN_PAYMENT_TO_STR[h.payment_method] || 'credit');
+
+        purchaseReturnSetValue('PurchaseReturnPaymentMethodValue', h.payment_method);
         purchaseReturnSetValue('purchaseReturnPaymentAccountId', h.payment_account_id || '');
         purchaseReturnSetValue('purchaseReturnPaymentAccount', h.payment_account_name || '');
 
@@ -405,16 +613,25 @@ async function selectOriginalPurchaseInvoice(invoiceId) {
             row.querySelector('.row-unit').value = d.unit_name ?? '';
             row.querySelector('.row-unit-id').value = d.unit_id ?? '';
 
-            row.querySelector('.row-warehouse').value = d.warehouse_name ?? '';
-            row.querySelector('.row-warehouse-id').value = d.warehouse_id ?? '';
-
             row.querySelector('.row-price').value = d.price;
             row.querySelector('.row-unit-cost').value = d.unit_cost ?? d.price;
             row.querySelector('.row-available').value = availableQty;
 
+            const originalQty = parseFloat(d.quantity) || 0;
+            const originalDiscount = parseFloat(d.discount) || 0;
+            row.querySelector('.row-original-qty').value = originalQty;
+            row.querySelector('.row-original-discount').value = originalDiscount;
+
             row.querySelector('.row-measure').value = availableQty;
-            row.querySelector('.row-discount').value = 0;
-            row.querySelector('.row-total').value = Number(availableQty * d.price).toFixed(2);
+
+            let proportionalDiscount = 0;
+            if (originalQty > 0) {
+                proportionalDiscount = (availableQty / originalQty) * originalDiscount;
+            }
+            row.querySelector('.row-discount').value = proportionalDiscount.toFixed(2);
+
+            row.querySelector('.row-total').value =
+                Math.max(0, availableQty * d.price - proportionalDiscount).toFixed(2);
 
             tbody.appendChild(row);
             enablePurchaseReturnRow(row);
@@ -429,7 +646,12 @@ async function selectOriginalPurchaseInvoice(invoiceId) {
         }
 
         const modalEl = document.getElementById('originalPurchaseInvoiceSearchModal');
-        if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
+        if (modalEl) {
+            const instance = bootstrap.Modal.getInstance(modalEl);
+            if (instance) instance.hide();
+        }
+
+        setTimeout(cleanupStuckModals, 300);
 
     } catch (e) {
         purchaseReturnNotify('فشل تحميل الفاتورة الأصلية: ' + e.message, 'danger');
@@ -444,20 +666,48 @@ function searchPurchaseReturn() {
     const modalEl = document.getElementById('purchaseReturnSearchModal');
     if (!modalEl) return;
 
-    purchaseReturnSetValue('purchaseReturnSearchInput', '');
+    const searchInput = document.getElementById('purchaseReturnSearchInput');
+    if (searchInput) searchInput.value = '';
+
     const tb = document.getElementById('purchaseReturnSearchResults');
     tb.replaceChildren();
 
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 7;
+    td.colSpan = 8;
     td.className = 'text-center text-muted py-4';
-    td.textContent = 'أدخل بيانات البحث ثم اضغط بحث';
+    td.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري التحميل...';
     tr.appendChild(td);
     tb.appendChild(tr);
 
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
-    setTimeout(() => document.getElementById('purchaseReturnSearchInput')?.focus(), 200);
+
+    setTimeout(() => {
+        searchInput?.focus();
+        performPurchaseReturnSearch();
+    }, 250);
+}
+
+/**
+ * ✅ بحث مؤجّل (Debounced) عن المرتجعات
+ */
+function debouncedPurchaseReturnSearch() {
+    clearTimeout(purchaseReturnSearchTimer);
+    purchaseReturnSearchTimer = setTimeout(performPurchaseReturnSearch, 350);
+}
+
+/**
+ * ✅ تفريغ البحث — إعادة عرض كل المرتجعات
+ */
+function clearPurchaseReturnSearch() {
+    const searchInput = document.getElementById('purchaseReturnSearchInput');
+    if (searchInput) searchInput.value = '';
+
+    performPurchaseReturnSearch();
+
+    setTimeout(() => {
+        searchInput?.focus();
+    }, 100);
 }
 
 async function performPurchaseReturnSearch() {
@@ -468,16 +718,39 @@ async function performPurchaseReturnSearch() {
     try {
         const raw = await purchaseReturnApiGet(`/operation/purchases/returns/list?search=${encodeURIComponent(search)}`);
         const rows = Array.isArray(raw) ? raw : (raw.data || []);
-        const labels = { 1: 'أجل', 2: 'نقد', 3: 'بنك', 4: 'شبكة' };
+
+        if (rows.length === 0) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 8;
+            td.className = 'text-center text-muted py-4';
+            td.textContent = 'لا توجد نتائج مطابقة';
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+            return;
+        }
 
         rows.forEach(ret => {
             const tr = document.createElement('tr');
+            tr.className = 'text-center';
+            tr.style.cursor = 'pointer';
+            tr.title = 'اضغط لتحميل المرتجع';
+
+            tr.addEventListener('click', () => loadPurchaseReturn(ret.purchase_return_id));
+
+            tr.addEventListener('mouseenter', () => {
+                tr.classList.add('table-primary');
+            });
+            tr.addEventListener('mouseleave', () => {
+                tr.classList.remove('table-primary');
+            });
+
             [
                 ret.return_number,
                 ret.return_date,
                 ret.original_invoice_number,
                 ret.supplier_name,
-                labels[ret.payment_method] || '',
+                PURCHASE_RETURN_PAYMENT_LABELS[ret.payment_method] || '',
                 Number(ret.total).toFixed(2)
             ].forEach(v => {
                 const td = document.createElement('td');
@@ -485,14 +758,26 @@ async function performPurchaseReturnSearch() {
                 tr.appendChild(td);
             });
 
-            const tdBtn = document.createElement('td');
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'btn btn-sm btn-primary';
-            btn.textContent = 'عرض';
-            btn.addEventListener('click', () => loadPurchaseReturn(ret.purchase_return_id));
-            tdBtn.appendChild(btn);
-            tr.appendChild(tdBtn);
+            const tdStatus = document.createElement('td');
+            const badge = document.createElement('span');
+            if (ret.is_posted) {
+                badge.className = 'badge bg-success';
+                badge.textContent = 'مرحّل';
+            } else {
+                badge.className = 'badge bg-secondary';
+                badge.textContent = 'مسودة';
+            }
+            tdStatus.appendChild(badge);
+            tr.appendChild(tdStatus);
+
+            const tdActions = document.createElement('td');
+            tdActions.className = 'text-nowrap';
+            tdActions.addEventListener('click', (e) => e.stopPropagation());
+
+            tdActions.appendChild(buildPurchaseReturnPostToggleBtn(ret));
+            tdActions.appendChild(buildPurchaseReturnDeleteBtn(ret));
+            tr.appendChild(tdActions);
+
             tbody.appendChild(tr);
         });
     } catch (e) {
@@ -501,11 +786,148 @@ async function performPurchaseReturnSearch() {
     }
 }
 
+function buildPurchaseReturnPostToggleBtn(ret) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm me-1';
+
+    if (ret.is_posted) {
+        btn.classList.add('btn-outline-warning');
+        btn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> إلغاء الترحيل';
+        btn.title = 'فتح المرتجع للتعديل';
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            unpostPurchaseReturn(ret.purchase_return_id);
+        });
+    } else {
+        btn.classList.add('btn-outline-success');
+        btn.innerHTML = '<i class="bi bi-check2-circle"></i> ترحيل';
+        btn.title = 'ترحيل المرتجع وإنشاء القيود';
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            postPurchaseReturn(ret.purchase_return_id);
+        });
+    }
+
+    return btn;
+}
+
+function buildPurchaseReturnDeleteBtn(ret) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm btn-outline-danger';
+    btn.innerHTML = '<i class="bi bi-trash"></i> حذف';
+    btn.title = 'حذف المرتجع نهائيًا';
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deletePurchaseReturn(ret.purchase_return_id, ret.return_number);
+    });
+    return btn;
+}
+
+async function postPurchaseReturn(id) {
+    if (!confirm('هل تريد ترحيل هذا المرتجع؟\nسيتم إنشاء القيود وحركة المخزون.')) return;
+
+    try {
+        const r = await purchaseReturnApiSend(
+            `/operation/purchases/returns/${id}/post`,
+            'POST',
+            {}
+        );
+        purchaseReturnNotify(r.message || 'تم ترحيل المرتجع بنجاح', 'success');
+        performPurchaseReturnSearch();
+    } catch (e) {
+        purchaseReturnNotify(e.message, 'danger');
+    }
+}
+
+async function unpostPurchaseReturn(id) {
+    if (!confirm('هل تريد إلغاء ترحيل هذا المرتجع؟\nسيتم حذف القيود وحركة المخزون.')) return;
+
+    try {
+        const r = await purchaseReturnApiSend(
+            `/operation/purchases/returns/${id}/unpost`,
+            'POST',
+            {}
+        );
+        purchaseReturnNotify(r.message || 'تم إلغاء ترحيل المرتجع بنجاح', 'success');
+        performPurchaseReturnSearch();
+
+        if (currentPurchaseReturnId === id) {
+            await loadPurchaseReturn(id);
+        }
+    } catch (e) {
+        purchaseReturnNotify(e.message, 'danger');
+    }
+}
+
+async function deletePurchaseReturn(id, number) {
+    const label = number ? `رقم ${number}` : `#${id}`;
+    if (!confirm(`هل أنت متأكد من حذف المرتجع ${label}؟\nلا يمكن التراجع عن هذه العملية.`)) return;
+
+    try {
+        const r = await purchaseReturnApiSend(
+            `/operation/purchases/returns/${id}`,
+            'DELETE',
+            {}
+        );
+        purchaseReturnNotify(r.message || 'تم حذف المرتجع بنجاح', 'success');
+        performPurchaseReturnSearch();
+
+        if (currentPurchaseReturnId === id) {
+            clearPurchaseReturnForm();
+        }
+    } catch (e) {
+        purchaseReturnNotify(e.message, 'danger');
+    }
+}
+
+async function postCurrentPurchaseReturn() {
+    if (!currentPurchaseReturnId) {
+        purchaseReturnNotify('لا يوجد مرتجع للترحيل', 'warning');
+        return;
+    }
+
+    if (!confirm('هل تريد ترحيل هذا المرتجع؟\nسيتم إنشاء القيود وحركة المخزون.')) return;
+
+    try {
+        const r = await purchaseReturnApiSend(
+            `/operation/purchases/returns/${currentPurchaseReturnId}/post`,
+            'POST',
+            {}
+        );
+        purchaseReturnNotify(r.message || 'تم ترحيل المرتجع بنجاح', 'success');
+        await loadPurchaseReturn(currentPurchaseReturnId);
+    } catch (e) {
+        purchaseReturnNotify(e.message, 'danger');
+    }
+}
+
+async function unpostCurrentPurchaseReturn() {
+    if (!currentPurchaseReturnId) {
+        purchaseReturnNotify('لا يوجد مرتجع', 'warning');
+        return;
+    }
+
+    if (!confirm('هل تريد إلغاء ترحيل هذا المرتجع؟\nسيتم حذف القيود وحركة المخزون.')) return;
+
+    try {
+        const r = await purchaseReturnApiSend(
+            `/operation/purchases/returns/${currentPurchaseReturnId}/unpost`,
+            'POST',
+            {}
+        );
+        purchaseReturnNotify(r.message || 'تم إلغاء ترحيل المرتجع بنجاح', 'success');
+        await loadPurchaseReturn(currentPurchaseReturnId);
+    } catch (e) {
+        purchaseReturnNotify(e.message, 'danger');
+    }
+}
+
 async function loadPurchaseReturn(id) {
     try {
         const res = await purchaseReturnApiGet(`/operation/purchases/returns/${id}`);
-        const h = res.header;
-        const details = res.details || [];
+        const { header: h, details } = purchaseReturnExtractPayload(res);
 
         clearPurchaseReturnForm();
 
@@ -520,11 +942,10 @@ async function loadPurchaseReturn(id) {
         purchaseReturnSetValue('purchaseReturnWarehouseID', h.warehouse_id ?? '');
         purchaseReturnSetValue('purchaseReturnWarehouseName', h.warehouse_name ?? '');
         purchaseReturnSetValue('PurchaseReturnExchangeRate', h.exchange_rate ?? 1);
-        purchaseReturnSetValue('PurchaseReturnPaymentMethod', PURCHASE_RETURN_PAYMENT_TO_STR[h.payment_method] || '');
+
+        purchaseReturnSetValue('PurchaseReturnPaymentMethodValue', h.payment_method);
         purchaseReturnSetValue('purchaseReturnPaymentAccountId', h.payment_account_id ?? '');
         purchaseReturnSetValue('purchaseReturnPaymentAccount', h.payment_account_name ?? '');
-        purchaseReturnSetValue('PurchaseReturnStatement', h.statement ?? '');
-        purchaseReturnSetValue('PurchaseReturnReference', h.reference ?? '');
 
         purchaseReturnPaymentMethodChanged();
 
@@ -550,14 +971,17 @@ async function loadPurchaseReturn(id) {
             row.querySelector('.row-unit').value = d.unit_name ?? '';
             row.querySelector('.row-unit-id').value = d.unit_id ?? '';
 
-            row.querySelector('.row-warehouse').value = d.warehouse_name ?? '';
-            row.querySelector('.row-warehouse-id').value = d.warehouse_id ?? '';
-
             row.querySelector('.row-price').value = d.price;
             row.querySelector('.row-unit-cost').value = d.unit_cost ?? d.price;
             row.querySelector('.row-available').value = d.available_quantity;
             row.querySelector('.row-measure').value = d.quantity;
-            row.querySelector('.row-discount').value = d.discount;
+
+            const originalQty = parseFloat(d.quantity) || 0;
+            const originalDiscount = parseFloat(d.discount) || 0;
+            row.querySelector('.row-original-qty').value = originalQty;
+            row.querySelector('.row-original-discount').value = originalDiscount;
+            row.querySelector('.row-discount').value = originalDiscount.toFixed(2);
+
             row.querySelector('.row-total').value = Number(d.total).toFixed(2);
 
             tbody.appendChild(row);
@@ -568,9 +992,16 @@ async function loadPurchaseReturn(id) {
         calculatePurchaseReturnTotals();
 
         const modalEl = document.getElementById('purchaseReturnSearchModal');
-        if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
+        if (modalEl) {
+            const instance = bootstrap.Modal.getInstance(modalEl);
+            if (instance) instance.hide();
+        }
+
+        setTimeout(cleanupStuckModals, 300);
 
         currentPurchaseReturnId = h.purchase_return_id;
+        currentPurchaseReturnIsPosted = !!h.is_posted;
+
         setPurchaseReturnMode('view');
 
         purchaseReturnNotify('تم تحميل مرتجع المشتريات بنجاح', 'success');
@@ -616,11 +1047,8 @@ async function savePurchaseReturn() {
     const coinId = purchaseReturnGetValue('purchaseReturnCoinsID');
     if (!coinId) return purchaseReturnNotify('يجب اختيار العملة', 'warning');
 
-    const methodStr = purchaseReturnGetValue('PurchaseReturnPaymentMethod');
-    if (!methodStr) return purchaseReturnNotify('يجب اختيار طريقة الدفع', 'warning');
-
-    const methodInt = PURCHASE_RETURN_PAYMENT_TO_INT[methodStr];
-    if (!methodInt) return purchaseReturnNotify('طريقة الدفع غير صالحة', 'danger');
+    const methodInt = parseInt(purchaseReturnGetValue('PurchaseReturnPaymentMethodValue')) || 0;
+    if (!methodInt) return purchaseReturnNotify('طريقة الدفع غير محددة', 'warning');
 
     if (methodInt !== 1 && !purchaseReturnGetValue('purchaseReturnPaymentAccountId')) {
         return purchaseReturnNotify('يجب اختيار حساب الدفع', 'warning');
@@ -660,7 +1088,9 @@ async function savePurchaseReturn() {
         payment_method: methodInt,
         payment_account_id: purchaseReturnGetValue('purchaseReturnPaymentAccountId') || null,
         coin_id: Number(coinId),
-        warehouse_id: purchaseReturnGetValue('purchaseReturnWarehouseID') ? Number(purchaseReturnGetValue('purchaseReturnWarehouseID')) : null,
+        warehouse_id: purchaseReturnGetValue('purchaseReturnWarehouseID')
+            ? Number(purchaseReturnGetValue('purchaseReturnWarehouseID'))
+            : null,
         exchange_rate: parseFloat(purchaseReturnGetValue('PurchaseReturnExchangeRate')) || 1,
         statement: purchaseReturnGetValue('PurchaseReturnStatement') || null,
         reference: purchaseReturnGetValue('PurchaseReturnReference') || null,
@@ -677,9 +1107,11 @@ async function savePurchaseReturn() {
         let r;
         if (purchaseReturnMode === 'edit' && currentPurchaseReturnId) {
             r = await purchaseReturnApiSend(`/operation/purchases/returns/${currentPurchaseReturnId}`, 'PUT', payload);
+            currentPurchaseReturnIsPosted = false;
         } else {
             r = await purchaseReturnApiSend('/operation/purchases/returns', 'POST', payload);
             currentPurchaseReturnId = r.purchase_return_id;
+            currentPurchaseReturnIsPosted = !!r.is_posted;
             if (r.return_number) purchaseReturnSetValue('PurchaseReturnNo', r.return_number);
         }
         purchaseReturnNotify(r.message || 'تم الحفظ بنجاح', 'success');
@@ -715,18 +1147,39 @@ function printPurchaseReturn() {
     );
 }
 
-// تصدير الدوال للـ Window
-window.resetPurchaseReturn = resetPurchaseReturn;
-window.searchPurchaseReturn = searchPurchaseReturn;
-window.performPurchaseReturnSearch = performPurchaseReturnSearch;
-window.searchOriginalPurchaseInvoice = searchOriginalPurchaseInvoice;
-window.performOriginalPurchaseInvoiceSearch = performOriginalPurchaseInvoiceSearch;
-window.selectOriginalPurchaseInvoice = selectOriginalPurchaseInvoice;
-window.calculatePurchaseReturnRow = calculatePurchaseReturnRow;
-window.removePurchaseReturnRow = removePurchaseReturnRow;
-window.purchaseReturnPaymentMethodChanged = purchaseReturnPaymentMethodChanged;
-window.cancelPurchaseReturn = cancelPurchaseReturn;
-window.savePurchaseReturn = savePurchaseReturn;
-window.saveAndNewPurchaseReturn = saveAndNewPurchaseReturn;
-window.editPurchaseReturn = editPurchaseReturn;
-window.printPurchaseReturn = printPurchaseReturn;
+/* =========================================================
+   تصدير للـ Window
+   ========================================================= */
+
+Object.assign(window, {
+    resetPurchaseReturn,
+    searchPurchaseReturn,
+    performPurchaseReturnSearch,
+    debouncedPurchaseReturnSearch,
+    clearPurchaseReturnSearch,
+    searchOriginalPurchaseInvoice,
+    performOriginalPurchaseInvoiceSearch,
+    debouncedOriginalPurchaseInvoiceSearch,
+    clearOriginalPurchaseInvoiceSearch,
+    onInvoiceRowClick,
+    selectOriginalPurchaseInvoice,
+    calculatePurchaseReturnRow,
+    removePurchaseReturnRow,
+    purchaseReturnPaymentMethodChanged,
+    cancelPurchaseReturn,
+    savePurchaseReturn,
+    saveAndNewPurchaseReturn,
+    editPurchaseReturn,
+    printPurchaseReturn,
+    loadPurchaseReturn,
+
+    postPurchaseReturn,
+    unpostPurchaseReturn,
+    deletePurchaseReturn,
+    postCurrentPurchaseReturn,
+    unpostCurrentPurchaseReturn,
+    updatePurchaseReturnPostingButtons,
+    updatePurchaseReturnSearchButton,
+    onOriginalInvoiceFieldClick,
+    cleanupStuckModals,
+});

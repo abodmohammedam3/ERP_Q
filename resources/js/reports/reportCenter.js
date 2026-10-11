@@ -2,55 +2,41 @@
  * =========================================================
  * مركز التقارير — Report Center
  * =========================================================
- * منطق الشاشة الرئيسية للتقارير:
- *  - بناء الفلاتر ديناميكياً من تعريف التقرير (JSON declaration).
- *  - جلب البيانات عبر /reports/data/{key} مع AbortController.
- *  - رسم الجدول من columns + صف الإجماليات + شرائح KPI.
- *  - ترتيب الأعمدة + بحث سريع + ترقيم صفحات.
- *  - الطباعة (/reports/print/{key}) والتصدير (/reports/export/{key}).
- * لا يحتوي هذا الملف على أي تعريف تقرير — كل شيء من Registry.
+ * منطق الشاشة الرئيسية للتقارير.
+ * JS نقي — لا HTML strings، لا CSS، لا inline styles.
+ * كل بناء DOM عبر createElement / textContent.
  * =========================================================
  */
 
 const RC = {
-    config: null,        // window.REPORT_CENTER
+    config: null,
     definitions: [],
     activeKey: null,
-    sources: null,       // مصادر القوائم المنسدلة (حسابات، أصناف، أنواع...)
-    sourcesPromise: null, // وعد التحميل الجاري (منع الطلبات المكرّرة)
+    sources: null,
+    sourcesPromise: null,
     columns: [],
-    rows: [],            // صفوف الصفحة الحالية (أصلية)
+    rows: [],
     totals: {},
     meta: {},
-    controller: null,    // AbortController للطلب الحالي
+    controller: null,
     sort: { key: null, dir: 'asc' },
     quickSearch: '',
 
-    // مودال اختيار الحساب (دليل الحسابات) — خاص بهذه الشاشة
-    pickerAccounts: null,        // الحسابات المؤهلة — تُحمَّل مرة واحدة
-    pickerParents: null,         // الآباء القابلون للاختيار (من API) — مرة واحدة
-    pickerTree: null,            // كامل الشجرة (للتحقق من المخزون)
-    pickerPromise: null,         // وعد التحميل الجاري (منع الطلبات المكرّرة)
-    pickerTargetId: null,        // الحقل المخفي المستهدف للاختيار
-    pickerMode: 'all',           // parent | child | all
-    pickerScope: null,           // IDs أبناء الأب (لوضع child)
-    pickerScopeKey: null,        // مفتاح النطاق لتمييز الكاش
-    pickerIsOpen: false,         // هل المودال مفتوح حالياً؟
-    pickerSelectionMade: false,  // هل اختار المستخدم حساباً في آخر جلسة فتح؟
+    pickerAccounts: null,
+    pickerParents: null,
+    pickerTree: null,
+    pickerPromise: null,
+    pickerTargetId: null,
+    pickerMode: 'all',
+    pickerScope: null,
+    pickerScopeKey: null,
+    pickerIsOpen: false,
+    pickerSelectionMade: false,
 };
 
 /* ════════════════════════════════════════════════════════
    1) أدوات مساعدة
    ════════════════════════════════════════════════════════ */
-
-function rcEscape(value) {
-    return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-}
 
 function rcFormatMoney(value) {
     return Number(value || 0).toLocaleString('en-US', {
@@ -77,20 +63,90 @@ function rcActiveDef() {
 
 function rcEndpoint(base, key, params = {}) {
     const query = new URLSearchParams();
-
     Object.entries(params).forEach(([k, v]) => {
         if (v !== '' && v !== null && v !== undefined) {
             query.set(k, v);
         }
     });
-
     const qs = query.toString();
-
     return `${base}/${encodeURIComponent(key)}${qs ? `?${qs}` : ''}`;
 }
 
+/**
+ * بناء عنصر DOM بأمان — بديل كامل لـ innerHTML.
+ */
+function rcEl(tag, opts) {
+    const el = document.createElement(tag);
+    if (!opts) return el;
+
+    if (opts.className) el.className = opts.className;
+    if (opts.text !== undefined && opts.text !== null) el.textContent = String(opts.text);
+    if (opts.title) el.title = opts.title;
+
+    if (opts.attrs) {
+        Object.entries(opts.attrs).forEach(([k, v]) => {
+            if (v !== null && v !== undefined) el.setAttribute(k, v);
+        });
+    }
+
+    if (opts.data) {
+        Object.entries(opts.data).forEach(([k, v]) => {
+            if (v !== null && v !== undefined) el.dataset[k] = v;
+        });
+    }
+
+    if (opts.children) {
+        opts.children.forEach((child) => {
+            if (child) el.appendChild(child);
+        });
+    }
+
+    if (opts.events) {
+        Object.entries(opts.events).forEach(([event, handler]) => {
+            el.addEventListener(event, handler);
+        });
+    }
+
+    return el;
+}
+
+function rcIcon(cls) {
+    return rcEl('i', { className: `bi ${cls}` });
+}
+
+/**
+ * بناء رابط الطباعة الموحّد.
+ * يمرّر الفلاتر + البحث السريع (_q) للنافذة المنبثقة.
+ */
+function rcBuildPrintUrl() {
+    const def = rcActiveDef();
+    if (!def) return null;
+
+    const params = new URLSearchParams(rcCollectFilters());
+
+    // تمرير البحث السريع للطباعة — يُفلتر في Blade
+    if (RC.quickSearch) {
+        params.set('_q', RC.quickSearch);
+    }
+
+    const base = RC.config.urls.print + '/' + encodeURIComponent(def.key);
+
+    return params.toString() ? `${base}?${params.toString()}` : base;
+}
+
+function rcOpenPrintPreview() {
+    const url = rcBuildPrintUrl();
+    if (!url) return;
+
+    window.open(
+        url,
+        'rc_print_preview',
+        'width=1100,height=850,scrollbars=yes,resizable=yes'
+    );
+}
+
 /* ════════════════════════════════════════════════════════
-   2) مصادر القوائم المنسدلة (تُحمَّل مرة واحدة)
+   2) مصادر القوائم المنسدلة
    ════════════════════════════════════════════════════════ */
 
 const RC_SOURCES_CACHE_KEY = 'rc.sources.v1';
@@ -98,7 +154,6 @@ const RC_SOURCES_CACHE_KEY = 'rc.sources.v1';
 function rcReadSourcesCache() {
     try {
         const raw = sessionStorage.getItem(RC_SOURCES_CACHE_KEY);
-
         return raw ? JSON.parse(raw) : null;
     } catch {
         return null;
@@ -108,100 +163,69 @@ function rcReadSourcesCache() {
 function rcWriteSourcesCache(sources) {
     try {
         sessionStorage.setItem(RC_SOURCES_CACHE_KEY, JSON.stringify(sources));
-    } catch {
-        /* التخزين ممتلئ أو محجوب — نتجاهل بهدوء */
-    }
+    } catch { /* ignore */ }
 }
 
-/**
- * تحميل مصادر القوائم المنسدلة مرة واحدة فقط.
- * - نسخة فورية من sessionStorage (بلا شبكة) إن وُجدت.
- * - يُعاد الوعد نفسه لكل الاستدعاءات المتزامنة (لا طلبات مكرّرة).
- */
 function rcLoadSources() {
     if (RC.sources) return Promise.resolve(RC.sources);
 
-    // تحميل فوري من ذاكرة الجلسة — بلا انتظار شبكة
     const cached = rcReadSourcesCache();
-
     if (cached) {
         RC.sources = cached;
-
         return Promise.resolve(RC.sources);
     }
 
-    // تفادي طلبات متوازية مكرّرة (نفس الوعد للجميع)
     if (RC.sourcesPromise) return RC.sourcesPromise;
 
     RC.sourcesPromise = fetch(RC.config.urls.sources, {
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
     })
-        .then((response) => response.json())
+        .then((r) => r.json())
         .then((payload) => {
             RC.sources = payload.sources || {};
             rcWriteSourcesCache(RC.sources);
-
             return RC.sources;
         })
         .catch((error) => {
             console.error('[Reports] فشل تحميل المصادر', error);
             RC.sources = {};
-
             return RC.sources;
         })
-        .finally(() => {
-            RC.sourcesPromise = null;
-        });
+        .finally(() => { RC.sourcesPromise = null; });
 
     return RC.sourcesPromise;
 }
 
-/**
- * تحديث القوائم المنسدلة بعد وصول المصادر — دون إعادة بناء كل الفلاتر
- * (حفاظاً على القيم التي أدخلها المستخدم).
- */
 function rcHydrateSelects() {
     const def = rcActiveDef();
-
     if (!def || !def.filters) return;
 
     def.filters.forEach((filter) => {
-        if (filter.type !== 'select' && filter.type !== 'item') {
-            return;   // نوع account يديره مودال الدليل — لا يحتاج تحميل مصادر
-        }
+        if (filter.type !== 'select' && filter.type !== 'item') return;
 
         const element = document.getElementById(`rcf-${filter.key}`);
-
         if (!element) return;
 
-        // القيمة المختارة حالياً (قد يكون المستخدم قد اختار شيئاً قبل التحميل)
         const selected = element.value || String(filter.value ?? '');
         const options = rcSourceOptions(filter.source);
 
-        element.innerHTML = '';
-
-        const placeholder = document.createElement('option');
+        const placeholder = rcEl('option', {
+            text: filter.placeholder ?? (filter.type === 'item' ? 'اختر الصنف...' : 'الكل'),
+        });
         placeholder.value = '';
-        placeholder.textContent = filter.placeholder
-            ?? (filter.type === 'item' ? 'اختر الصنف...' : 'الكل');
-        element.appendChild(placeholder);
 
-        options.forEach((option) => {
-            const opt = document.createElement('option');
+        const opts = options.map((option) => {
+            const opt = rcEl('option', { text: option.text });
             opt.value = option.value;
-            opt.textContent = option.text;
-            opt.selected = selected === option.value;
-            element.appendChild(opt);
+            if (selected === option.value) opt.selected = true;
+            return opt;
         });
 
+        element.replaceChildren(placeholder, ...opts);
         element.value = selected;
     });
 }
 
-/**
- * تطبيع أي مصدر إلى صيغة {value, text}.
- * يدعم: مصفوفة نصوص (docTypes) ومصفوفة كائنات {id, text} (accounts, items).
- */
 function rcSourceOptions(source) {
     const list = (RC.sources || {})[source] || [];
 
@@ -212,13 +236,12 @@ function rcSourceOptions(source) {
                 text: String(entry.text ?? entry.label ?? ''),
             };
         }
-
         return { value: String(entry), text: String(entry) };
     });
 }
 
 /* ════════════════════════════════════════════════════════
-   3) رأس الشاشة (العنوان + التصنيف)
+   3) رأس الشاشة
    ════════════════════════════════════════════════════════ */
 
 const RC_CATEGORY_LABELS = {
@@ -231,7 +254,6 @@ const RC_CATEGORY_LABELS = {
 
 function rcRenderHeader() {
     const def = rcActiveDef();
-
     if (!def) return;
 
     document.getElementById('rcReportIcon').className = `bi bi-${def.icon}`;
@@ -243,40 +265,47 @@ function rcRenderHeader() {
 }
 
 /* ════════════════════════════════════════════════════════
-   4) بناء الفلاتر ديناميكياً من التعريف
+   4) بناء الفلاتر
    ════════════════════════════════════════════════════════ */
 
 function rcBuildSelect(filter, id) {
     const options = rcSourceOptions(filter.source);
-    const placeholder = filter.placeholder
-        ?? (filter.type === 'item' ? 'اختر الصنف...' : 'الكل');
+    const placeholder = filter.placeholder ?? (filter.type === 'item' ? 'اختر الصنف...' : 'الكل');
 
-    let html = `<select id="${id}" class="form-select form-select-sm">
-                    <option value="">${placeholder}</option>`;
+    const select = rcEl('select', { className: 'form-select form-select-sm' });
+    select.id = id;
 
-    options.forEach((option) => {
-        const selected = String(filter.value ?? '') === option.value ? ' selected' : '';
-        html += `<option value="${rcEscape(option.value)}"${selected}>${rcEscape(option.text)}</option>`;
+    const ph = rcEl('option', { text: placeholder });
+    ph.value = '';
+
+    const opts = options.map((option) => {
+        const opt = rcEl('option', { text: option.text });
+        opt.value = option.value;
+        if (String(filter.value ?? '') === option.value) opt.selected = true;
+        return opt;
     });
 
-    html += '</select>';
+    select.appendChild(ph);
+    opts.forEach((o) => select.appendChild(o));
 
-    return html;
+    return select;
 }
 
 function rcRenderFilters() {
     const container = document.getElementById('rcFilters');
     const def = rcActiveDef();
 
-    container.innerHTML = '';
+    container.replaceChildren();
 
     if (!def || !def.filters || def.filters.length === 0) {
-        container.innerHTML = `
-            <div class="col-12 text-muted small">
-                <i class="bi bi-info-circle"></i>
-                هذا التقرير لا يتطلب فلاتر — اضغط "عرض" لتحميل البيانات.
-            </div>`;
-
+        const info = rcEl('div', {
+            className: 'col-12 text-muted small',
+            children: [
+                rcIcon('bi-info-circle'),
+                rcEl('span', { text: ' هذا التقرير لا يتطلب فلاتر — اضغط "عرض" لتحميل البيانات.' }),
+            ],
+        });
+        container.appendChild(info);
         return;
     }
 
@@ -286,44 +315,55 @@ function rcRenderFilters() {
         const id = `rcf-${filter.key}`;
         const col = filter.col || 'col-md-3';
 
-        let control = '';
+        let control;
 
         switch (filter.type) {
-            case 'date':
-                control = `<input type="date" id="${id}" class="form-control form-control-sm"
-                                  value="${rcEscape(filter.value ?? '')}">`;
+            case 'date': {
+                control = rcEl('input', { className: 'form-control form-control-sm' });
+                control.type = 'date';
+                control.id = id;
+                control.value = filter.value ?? '';
                 break;
-
-            case 'number':
-                control = `<input type="number" step="any" id="${id}" class="form-control form-control-sm"
-                                  value="${rcEscape(filter.value ?? '')}">`;
+            }
+            case 'number': {
+                control = rcEl('input', { className: 'form-control form-control-sm' });
+                control.type = 'number';
+                control.step = 'any';
+                control.id = id;
+                control.value = filter.value ?? '';
                 break;
-
+            }
             case 'account':
                 control = rcBuildAccountPicker(filter, id);
                 break;
-
             case 'select':
             case 'item':
                 control = rcBuildSelect(filter, id);
                 break;
-
-            default:
-                control = `<input type="text" id="${id}" class="form-control form-control-sm"
-                                  autocomplete="off"
-                                  placeholder="${rcEscape(filter.label)}"
-                                  value="${rcEscape(filter.value ?? '')}">`;
+            default: {
+                control = rcEl('input', {
+                    className: 'form-control form-control-sm',
+                    attrs: { autocomplete: 'off', placeholder: filter.label },
+                });
+                control.type = 'text';
+                control.id = id;
+                control.value = filter.value ?? '';
+            }
         }
 
-        const wrapper = document.createElement('div');
-        wrapper.className = col + ' rc-filter-col';
-        wrapper.innerHTML = `
-            <label class="form-label small mb-1" for="${id}">${rcEscape(filter.label)}</label>
-            ${control}`;
+        const label = rcEl('label', {
+            className: 'form-label small mb-1',
+            text: filter.label,
+        });
+        label.setAttribute('for', id);
+
+        const wrapper = rcEl('div', {
+            className: col + ' rc-filter-col',
+            children: [label, control],
+        });
 
         container.appendChild(wrapper);
 
-        // ربط أحداث لوحة المفاتيح بعد إدراج DOM (لحقول اختيار الحساب فقط)
         if (filter.type === 'account') {
             const textInput = wrapper.querySelector(`#${id}-text`);
             if (textInput) {
@@ -335,26 +375,33 @@ function rcRenderFilters() {
         }
     });
 
-    // أزرار تطبيق / إعادة تعيين
-    const actions = document.createElement('div');
-    actions.className = 'col-md-2';
-    actions.innerHTML = `
-        <div class="d-flex gap-1">
-            <button type="button" class="btn btn-sm btn-primary flex-grow-1" id="rcBtnApply">
-                <i class="bi bi-funnel"></i> تطبيق
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="rcBtnReset"
-                    title="إعادة تعيين الفلاتر">
-                <i class="bi bi-x-lg"></i>
-            </button>
-        </div>`;
+    const applyBtn = rcEl('button', {
+        className: 'btn btn-sm btn-primary flex-grow-1',
+        children: [rcIcon('bi-funnel'), rcEl('span', { text: ' تطبيق' })],
+    });
+    applyBtn.type = 'button';
+    applyBtn.id = 'rcBtnApply';
+    applyBtn.addEventListener('click', () => rcRun(1));
 
-    container.appendChild(actions);
+    const resetBtn = rcEl('button', {
+        className: 'btn btn-sm btn-outline-secondary',
+        title: 'إعادة تعيين الفلاتر',
+        children: [rcIcon('bi-x-lg')],
+    });
+    resetBtn.type = 'button';
+    resetBtn.id = 'rcBtnReset';
+    resetBtn.addEventListener('click', rcResetFilters);
 
-    document.getElementById('rcBtnApply').addEventListener('click', () => rcRun(1));
-    document.getElementById('rcBtnReset').addEventListener('click', rcResetFilters);
+    const actionRow = rcEl('div', {
+        className: 'd-flex gap-1',
+        children: [applyBtn, resetBtn],
+    });
 
-    // Enter في أي حقل نصي/تاريخ → تشغيل التقرير (خارج حقل المودال)
+    container.appendChild(rcEl('div', {
+        className: 'col-md-2',
+        children: [actionRow],
+    }));
+
     container.querySelectorAll('input[type="text"]:not([data-picker-open]), input[type="date"]').forEach((input) => {
         input.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
@@ -368,14 +415,11 @@ function rcRenderFilters() {
 function rcCollectFilters() {
     const def = rcActiveDef();
     const params = {};
-
     if (!def || !def.filters) return params;
 
     def.filters.forEach((filter) => {
         if (filter.hidden) return;
-
         const element = document.getElementById(`rcf-${filter.key}`);
-
         if (element && element.value !== '') {
             params[filter.key] = element.value;
         }
@@ -386,16 +430,12 @@ function rcCollectFilters() {
 
 function rcResetFilters() {
     const def = rcActiveDef();
-
     if (!def || !def.filters) return;
 
     def.filters.forEach((filter) => {
         const element = document.getElementById(`rcf-${filter.key}`);
-
         if (element) {
             element.value = filter.value ?? '';
-
-            // حقل عرض المودال (إن وُجد) يتبع إعادة التعيين
             const pickerText = document.getElementById(`rcf-${filter.key}-text`);
             if (pickerText) pickerText.value = '';
         }
@@ -405,43 +445,48 @@ function rcResetFilters() {
 }
 
 /* ════════════════════════════════════════════════════════
-   5) جلب البيانات وتشغيل التقرير
+   5) جلب البيانات
    ════════════════════════════════════════════════════════ */
 
 function rcSetLoading(isLoading) {
     const button = document.getElementById('rcBtnRun');
-
     button.disabled = isLoading;
-    button.innerHTML = isLoading
-        ? '<span class="spinner-border spinner-border-sm me-1"></span> جاري التحميل...'
-        : '<i class="bi bi-play-circle"></i> عرض';
+
+    if (isLoading) {
+        const spinner = rcEl('span', { className: 'spinner-border spinner-border-sm me-1' });
+        const text = rcEl('span', { text: ' جاري التحميل...' });
+        button.replaceChildren(spinner, text);
+    } else {
+        button.replaceChildren(
+            rcIcon('bi-play-circle'),
+            rcEl('span', { text: ' عرض' })
+        );
+    }
 }
 
 function rcShowMessage(message) {
-    document.getElementById('rcTableHead').innerHTML = '';
-    document.getElementById('rcTableFoot').innerHTML = '';
-    document.getElementById('rcTableBody').innerHTML = `
-        <tr>
-            <td class="rc-empty text-center text-muted py-4">
-                <i class="bi bi-info-circle fs-5 d-block mb-1"></i>
-                ${rcEscape(message)}
-            </td>
-        </tr>`;
-    document.getElementById('rcPagination').innerHTML = '';
+    document.getElementById('rcTableHead').replaceChildren();
+    document.getElementById('rcTableFoot').replaceChildren();
+
+    const body = document.getElementById('rcTableBody');
+    const icon = rcIcon('bi-info-circle fs-5 d-block mb-1');
+    const text = rcEl('span', { text: message });
+    const cell = rcEl('td', {
+        className: 'rc-empty text-center text-muted py-4',
+        children: [icon, text],
+    });
+    body.replaceChildren(rcEl('tr', { children: [cell] }));
+
+    document.getElementById('rcPagination').replaceChildren();
     document.getElementById('rcRowCount').textContent = '—';
-    document.getElementById('rcTotals').innerHTML = '';
+    document.getElementById('rcTotals').replaceChildren();
 }
 
 async function rcRun(page = 1) {
     const def = rcActiveDef();
-
     if (!def) return;
 
-    // إلغاء أي طلب سابق
-    if (RC.controller) {
-        RC.controller.abort();
-    }
-
+    if (RC.controller) RC.controller.abort();
     RC.controller = new AbortController();
 
     const params = { ...rcCollectFilters(), page };
@@ -473,7 +518,6 @@ async function rcRun(page = 1) {
         const searchInput = document.getElementById('rcQuickSearch');
         if (searchInput) searchInput.value = '';
 
-        // رسالة إرشادية من التقرير (مثل: اختر الحساب أولاً)
         if (RC.meta.message && RC.rows.length === 0) {
             rcShowMessage(RC.meta.message);
             return;
@@ -494,7 +538,7 @@ async function rcRun(page = 1) {
 }
 
 /* ════════════════════════════════════════════════════════
-   6) شرائح الإجماليات (KPI chips)
+   6) شرائح الإجماليات
    ════════════════════════════════════════════════════════ */
 
 function rcRenderTotals() {
@@ -502,26 +546,35 @@ function rcRenderTotals() {
     const entries = Object.entries(RC.totals || {});
 
     if (entries.length === 0) {
-        container.innerHTML = '';
+        container.replaceChildren();
         return;
     }
 
-    container.innerHTML = entries
-        .map(([key, value]) => {
-            const column = RC.columns.find((c) => c.key === key);
-            const label = column ? column.label : key;
+    const chips = entries.map(([key, value]) => {
+        const column = RC.columns.find((c) => c.key === key);
+        const label = column ? column.label : key;
 
-            return `
-                <div class="rc-kpi">
-                    <small class="rc-kpi-label">${rcEscape(label)}</small>
-                    <span class="rc-kpi-value ${rcAmountClass(column || { key }, value)}">${rcFormatMoney(value)}</span>
-                </div>`;
-        })
-        .join('');
+        const labelEl = rcEl('small', {
+            className: 'rc-kpi-label',
+            text: label,
+        });
+
+        const valueEl = rcEl('span', {
+            className: `rc-kpi-value ${rcAmountClass(column || { key }, value)}`,
+            text: rcFormatMoney(value),
+        });
+
+        return rcEl('div', {
+            className: 'rc-kpi',
+            children: [labelEl, valueEl],
+        });
+    });
+
+    container.replaceChildren(...chips);
 }
 
 /* ════════════════════════════════════════════════════════
-   7) جدول التقرير
+   7) الجدول
    ════════════════════════════════════════════════════════ */
 
 function rcAlignClass(column) {
@@ -531,12 +584,10 @@ function rcAlignClass(column) {
 }
 
 function rcAmountClass(column, value) {
-    // حماية من null/undefined/''/صفر (نص أو رقم)
     if (value === null || value === undefined || value === '') return '';
     const num = Number(value);
     if (isNaN(num) || num === 0) return '';
 
-    // R2/M5: الأولوية لحقل color الصريح (metadata من تعريف التقرير)
     if (column.color === 'red') return 'amount-red';
     if (column.color === 'green') return 'amount-green';
 
@@ -547,26 +598,28 @@ function rcAmountClass(column, value) {
     return '';
 }
 
-function rcFormatCell(column, value) {
-    if (value === null || value === undefined || value === '') {
-        return '<span class="text-muted">—</span>';
-    }
-
+function rcFormatCellText(column, value) {
+    if (value === null || value === undefined || value === '') return '—';
     switch (column.type) {
         case 'money':
             return rcFormatMoney(value);
         case 'number':
             return rcFormatNumber(value);
         default:
-            return rcEscape(value);
+            return String(value);
     }
+}
+
+function rcFormatCell(column, value) {
+    if (value === null || value === undefined || value === '') {
+        return rcEl('span', { className: 'text-muted', text: '—' });
+    }
+    return document.createTextNode(rcFormatCellText(column, value));
 }
 
 function rcVisibleRows() {
     if (!RC.quickSearch) return RC.rows;
-
     const term = RC.quickSearch.toLowerCase();
-
     return RC.rows.filter((row) =>
         Object.values(row).some((value) =>
             String(value ?? '').toLowerCase().includes(term)
@@ -576,7 +629,6 @@ function rcVisibleRows() {
 
 function rcSortedRows() {
     const rows = [...rcVisibleRows()];
-
     if (!RC.sort.key) return rows;
 
     const column = RC.columns.find((c) => c.key === RC.sort.key);
@@ -586,11 +638,9 @@ function rcSortedRows() {
     return rows.sort((a, b) => {
         const left = a[RC.sort.key];
         const right = b[RC.sort.key];
-
         if (isNumeric) {
             return ((Number(left) || 0) - (Number(right) || 0)) * dir;
         }
-
         return String(left ?? '').localeCompare(String(right ?? ''), 'ar') * dir;
     });
 }
@@ -598,15 +648,54 @@ function rcSortedRows() {
 function rcIsStatementMulti() {
     return RC.activeKey === 'account-statement'
         && !RC.sort.key
+        && !RC.quickSearch
         && Array.isArray(RC.meta.accounts)
         && RC.meta.accounts.length > 1;
 }
 
-function rcRenderStatementRows(rows) {
+function rcBuildDataRow(row) {
+    const tds = RC.columns.map((column) => {
+        const className = `${rcAlignClass(column)} ${rcAmountClass(column, row[column.key])}`.trim();
+        return rcEl('td', {
+            className,
+            children: [rcFormatCell(column, row[column.key])],
+        });
+    });
+
+    return rcEl('tr', { children: tds });
+}
+
+function rcBuildGroupHeaderRow(acc) {
+    const folderIcon = rcIcon('bi-folder2-open me-2');
+    const label = rcEl('span', {
+        className: 'fw-bold',
+        children: [folderIcon, document.createTextNode(`${acc.code} - ${acc.name}`)],
+    });
+
+    const meta = rcEl('span', {
+        className: 'text-muted small',
+        text: `${acc.rows_count} حركة — ختامي: ${rcFormatMoney(acc.closing)}`,
+    });
+
+    const inner = rcEl('div', {
+        className: 'd-flex justify-content-between align-items-center',
+        children: [label, meta],
+    });
+
+    const td = rcEl('td', { children: [inner] });
+    td.setAttribute('colspan', String(RC.columns.length));
+
+    const tr = rcEl('tr', { className: 'rc-statement-group-header', children: [td] });
+    return tr;
+}
+
+function rcRenderStatementRows(rows, tbody) {
+    const fragment = document.createDocumentFragment();
+
     if (!rcIsStatementMulti()) {
-        return rows.map(r => '<tr>' + RC.columns.map(c =>
-            '<td class="' + rcAlignClass(c) + ' ' + rcAmountClass(c, r[c.key]) + '">' + rcFormatCell(c, r[c.key]) + '</td>'
-        ).join('') + '</tr>').join('');
+        rows.forEach((row) => fragment.appendChild(rcBuildDataRow(row)));
+        tbody.replaceChildren(fragment);
+        return;
     }
 
     const groups = new Map();
@@ -617,100 +706,67 @@ function rcRenderStatementRows(rows) {
         groups.get(id).push(row);
     }
 
-    const accMap = new Map((RC.meta.accounts || []).map(a => [a.id, a]));
-    let html = '';
+    const accList = Array.isArray(RC.meta.accounts) ? RC.meta.accounts : [];
+    const accMap = new Map(accList.map((a) => [a.id, a]));
 
     for (const id of order) {
         const acc = accMap.get(id);
         if (acc) {
-            html += '<tr class="rc-statement-group-header"><td colspan="' + RC.columns.length + '">' +
-                '<div class="d-flex justify-content-between align-items-center">' +
-                '<span class="fw-bold"><i class="bi bi-folder2-open me-2"></i>' + rcEscape(acc.code) + ' - ' + rcEscape(acc.name) + '</span>' +
-                '<span class="text-muted small">' + acc.rows_count + ' حركة — ختامي: ' + rcFormatMoney(acc.closing) + '</span>' +
-                '</div></td></tr>';
+            fragment.appendChild(rcBuildGroupHeaderRow(acc));
         }
         for (const row of groups.get(id)) {
-            html += '<tr>' + RC.columns.map(c =>
-                '<td class="' + rcAlignClass(c) + ' ' + rcAmountClass(c, row[c.key]) + '">' + rcFormatCell(c, row[c.key]) + '</td>'
-            ).join('') + '</tr>';
+            fragment.appendChild(rcBuildDataRow(row));
         }
     }
-    return html;
+
+    tbody.replaceChildren(fragment);
 }
 
-function rcRenderTable() {
-    const head = document.getElementById('rcTableHead');
-    const body = document.getElementById('rcTableBody');
-    const foot = document.getElementById('rcTableFoot');
+function rcBuildTableHead() {
+    const thead = document.getElementById('rcTableHead');
+    const fragment = document.createDocumentFragment();
 
-    // ── الرأس (قابل للترتيب) ──
-    head.innerHTML = `<tr>${RC.columns
-        .map((column) => {
-            const active = RC.sort.key === column.key;
-            const icon = active
-                ? (RC.sort.dir === 'asc' ? 'bi-sort-up' : 'bi-sort-down')
-                : 'bi-arrow-down-up rc-sort-icon';
+    RC.columns.forEach((column) => {
+        const active = RC.sort.key === column.key;
+        const iconCls = active
+            ? (RC.sort.dir === 'asc' ? 'bi-sort-up' : 'bi-sort-down')
+            : 'bi-arrow-down-up rc-sort-icon';
 
-            return `<th class="${rcAlignClass(column)} rc-sortable"
-                        data-sort-key="${rcEscape(column.key)}"
-                        title="ترتيب حسب ${rcEscape(column.label)}">
-                        ${rcEscape(column.label)}
-                        <i class="bi ${icon} ms-1"></i>
-                    </th>`;
-        })
-        .join('')}</tr>`;
+        const icon = rcIcon(iconCls + ' ms-1');
+        const label = document.createTextNode(column.label + ' ');
 
-    head.querySelectorAll('th[data-sort-key]').forEach((th) => {
+        const th = rcEl('th', {
+            className: `${rcAlignClass(column)} rc-sortable`,
+            title: `ترتيب حسب ${column.label}`,
+            children: [label, icon],
+        });
+        th.dataset.sortKey = column.key;
+
         th.addEventListener('click', () => {
             const key = th.dataset.sortKey;
-
             if (RC.sort.key === key) {
                 RC.sort.dir = RC.sort.dir === 'asc' ? 'desc' : 'asc';
             } else {
                 RC.sort = { key, dir: 'asc' };
             }
-
             rcRenderTable();
         });
+
+        fragment.appendChild(th);
     });
 
-    // M2: سقف عرض للجدول (500) — الفلترة/الترتيب على الكل ثم القصّ لتسريع الرسم
-    const RC_MAX_TABLE_ROWS = 500;
-    const allRows = rcSortedRows();
-    const totalRows = allRows.length;
-    const rows = totalRows > RC_MAX_TABLE_ROWS
-        ? allRows.slice(0, RC_MAX_TABLE_ROWS)
-        : allRows;
+    thead.replaceChildren(rcEl('tr', { children: Array.from(fragment.children) }));
+}
 
-    if (rows.length === 0) {
-        body.innerHTML = `
-            <tr>
-                <td class="rc-empty text-center text-muted py-4" colspan="${RC.columns.length}">
-                    <i class="bi bi-inbox fs-5 d-block mb-1"></i>
-                    لا توجد نتائج
-                </td>
-            </tr>`;
-    } else {
-        body.innerHTML = rcRenderStatementRows(rows);
-
-        // M2: رسالة سقف العرض — تحت الجدول (العدّاد في rcRenderPagination يبقى الكامل)
-        if (totalRows > RC_MAX_TABLE_ROWS) {
-            body.innerHTML += `<tr><td colspan="${RC.columns.length}" class="text-center text-muted small py-2">
-                تُعرض أول ${RC_MAX_TABLE_ROWS} من ${totalRows} نتيجة — طبّق فلاتر للوصول لبقية الصفوف.
-                (الطباعة والتصدير يشملان كل الصفوف)
-            </td></tr>`;
-        }
-    }
-
-    // ── تذييل الإجماليات ──
+function rcBuildTableFoot() {
+    const foot = document.getElementById('rcTableFoot');
     const hasFooter = RC.columns.some((column) => column.footer && column.footer !== 'none');
 
     if (!hasFooter) {
-        foot.innerHTML = '';
+        foot.replaceChildren();
         return;
     }
 
-    // B: عدد الأعمدة غير الرقمية الرائدة — خانة "الإجمالي" تجمعها
     let labelSpan = 0;
     while (
         labelSpan < RC.columns.length &&
@@ -720,32 +776,80 @@ function rcRenderTable() {
         labelSpan++;
     }
 
-    const labelCell = labelSpan > 0
-        ? `<td colspan="${labelSpan}" class="text-end fw-bold">الإجمالي</td>`
-        : '';
+    const cells = [];
 
-    foot.innerHTML = `<tr class="rc-tfoot">${labelCell}${RC.columns
-        .slice(labelSpan)
-        .map((column) => {
-            if (!column.footer || column.footer === 'none') {
-                return '<td></td>';
-            }
+    if (labelSpan > 0) {
+        const labelTd = rcEl('td', {
+            className: 'text-end fw-bold',
+            text: 'الإجمالي',
+        });
+        labelTd.setAttribute('colspan', String(labelSpan));
+        cells.push(labelTd);
+    }
 
-            let value = RC.totals[column.key];
+    RC.columns.slice(labelSpan).forEach((column) => {
+        if (!column.footer || column.footer === 'none') {
+            cells.push(rcEl('td'));
+            return;
+        }
 
-            if (value === undefined || value === null) {
-                // M3: footer='last' بلا totals (وضع متعدد كشف الحساب)
-                // مطابقة لسلوك print.blade.php ("—")
-                return column.footer === 'last' ? '<td>—</td>' : '<td></td>';
-            }
+        let value = RC.totals[column.key];
 
-            const formatted = column.footer === 'sum' && column.type === 'number'
-                ? rcFormatNumber(value)
-                : rcFormatMoney(value);
+        if (value === undefined || value === null) {
+            cells.push(rcEl('td', {
+                text: column.footer === 'last' ? '—' : '',
+            }));
+            return;
+        }
 
-            return `<td class="${rcAlignClass(column)} fw-bold ${rcAmountClass(column, value)}">${formatted}</td>`;
-        })
-        .join('')}</tr>`;
+        const formatted = column.footer === 'sum' && column.type === 'number'
+            ? rcFormatNumber(value)
+            : rcFormatMoney(value);
+
+        cells.push(rcEl('td', {
+            className: `${rcAlignClass(column)} fw-bold ${rcAmountClass(column, value)}`.trim(),
+            text: formatted,
+        }));
+    });
+
+    foot.replaceChildren(rcEl('tr', { className: 'rc-tfoot', children: cells }));
+}
+
+function rcRenderTable() {
+    rcBuildTableHead();
+
+    const body = document.getElementById('rcTableBody');
+
+    const RC_MAX_TABLE_ROWS = 500;
+    const allRows = rcSortedRows();
+    const totalRows = allRows.length;
+    const rows = totalRows > RC_MAX_TABLE_ROWS
+        ? allRows.slice(0, RC_MAX_TABLE_ROWS)
+        : allRows;
+
+    if (rows.length === 0) {
+        const icon = rcIcon('bi-inbox fs-5 d-block mb-1');
+        const text = document.createTextNode('لا توجد نتائج');
+        const td = rcEl('td', {
+            className: 'rc-empty text-center text-muted py-4',
+            children: [icon, text],
+        });
+        td.setAttribute('colspan', String(RC.columns.length));
+        body.replaceChildren(rcEl('tr', { children: [td] }));
+    } else {
+        rcRenderStatementRows(rows, body);
+
+        if (totalRows > RC_MAX_TABLE_ROWS) {
+            const notice = rcEl('td', {
+                className: 'text-center text-muted small py-2',
+                text: `تُعرض أول ${RC_MAX_TABLE_ROWS} من ${totalRows} نتيجة — طبّق فلاتر للوصول لبقية الصفوف. (الطباعة والتصدير يشملان كل الصفوف)`,
+            });
+            notice.setAttribute('colspan', String(RC.columns.length));
+            body.appendChild(rcEl('tr', { children: [notice] }));
+        }
+    }
+
+    rcBuildTableFoot();
 }
 
 /* ════════════════════════════════════════════════════════
@@ -757,12 +861,19 @@ function rcRenderPagination() {
     const pagination = RC.meta.pagination;
     const visible = rcVisibleRows().length;
 
-    document.getElementById('rcRowCount').textContent = pagination
-        ? `عدد النتائج: ${pagination.total} صفاً`
-        : `عدد النتائج: ${visible} صفاً`;
+    let counterText;
+    if (RC.quickSearch) {
+        const totalKnown = pagination ? pagination.total : RC.rows.length;
+        counterText = `عدد النتائج (بعد البحث السريع): ${visible} من ${totalKnown} صفاً`;
+    } else if (pagination) {
+        counterText = `عدد النتائج: ${pagination.total} صفاً`;
+    } else {
+        counterText = `عدد النتائج: ${visible} صفاً`;
+    }
+    document.getElementById('rcRowCount').textContent = counterText;
 
     if (!pagination || pagination.last_page <= 1) {
-        container.innerHTML = '';
+        container.replaceChildren();
         return;
     }
 
@@ -770,45 +881,54 @@ function rcRenderPagination() {
     const from = (current - 1) * perPage + 1;
     const to = Math.min(current * perPage, total);
 
-    // نافذة الصفحات (5 صفحات حول الحالية)
     const start = Math.max(1, Math.min(current - 2, last - 4));
     const end = Math.min(last, start + 4);
 
-    let pages = '';
+    const info = rcEl('small', {
+        className: 'text-muted',
+        text: `عرض ${from} – ${to} من ${total}`,
+    });
 
+    const prevLi = rcEl('li', { className: `page-item ${current <= 1 ? 'disabled' : ''}` });
+    const prevLink = rcEl('a', { className: 'page-link', children: [rcIcon('bi-chevron-right')] });
+    prevLink.href = '#';
+    prevLink.dataset.page = String(current - 1);
+    prevLi.appendChild(prevLink);
+
+    const pageLis = [];
     for (let page = start; page <= end; page += 1) {
-        pages += `
-            <li class="page-item ${page === current ? 'active' : ''}">
-                <a class="page-link" href="#" data-page="${page}">${page}</a>
-            </li>`;
+        const li = rcEl('li', { className: `page-item ${page === current ? 'active' : ''}` });
+        const a = rcEl('a', { className: 'page-link', text: String(page) });
+        a.href = '#';
+        a.dataset.page = String(page);
+        li.appendChild(a);
+        pageLis.push(li);
     }
 
-    container.innerHTML = `
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <small class="text-muted">عرض ${from} – ${to} من ${total}</small>
-            <nav>
-                <ul class="pagination pagination-sm mb-0">
-                    <li class="page-item ${current <= 1 ? 'disabled' : ''}">
-                        <a class="page-link" href="#" data-page="${current - 1}">
-                            <i class="bi bi-chevron-right"></i>
-                        </a>
-                    </li>
-                    ${pages}
-                    <li class="page-item ${current >= last ? 'disabled' : ''}">
-                        <a class="page-link" href="#" data-page="${current + 1}">
-                            <i class="bi bi-chevron-left"></i>
-                        </a>
-                    </li>
-                </ul>
-            </nav>
-        </div>`;
+    const nextLi = rcEl('li', { className: `page-item ${current >= last ? 'disabled' : ''}` });
+    const nextLink = rcEl('a', { className: 'page-link', children: [rcIcon('bi-chevron-left')] });
+    nextLink.href = '#';
+    nextLink.dataset.page = String(current + 1);
+    nextLi.appendChild(nextLink);
+
+    const ul = rcEl('ul', {
+        className: 'pagination pagination-sm mb-0',
+        children: [prevLi, ...pageLis, nextLi],
+    });
+
+    const nav = rcEl('nav', { children: [ul] });
+
+    const wrap = rcEl('div', {
+        className: 'd-flex justify-content-between align-items-center flex-wrap gap-2',
+        children: [info, nav],
+    });
+
+    container.replaceChildren(wrap);
 
     container.querySelectorAll('a[data-page]').forEach((link) => {
         link.addEventListener('click', (event) => {
             event.preventDefault();
-
             const page = parseInt(link.dataset.page, 10);
-
             if (!Number.isNaN(page) && page >= 1 && page <= last && page !== current) {
                 rcRun(page);
             }
@@ -821,27 +941,18 @@ function rcRenderPagination() {
    ════════════════════════════════════════════════════════ */
 
 function rcPrint() {
-    const def = rcActiveDef();
-
-    if (!def) return;
-
-    const url = rcEndpoint(RC.config.urls.print, def.key, rcCollectFilters());
-
-    window.open(url, '_blank', 'noopener');
+    rcOpenPrintPreview();
 }
 
 function rcExport() {
     const def = rcActiveDef();
-
     if (!def) return;
-
     const url = rcEndpoint(RC.config.urls.export, def.key, rcCollectFilters());
-
     window.location.href = url;
 }
 
 /* ════════════════════════════════════════════════════════
-   10) التبديل بين التقارير (بدون إعادة تحميل)
+   10) تبديل التقرير
    ════════════════════════════════════════════════════════ */
 
 function rcSwitchReport(key) {
@@ -851,12 +962,10 @@ function rcSwitchReport(key) {
     RC.sort = { key: null, dir: 'asc' };
     RC.quickSearch = '';
 
-    // تحديث الرابط في المتصفح بدون إعادة تحميل
     const url = new URL(window.location.href);
     url.searchParams.set('report', key);
     window.history.replaceState({}, '', url);
 
-    // تحديث القائمة الجانبية للشاشة
     document.querySelectorAll('.rc-report-item').forEach((button) => {
         button.classList.toggle('active', button.dataset.reportKey === key);
     });
@@ -866,8 +975,6 @@ function rcSwitchReport(key) {
 
     rcRenderHeader();
     rcRenderFilters();
-
-    // هيكل تحميل فوري — يُظهر استجابة بصرية قبل وصول البيانات
     rcShowSkeleton();
     rcRun(1);
 }
@@ -887,7 +994,6 @@ function rcInit() {
     RC.definitions = RC.config.definitions;
     RC.activeKey = RC.config.activeKey || RC.definitions[0].key;
 
-    // أزرار الشريط العلوي
     const btnRun = document.getElementById('rcBtnRun');
     const btnPrint = document.getElementById('rcBtnPrint');
     const btnExport = document.getElementById('rcBtnExport');
@@ -896,16 +1002,13 @@ function rcInit() {
     if (btnPrint) btnPrint.addEventListener('click', rcPrint);
     if (btnExport) btnExport.addEventListener('click', rcExport);
 
-    // قائمة التقارير (التبديل الديناميكي)
     document.querySelectorAll('.rc-report-item').forEach((button) => {
         button.addEventListener('click', () => rcSwitchReport(button.dataset.reportKey));
     });
 
-    // البحث السريع داخل النتائج المعروضة (M2: debounce 250ms — نفس نمط rcPickerSearchTimer)
     const searchInput = document.getElementById('rcQuickSearch');
     if (searchInput) {
         let rcQuickSearchTimer = null;
-
         searchInput.addEventListener('input', () => {
             clearTimeout(rcQuickSearchTimer);
             rcQuickSearchTimer = setTimeout(() => {
@@ -916,34 +1019,25 @@ function rcInit() {
         });
     }
 
-    // ── مودال اختيار الحساب: فتح/مسح (تفويض — يتحمل إعادة بناء الفلاتر) ──
     document.getElementById('rcFilters').addEventListener('click', (event) => {
         const openTrigger = event.target.closest('[data-picker-open]');
-
         if (openTrigger) {
             const hiddenId = openTrigger.dataset.pickerOpen;
             const mode = openTrigger.dataset.pickerMode || 'all';
-            // نمرّر ما كتبه المستخدم ليُطبَّق كفلترة أولية داخل المودال (يتطابق مع مسار Enter)
             const textInput = openTrigger.matches('input[type="text"]')
                 ? openTrigger
                 : document.getElementById(`${hiddenId}-text`);
-
             rcOpenAccountPicker(hiddenId, mode, textInput ? textInput.value : '');
             return;
         }
 
         const clearTrigger = event.target.closest('[data-picker-clear]');
-
         if (clearTrigger) {
-            const hiddenId = clearTrigger.dataset.pickerClear;
-            // AC-E3 / BR-E10: المسح يفتح القفل أيضاً
-            rcCancelPicker(hiddenId);
+            rcCancelPicker(clearTrigger.dataset.pickerClear);
         }
     });
 
-    // ── مودال الدليل: البحث (مرة واحدة — المودال ثابت في DOM) ──
     const rcPickerModalEl = document.getElementById('rcAccountPickerModal');
-
     if (rcPickerModalEl) {
         document.getElementById('rcPickerSearch')?.addEventListener('input', () => {
             clearTimeout(rcPickerSearchTimer);
@@ -959,11 +1053,9 @@ function rcInit() {
             rcRenderPickerList();
         });
 
-        // BR-E10 / AC-E3: إغلاق المودال بـ ESC أو زر X → مسح + فتح القفل
         rcPickerModalEl.addEventListener('hidden.bs.modal', () => {
             RC.pickerIsOpen = false;
             if (RC.pickerTargetId && !RC.pickerSelectionMade) {
-                // لم يتم اختيار → إذا الحقل فارغ، أبقِه فارغاً وافتح القفل
                 const hidden = document.getElementById(RC.pickerTargetId);
                 const text = document.getElementById(`${RC.pickerTargetId}-text`);
                 if (hidden && !hidden.value && text) {
@@ -974,15 +1066,19 @@ function rcInit() {
         });
     }
 
-    rcRenderHeader();
+    document.addEventListener('keydown', function (e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+            if (!RC.activeKey) return;
+            e.preventDefault();
+            rcOpenPrintPreview();
+        }
+    });
 
-    // ── 1) شاشة فورية: عنوان + فلاتر + هيكل تحميل + تشغيل البيانات ──
-    //    البيانات والمصادر تُطلبان معاً بالتوازي بدل انتظار أحدهما للآخر.
+    rcRenderHeader();
     rcRenderFilters();
     rcShowSkeleton();
     rcRun(1);
 
-    // ── 2) المصادر: بالتوازي، وتُحدِّث القوائم المنسدلة عند وصولها ──
     rcLoadSources().then(() => {
         if (RC.sources && Object.keys(RC.sources).length > 0) {
             rcHydrateSelects();
@@ -990,9 +1086,6 @@ function rcInit() {
     });
 }
 
-/**
- * هيكل تحميل مؤقت — يمنع الإحساس بشاشة ميتة/بيضاء أثناء جلب البيانات.
- */
 function rcShowSkeleton() {
     const head = document.getElementById('rcTableHead');
     const body = document.getElementById('rcTableBody');
@@ -1001,37 +1094,29 @@ function rcShowSkeleton() {
 
     const span = (def && def.columns && def.columns.length) || 4;
 
-    head.innerHTML = `<tr>${Array.from({ length: span })
-        .map(() => '<th class="rc-skeleton-cell">&nbsp;</th>')
-        .join('')}</tr>`;
+    const ths = Array.from({ length: span }).map(() =>
+        rcEl('th', { className: 'rc-skeleton-cell', text: '\u00A0' })
+    );
+    head.replaceChildren(rcEl('tr', { children: ths }));
+    foot.replaceChildren();
 
-    foot.innerHTML = '';
-
-    body.innerHTML = Array.from({ length: 5 })
-        .map(() => `<tr>${Array.from({ length: span })
-            .map(() => '<td class="rc-skeleton-cell">&nbsp;</td>')
-            .join('')}</tr>`)
-        .join('');
+    const trs = Array.from({ length: 5 }).map(() => {
+        const tds = Array.from({ length: span }).map(() =>
+            rcEl('td', { className: 'rc-skeleton-cell', text: '\u00A0' })
+        );
+        return rcEl('tr', { children: tds });
+    });
+    body.replaceChildren(...trs);
 }
 
 /* ════════════════════════════════════════════════════════
-   12) مودال اختيار الحساب — دليل الحسابات (خاص بالشاشة)
-   ════════════════════════════════════════════════════════
-   مودال مستقل تماماً عن النظام الموحّد (shared/lookup):
-   - بيانات تُحمَّل مرة واحدة (sessionStorage + كاش الخادم)
-   - بحث محلي — بلا أي طلب شبكة أثناء الاستخدام
-   - يُملأ الحقل المخفي rcf-{key} (رقم الحساب) الذي يقرأه
-     rcCollectFilters — فيعمل العرض والطباعة والتصدير كما كانت
+   12) مودال اختيار الحساب
    ════════════════════════════════════════════════════════ */
 
 const RC_PICKER_CACHE_KEY = 'rc.picker.v1';
 const RC_PICKER_MAX_RENDER = 300;
 let rcPickerSearchTimer = null;
 
-/**
- * حقل الفلتر: مخفي (رقم الحساب) + حقل نصي قابل للكتابة يفتح المودال بـ Enter.
- * معرّف الحقل المخفي هو ما يلتقطه rcCollectFilters.
- */
 function rcBuildAccountPicker(filter, id) {
     const isParent = filter.mode === 'parent' || filter.key === 'account_parent';
     const isChild = filter.mode === 'child';
@@ -1039,49 +1124,55 @@ function rcBuildAccountPicker(filter, id) {
     const placeholder = isParent
         ? 'اكتب أو اضغط Enter لاختيار الحساب الرئيسي...'
         : (isChild ? 'اكتب أو اضغط Enter لاختيار حساب...' : 'اكتب أو اضغط Enter لاختيار حساباً...');
-    const disabled = isChild ? ' disabled' : '';
 
-    return `
-        <input type="hidden" id="${id}" value="${rcEscape(filter.value ?? '')}">
-        <div class="input-group input-group-sm">
-            <input type="text"
-                   class="form-control"
-                   id="${id}-text"
-                   data-picker-open="${id}"
-                   data-picker-mode="${mode}"
-                   placeholder="${placeholder}"
-                   autocomplete="off"${disabled}>
-            <button type="button"
-                    class="btn btn-outline-secondary"
-                    data-picker-open="${id}"
-                    data-picker-mode="${mode}"
-                    title="اختيار حساب"${disabled}>
-                <i class="bi bi-search"></i>
-            </button>
-            <button type="button"
-                    class="btn btn-outline-secondary"
-                    data-picker-clear="${id}"
-                    title="مسح الاختيار">
-                <i class="bi bi-x-lg"></i>
-            </button>
-        </div>`;
+    const hidden = rcEl('input');
+    hidden.type = 'hidden';
+    hidden.id = id;
+    hidden.value = filter.value ?? '';
+
+    const text = rcEl('input', { className: 'form-control', attrs: { autocomplete: 'off' } });
+    text.type = 'text';
+    text.id = `${id}-text`;
+    text.dataset.pickerOpen = id;
+    text.dataset.pickerMode = mode;
+    text.placeholder = placeholder;
+    if (isChild) text.disabled = true;
+
+    const searchBtn = rcEl('button', {
+        className: 'btn btn-outline-secondary',
+        title: 'اختيار حساب',
+        children: [rcIcon('bi-search')],
+    });
+    searchBtn.type = 'button';
+    searchBtn.dataset.pickerOpen = id;
+    searchBtn.dataset.pickerMode = mode;
+    if (isChild) searchBtn.disabled = true;
+
+    const clearBtn = rcEl('button', {
+        className: 'btn btn-outline-secondary',
+        title: 'مسح الاختيار',
+        children: [rcIcon('bi-x-lg')],
+    });
+    clearBtn.type = 'button';
+    clearBtn.dataset.pickerClear = id;
+
+    const group = rcEl('div', {
+        className: 'input-group input-group-sm',
+        children: [text, searchBtn, clearBtn],
+    });
+
+    const wrapper = rcEl('div', { children: [hidden, group] });
+    return wrapper;
 }
 
-/**
- * فتح المودال — تحميل كسول أولاً (مرة واحدة لكل جلسة).
- * mode: 'parent' (الأبواب + صف الكل) | 'child' (أبناء الأب فقط) | 'all' (الكل)
- * initialSearch: نص أولي يُملأ في حقل بحث المودال (يعكس ما كتبه المستخدم)
- */
 async function rcOpenAccountPicker(hiddenId, mode = 'all', initialSearch = '') {
     const modalEl = document.getElementById('rcAccountPickerModal');
-
     if (!modalEl) return;
 
     RC.pickerTargetId = hiddenId;
-    RC.pickerSelectionMade = false; // إعادة تعيين قبل كل فتح
+    RC.pickerSelectionMade = false;
     RC.pickerIsOpen = true;
 
-    // وضع child يتطلب أباً مختاراً — تقييد بالدليل المؤهل تحته فقط
     if (mode === 'child') {
         const parent = rcReadParentChoice();
         const scope = rcChildrenOfParent(parent);
@@ -1101,7 +1192,6 @@ async function rcOpenAccountPicker(hiddenId, mode = 'all', initialSearch = '') {
         RC.pickerScopeKey = null;
     }
 
-    // فتح بحالة نظيفة: تعبئة بحث بما كتبه المستخدم
     const search = document.getElementById('rcPickerSearch');
     if (search) search.value = initialSearch.trim();
 
@@ -1111,48 +1201,31 @@ async function rcOpenAccountPicker(hiddenId, mode = 'all', initialSearch = '') {
     modal.show();
 
     await rcLoadPickerAccounts();
-
-    // رسم القائمة (مع تطبيق نص البحث الأولي إن وُجد)
     rcRenderPickerList();
 
     setTimeout(() => document.getElementById('rcPickerSearch')?.focus(), 250);
 }
 
-/**
- * قراءة اختيار الأب الحالي من حقول الفلاتر.
- */
 function rcReadParentChoice() {
     const el = document.getElementById('rcf-account_parent');
     return el ? (el.value || '') : '';
 }
 
-/**
- * أبناء الأب المباشرين من كاش المودال (الحسابات تحمل accParent).
- */
 function rcChildrenOfParent(parent) {
     if (!parent || parent === 'all') return (RC.pickerAccounts || []).slice();
-
-    // API يرسل parent (وليس accParent) — نقبل الاثنين للتوافق
     return (RC.pickerAccounts || []).filter(
-        (a) => String(a.parent ?? a.accParent ?? '') === String(parent)
+        (a) => String(a.parent ?? '') === String(parent)
     );
 }
 
-/**
- * تحميل الحسابات مرة واحدة فقط:
- * - نسخة فورية من sessionStorage (بلا شبكة).
- * - يُعاد الوعد نفسه لكل الاستدعاءات المتزامنة (منع الطلبات المكرّرة).
- */
 function rcLoadPickerAccounts() {
     if (RC.pickerAccounts) return Promise.resolve(RC.pickerAccounts);
     if (RC.pickerPromise) return RC.pickerPromise;
 
     try {
         const raw = sessionStorage.getItem(RC_PICKER_CACHE_KEY);
-
         if (raw) {
             const cached = JSON.parse(raw);
-            // الكاش القديم قد يكون مصفوفة مباشرة (قبل التحديث)
             if (Array.isArray(cached)) {
                 RC.pickerAccounts = cached;
             } else {
@@ -1162,30 +1235,23 @@ function rcLoadPickerAccounts() {
             }
             return Promise.resolve(RC.pickerAccounts);
         }
-    } catch {
-        /* ذاكرة ممتلئة أو محجوبة — نتجاهل */
-    }
+    } catch { /* ignore */ }
 
     RC.pickerPromise = fetch(RC.config.urls.accounts, {
         headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' },
     })
-        .then((response) => response.json())
+        .then((r) => r.json())
         .then((payload) => {
-            // API الجديد يرسل: { success, accounts, parents, eligible, tree, cached_at }
             RC.pickerAccounts = payload.accounts || payload.eligible || payload.data || [];
             RC.pickerParents = payload.parents || [];
             RC.pickerTree = payload.tree || [];
-
             try {
                 sessionStorage.setItem(RC_PICKER_CACHE_KEY, JSON.stringify({
                     accounts: RC.pickerAccounts,
                     parents: RC.pickerParents,
                     tree: RC.pickerTree,
                 }));
-            } catch {
-                /* نتجاهل */
-            }
-
+            } catch { /* ignore */ }
             return RC.pickerAccounts;
         })
         .catch((error) => {
@@ -1195,9 +1261,7 @@ function rcLoadPickerAccounts() {
             RC.pickerTree = [];
             return RC.pickerAccounts;
         })
-        .finally(() => {
-            RC.pickerPromise = null;
-        });
+        .finally(() => { RC.pickerPromise = null; });
 
     return RC.pickerPromise;
 }
@@ -1205,25 +1269,24 @@ function rcLoadPickerAccounts() {
 function rcRenderPickerLoading() {
     const body = document.getElementById('rcPickerBody');
     const empty = document.getElementById('rcPickerEmpty');
-    const template = document.getElementById('rcPickerLoadingTemplate');
+    if (!body) return;
 
-    if (!body || !template) return;
+    const spinner = rcEl('span', { className: 'spinner-border spinner-border-sm me-2' });
+    const text = rcEl('span', { text: 'جارٍ التحميل...' });
+    const cell = rcEl('td', {
+        className: 'text-center text-muted py-3',
+        children: [spinner, text],
+    });
+    cell.setAttribute('colspan', '2');
 
-    body.replaceChildren(template.content.cloneNode(true));
+    body.replaceChildren(rcEl('tr', { children: [cell] }));
     if (empty) empty.style.display = 'none';
 }
 
-/**
- * رسم القائمة — تصفية محلية بالبحث (بلا شبكة).
- * وضع parent: يعرض الأبواب المباشرين + صف "كل الحسابات" أولاً.
- * وضع child: يعرض أبناء الأب فقط.
- */
 function rcRenderPickerList() {
     const body = document.getElementById('rcPickerBody');
     const empty = document.getElementById('rcPickerEmpty');
-    const template = document.getElementById('rcPickerRowTemplate');
-
-    if (!body || !template) return;
+    if (!body) return;
 
     const search = (document.getElementById('rcPickerSearch')?.value || '').trim();
     const isParentMode = RC.pickerMode === 'parent';
@@ -1246,73 +1309,63 @@ function rcRenderPickerList() {
         );
     }
 
-    body.replaceChildren();
-
     const fragment = document.createDocumentFragment();
+    let visibleCount = 0;
 
-    // صف "كل الحسابات التفصيلية" — أول القائمة في وضع parent (بلا بحث)
     if (isParentMode && search === '') {
-        const allRow = template.content.cloneNode(true);
-        const allTr = allRow.querySelector('tr');
-        const allCode = allRow.querySelector('.rc-picker-code');
-        const allName = allRow.querySelector('.rc-picker-name');
-
-        if (allTr) allTr.classList.add('table-success', 'fw-bold');
-        if (allCode) allCode.textContent = '★';
-        if (allName) allName.textContent = 'كل الحسابات التفصيلية';
-
-        allTr.addEventListener('click', () => rcSelectPickerAll());
-        fragment.appendChild(allRow);
+        const codeCell = rcEl('td', { className: 'rc-picker-code', text: '★' });
+        const nameCell = rcEl('td', { className: 'rc-picker-name', text: 'كل الحسابات التفصيلية' });
+        const tr = rcEl('tr', {
+            className: 'table-success fw-bold',
+            children: [codeCell, nameCell],
+        });
+        tr.addEventListener('click', () => rcSelectPickerAll());
+        fragment.appendChild(tr);
+        visibleCount++;
     }
-
-    if (empty) empty.style.display = (rows.length === 0 && fragment.childNodes.length === 0) ? '' : 'none';
 
     rows.slice(0, RC_PICKER_MAX_RENDER).forEach((account) => {
-        const row = template.content.cloneNode(true);
-        const tr = row.querySelector('tr');
-        const codeEl = row.querySelector('.rc-picker-code');
-        const nameEl = row.querySelector('.rc-picker-name');
-
-        if (codeEl) codeEl.textContent = account.accCode ?? '—';
-        if (nameEl) nameEl.textContent = account.accName ?? '—';
-
+        const codeCell = rcEl('td', {
+            className: 'rc-picker-code',
+            text: account.accCode ?? '—',
+        });
+        const nameCell = rcEl('td', {
+            className: 'rc-picker-name',
+            text: account.accName ?? '—',
+        });
+        const tr = rcEl('tr', {
+            children: [codeCell, nameCell],
+        });
         tr.addEventListener('click', () => rcSelectPickerRow(account));
-
-        fragment.appendChild(row);
+        fragment.appendChild(tr);
+        visibleCount++;
     });
 
-    // سطر تلميحي عند تجاوز الحد — حفاظاً على سرعة الرسم
     if (rows.length > RC_PICKER_MAX_RENDER) {
-        const hint = document.createElement('tr');
-        hint.innerHTML = `<td colspan="2" class="text-center text-muted py-2 small">
-                يُعرض ${RC_PICKER_MAX_RENDER} من ${rows.length} — اكتب للبحث
-            </td>`;
-        fragment.appendChild(hint);
+        const hint = rcEl('td', {
+            className: 'text-center text-muted py-2 small',
+            text: `يُعرض ${RC_PICKER_MAX_RENDER} من ${rows.length} — اكتب للبحث`,
+        });
+        hint.setAttribute('colspan', '2');
+        fragment.appendChild(rcEl('tr', { children: [hint] }));
     }
 
-    body.appendChild(fragment);
+    body.replaceChildren(fragment);
+    if (empty) empty.style.display = visibleCount === 0 ? '' : 'none';
 }
 
-/**
- * الأبواب القابلة للاختيار (وضع parent):
- * يستخدم قائمة الآباء من API إن توفرت (أدق — بيانات مباشرة من الخادم).
- * Fallback: اشتقاقها من حقل parent للحسابات المؤهلة.
- */
 function rcPickerParents() {
-    // أفضل: استخدام بيانات الآباء من API (أسماء وأكواد صحيحة)
     if (RC.pickerParents && RC.pickerParents.length > 0) {
         return RC.pickerParents.slice();
     }
 
-    // Fallback: اشتقاق الآباء من الحسابات المؤهلة (الطريقة القديمة)
     const rows = RC.pickerAccounts || [];
     const byId = new Map();
     const order = [];
 
     rows.forEach((account) => {
-        const pid = account.parent ?? account.accParent ?? null;
+        const pid = account.parent ?? null;
         if (pid === null || pid === '') return;
-
         const key = String(pid);
         if (!byId.has(key)) {
             order.push(key);
@@ -1320,9 +1373,8 @@ function rcPickerParents() {
         }
     });
 
-    // الاسم/الكود من أول ابن
     rows.forEach((account) => {
-        const pid = String(account.parent ?? account.accParent ?? '');
+        const pid = String(account.parent ?? '');
         if (byId.has(pid) && !byId.get(pid).accCode) {
             byId.get(pid).accCode = account.accCode ?? '';
             byId.get(pid).accName = account.accName ?? '';
@@ -1332,10 +1384,6 @@ function rcPickerParents() {
     return order.map((id) => byId.get(id));
 }
 
-/**
- * اختيار "كل الحسابات التفصيلية" — القيمة 'all' تدخل الحقل المخفي،
- * ويقرأها الخادم (parentRaw === 'all') كنطاق كامل.
- */
 function rcSelectPickerAll() {
     const hiddenId = RC.pickerTargetId;
     if (!hiddenId) return;
@@ -1346,29 +1394,21 @@ function rcSelectPickerAll() {
     if (hidden) hidden.value = 'all';
     if (text) text.value = 'كل الحسابات التفصيلية';
 
-    // ث1: تغيير الأب → مسح النطاق (من/إلى) + تفعيل حقول الأبناء
     rcClearChildRange(hiddenId);
-
-    // BR-E8: رفع علامة المخزون (الكل ليس مخزوناً)
     document.body.classList.remove('rc-empty-parent');
 
-    // تسجيل الاختيار + فتح القفل
     RC.pickerSelectionMade = true;
     rcUnlockFilters();
 
     const modalEl = document.getElementById('rcAccountPickerModal');
     if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
 
-    // AC-E13: التركيز يبقى في الحقل النصي بعد الاختيار
     setTimeout(() => {
         const textInput = document.getElementById(`${hiddenId}-text`);
         if (textInput) textInput.focus();
     }, 50);
 }
 
-/**
- * ث1: مسح حقلَي النطاق (from/to) — يُستدعى عند تغيير الأب أو اختيار "الكل".
- */
 function rcClearChildRange(parentHiddenId) {
     ['rcf-account_from', 'rcf-account_to'].forEach((childId) => {
         const childHidden = document.getElementById(childId);
@@ -1376,7 +1416,6 @@ function rcClearChildRange(parentHiddenId) {
 
         if (childHidden) {
             childHidden.value = '';
-            // إعادة تفعيل حقلي النطاق بعد اختيار الأب
             if (childId !== parentHiddenId) {
                 childHidden.removeAttribute('disabled');
                 const textInput = document.getElementById(`${childId}-text`);
@@ -1391,9 +1430,6 @@ function rcClearChildRange(parentHiddenId) {
     });
 }
 
-/**
- * الاختيار: رقم الحساب في الحقل المخفي + العرض في الحقل الظاهر.
- */
 function rcSelectPickerRow(account) {
     const hiddenId = RC.pickerTargetId;
     if (!hiddenId) return;
@@ -1404,35 +1440,28 @@ function rcSelectPickerRow(account) {
     if (hidden) hidden.value = account.accountID;
     if (text) text.value = `${account.accCode ?? ''} - ${account.accName ?? ''}`.trim();
 
-    // BR-E8: فحص المخزون — إذا كان الحساب المختار مخزوناً
     if (rcIsInventoryAccount(account)) {
         document.body.classList.add('rc-empty-parent');
     } else {
         document.body.classList.remove('rc-empty-parent');
     }
 
-    // ث1: تغيير الأب → مسح حقلَي النطاق (from/to) تلقائياً
     if (RC.pickerMode === 'parent') {
         rcClearChildRange(hiddenId);
     }
 
-    // تسجيل الاختيار + فتح القفل
     RC.pickerSelectionMade = true;
     rcUnlockFilters();
 
     const modalEl = document.getElementById('rcAccountPickerModal');
     if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
 
-    // AC-E13: التركيز يبقى في الحقل النصي بعد الاختيار
     setTimeout(() => {
         const textInput = document.getElementById(`${hiddenId}-text`);
         if (textInput) textInput.focus();
     }, 50);
 }
 
-/**
- * تعطيل حقلَي النطاق (from/to) — عند اختيار أب جديد أو إلغاء الاختيار.
- */
 function rcDisableChildFields() {
     ['rcf-account_from', 'rcf-account_to'].forEach((childId) => {
         const childHidden = document.getElementById(childId);
@@ -1447,29 +1476,17 @@ function rcDisableChildFields() {
     });
 }
 
-/**
- * هل المودال مفتوح حالياً؟ (يُستخدم لمنع حلقة blur/focus)
- */
 function rcIsPickerOpen() {
     return RC.pickerIsOpen === true;
 }
 
-/**
- * BR-E6: قفل كل حقول الفلتر ما عدا العمود النشط وأزرار الإجراءات.
- * يُضيف كلاساً على body ويُخفّف العناصر المقيّدة عبر CSS.
- */
 function rcLockFilters(activeColWrapper) {
     document.body.classList.add('rc-filter-locked');
-
-    // تمييز العمود النشط بكلاس خاص لإعفائه من القفل
     document.querySelectorAll('.rc-filter-col').forEach((col) => {
         col.classList.toggle('rc-active-col', col === activeColWrapper);
     });
 }
 
-/**
- * BR-E6: فتح قفل الفلاتر وإزالة كلاس العمود النشط.
- */
 function rcUnlockFilters() {
     document.body.classList.remove('rc-filter-locked');
     document.querySelectorAll('.rc-filter-col').forEach((col) => {
@@ -1477,9 +1494,6 @@ function rcUnlockFilters() {
     });
 }
 
-/**
- * AC-E3 / BR-E10: إلغاء اختيار الحقل (ESC أو زر المسح) — يمسح + يفتح القفل.
- */
 function rcCancelPicker(hiddenId) {
     if (!hiddenId) return;
 
@@ -1493,27 +1507,16 @@ function rcCancelPicker(hiddenId) {
     RC.pickerSelectionMade = false;
     rcUnlockFilters();
 
-    // إذا كان الحقل أباً → عطّل حقول النطاق أيضاً
     if (hiddenId === 'rcf-account_parent') {
         rcDisableChildFields();
     }
 }
 
-/**
- * ربط أحداث لوحة المفاتيح والفأرة بحقل الاختيار النصي.
- * AC-E1: Enter → فتح المودال بنص الحقل فلتراً.
- * AC-E2: Tab أثناء الكتابة → محظور.
- * AC-E3: ESC → مسح + فتح القفل.
- * AC-E6: الكتابة → قفل باقي الحقول.
- * AC-E12: نقرة مزدوجة على حقل ممتلئ → إعادة فتح المودال.
- */
 function rcAttachPickerFieldEvents(textInput, hiddenId, mode) {
     if (!textInput) return;
 
-    // البحث عن العمود الحاوي (لتمييزه أثناء القفل)
     const colWrapper = textInput.closest('.rc-filter-col');
 
-    // ── الكتابة: قفل الفلاتر الأخرى ──
     textInput.addEventListener('input', () => {
         if (textInput.value.trim().length > 0) {
             rcLockFilters(colWrapper);
@@ -1522,9 +1525,7 @@ function rcAttachPickerFieldEvents(textInput, hiddenId, mode) {
         }
     });
 
-    // ── لوحة المفاتيح ──
     textInput.addEventListener('keydown', (e) => {
-        // IME support (BR-E11)
         if (e.isComposing) return;
 
         if (e.key === 'Enter') {
@@ -1534,20 +1535,17 @@ function rcAttachPickerFieldEvents(textInput, hiddenId, mode) {
         }
 
         if (e.key === 'Tab' && textInput.value.trim().length > 0) {
-            // AC-E2: منع Tab أثناء الكتابة
             e.preventDefault();
             return;
         }
 
         if (e.key === 'Escape') {
-            // AC-E3: ESC يمسح + يفتح القفل
             e.preventDefault();
             rcCancelPicker(hiddenId);
             return;
         }
     });
 
-    // ── نقرة مزدوجة: إعادة الفتح ──
     textInput.addEventListener('dblclick', () => {
         const hidden = document.getElementById(hiddenId);
         if (hidden && hidden.value) {
@@ -1555,7 +1553,6 @@ function rcAttachPickerFieldEvents(textInput, hiddenId, mode) {
         }
     });
 
-    // ── blur: إبقاء التركيز في الحقل المملوء ما دام المودال مغلقاً (يمنع الحلقة عبر rcIsPickerOpen) ──
     textInput.addEventListener('blur', () => {
         if (textInput.value.length > 0 && !rcIsPickerOpen()) {
             setTimeout(() => textInput.focus(), 0);
@@ -1563,17 +1560,10 @@ function rcAttachPickerFieldEvents(textInput, hiddenId, mode) {
     });
 }
 
-/**
- * BR-E8: هل الحساب ينتمي لمجموعة المخزون؟
- * يفحص system_key في بيانات الشجرة المخزّرة.
- */
 function rcIsInventoryAccount(account) {
     if (!account) return false;
-
-    // فحص مباشر
     if (account.system_key === 'inventory') return true;
 
-    // فحص عبر الشجرة (pickerTree)
     if (RC.pickerTree && RC.pickerTree.length > 0) {
         const byId = new Map(RC.pickerTree.map((a) => [String(a.accountID), a]));
         let current = byId.get(String(account.accountID));
@@ -1590,10 +1580,12 @@ function rcIsInventoryAccount(account) {
     return false;
 }
 
-// ✅ التهيئة الصحيحة — تعمل سواء كان DOM جاهزاً أم لا
+/* ════════════════════════════════════════════════════════
+   13) التهيئة الأولية
+   ════════════════════════════════════════════════════════ */
+
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', rcInit);
 } else {
-    // DOM جاهز بالفعل (Vite module يُحمَّل بعد DOMContentLoaded)
     rcInit();
 }

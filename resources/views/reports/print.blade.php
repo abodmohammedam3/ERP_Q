@@ -6,6 +6,8 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
+        html, body { height: 100%; }
+
         body {
             font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
             font-size: 11pt;
@@ -14,6 +16,8 @@
             background: #fff;
             padding: 15px;
             padding-bottom: 60px;
+            position: relative;
+            min-height: 297mm;
         }
 
         /* Header */
@@ -86,10 +90,10 @@
         }
 
         /* ══════════════════════════════════════════════════════════
-           Footer — ثابت أسفل الصفحة (نفس تذييل فاتورة البيع/الشراء)
+           Footer — أسفل الصفحة
            ══════════════════════════════════════════════════════════ */
         .footer {
-            position: fixed;
+            position: absolute;
             bottom: 0;
             left: 0;
             right: 0;
@@ -103,18 +107,18 @@
             font-weight: 600;
             z-index: 100;
         }
-        .footer-left {
+        .footer-right {
             text-align: right;
             color: #6c757d;
             flex: 1;
         }
         .footer-center {
             text-align: center;
-            color: #6c757d;
+            color: #0d6efd;
+            font-weight: 700;
             flex: 1;
         }
-        /* المستخدم — أخضر */
-        .footer-right {
+        .footer-left {
             text-align: left;
             color: #198754;
             font-weight: 700;
@@ -137,11 +141,19 @@
 
         /* ═══════════════ Print-specific rules ═══════════════ */
         @media print {
+            html, body { height: auto; }
+
+            body {
+                padding: 0;
+                padding-bottom: 40px;
+                position: relative;
+                min-height: 277mm;   /* ← A4 (297mm) − هامشان (10mm × 2) */
+            }
+
             .no-print { display: none !important; }
-            body { padding-bottom: 40px; }
 
             .footer {
-                position: fixed;
+                position: absolute;
                 bottom: 0;
                 left: 0;
                 right: 0;
@@ -156,18 +168,27 @@
             }
         }
 
-        /* ═══════════════ Amount colors (Fix #7) ═══════════════ */
-        .amount-debit  { color: #dc3545; font-weight: 600; } /* مدين */
-        .amount-credit { color: #198754; font-weight: 600; } /* دائن */
-        .amount-pos    { color: #198754; font-weight: 600; } /* رصيد موجب */
-        .amount-neg    { color: #dc3545; font-weight: 600; } /* رصيد سالب */
-
-        /* R2/M5: ألوان من حقل column.color الصريح */
+        /* ═══════════════ Amount colors ═══════════════ */
+        .amount-debit  { color: #dc3545; font-weight: 600; }
+        .amount-credit { color: #198754; font-weight: 600; }
+        .amount-pos    { color: #198754; font-weight: 600; }
+        .amount-neg    { color: #dc3545; font-weight: 600; }
         .amount-red    { color: #dc3545; font-weight: 600; }
         .amount-green  { color: #198754; font-weight: 600; }
     </style>
 </head>
 <body>
+
+@php
+    // ══════ فلتر البحث السريع (يُمرَّر من JS عبر _q) ══════
+    $quickQuery = trim((string) ($filters['_q'] ?? ''));
+    if ($quickQuery !== '') {
+        $rows = array_values(array_filter($rows, function ($r) use ($quickQuery) {
+            $haystack = mb_strtolower(implode(' ', array_map(fn ($v) => (string) $v, $r)));
+            return mb_strpos($haystack, mb_strtolower($quickQuery)) !== false;
+        }));
+    }
+@endphp
 
 {{-- Header --}}
 <div class="header">
@@ -178,7 +199,6 @@
     </div>
     <div class="header-left">
         <div class="meta-line">تاريخ الطباعة: {{ now()->format('Y-m-d H:i') }}</div>
-        {{-- B1: الإجمالي الحقيقي من meta (يشمل كل الصفوف في الطباعة) مع احتياطي count($rows) --}}
         <div class="meta-line">عدد السجلات: {{ data_get($meta, 'pagination.total', count($rows)) }}</div>
     </div>
 </div>
@@ -187,17 +207,20 @@
 @php
     $filterLabels = collect($report->filters())->pluck('label', 'key');
     $applied = collect($filters)
-        ->except(['page'])
+        ->except(['page', '_q'])
         ->filter(fn ($value, $key) => $value !== '' && $value !== null && $filterLabels->has($key));
 @endphp
 
-@if ($applied->isNotEmpty())
+@if ($applied->isNotEmpty() || $quickQuery !== '')
     <div class="filters-bar">
         @foreach ($applied as $key => $value)
             <span class="filter-chip">
                 {{ $filterLabels[$key] }}: {{ $value }}
             </span>
         @endforeach
+        @if ($quickQuery !== '')
+            <span class="filter-chip">بحث: {{ $quickQuery }}</span>
+        @endif
     </div>
 @endif
 
@@ -221,7 +244,6 @@
                             ? 'text-end'
                             : ($type === 'date' ? '' : 'text-start');
 
-                        // Fix #7 + R2/M5 — لون خلية المبلغ: color الصريح أولاً ثم مفتاح العمود
                         $amountClass = '';
                         if ($value !== null && $value !== '' && (float) $value != 0) {
                             if (($column['color'] ?? '') === 'red') {
@@ -267,7 +289,6 @@
                         $totalValue = $totals[$column['key']] ?? null;
                         $alignClass = in_array($column['type'] ?? '', ['money', 'number']) ? 'text-end' : '';
 
-                        // Fix #7 + R2/M5 — لون خلية المبلغ في الإجماليات: color الصريح أولاً ثم مفتاح العمود
                         $amountClass = '';
                         if ($totalValue !== null && (float) $totalValue != 0) {
                             if (($column['color'] ?? '') === 'red') {
@@ -318,11 +339,11 @@
     <div class="signature">مدير الحسابات</div>
 </div>
 
-{{-- التذييل — نفس تذييل فاتورة البيع/الشراء --}}
+{{-- التذييل — أسفل الصفحة --}}
 <div class="footer">
-    <span class="footer-left">جميع الحقوق محفوظة لشركة بيتاسيس ©</span>
-    <span class="footer-center">{{ now()->format('Y-m-d') }}</span>
-    <span class="footer-right">المستخدم: {{ auth()->user()?->name ?? 'مدير النظام' }}</span>
+    <span class="footer-right">جميع الحقوق محفوظة لشركة بيتاسيس ©</span>
+    <span class="footer-center">صفحة 1</span>
+    <span class="footer-left">المستخدم: {{ auth()->user()?->name ?? 'مدير النظام' }}</span>
 </div>
 
 {{-- أزرار الطباعة (لا تُطبع) --}}

@@ -181,7 +181,7 @@ class GeneralLedgerReport implements Report
                 'pagination' => [
                     'current_page' => $page,
                     'last_page'    => $lastPage,
-                    'per_page'     => self::PER_PAGE,
+                    'per_page'     => $perPage,
                     'total'        => $total,
                 ],
             ],

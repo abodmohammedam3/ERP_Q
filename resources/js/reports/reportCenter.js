@@ -595,6 +595,49 @@ function rcSortedRows() {
     });
 }
 
+function rcIsStatementMulti() {
+    return RC.activeKey === 'account-statement'
+        && !RC.sort.key
+        && Array.isArray(RC.meta.accounts)
+        && RC.meta.accounts.length > 1;
+}
+
+function rcRenderStatementRows(rows) {
+    if (!rcIsStatementMulti()) {
+        return rows.map(r => '<tr>' + RC.columns.map(c =>
+            '<td class="' + rcAlignClass(c) + ' ' + rcAmountClass(c, r[c.key]) + '">' + rcFormatCell(c, r[c.key]) + '</td>'
+        ).join('') + '</tr>').join('');
+    }
+
+    const groups = new Map();
+    const order = [];
+    for (const row of rows) {
+        const id = row._account_id;
+        if (!groups.has(id)) { groups.set(id, []); order.push(id); }
+        groups.get(id).push(row);
+    }
+
+    const accMap = new Map((RC.meta.accounts || []).map(a => [a.id, a]));
+    let html = '';
+
+    for (const id of order) {
+        const acc = accMap.get(id);
+        if (acc) {
+            html += '<tr class="rc-statement-group-header"><td colspan="' + RC.columns.length + '">' +
+                '<div class="d-flex justify-content-between align-items-center">' +
+                '<span class="fw-bold"><i class="bi bi-folder2-open me-2"></i>' + rcEscape(acc.code) + ' - ' + rcEscape(acc.name) + '</span>' +
+                '<span class="text-muted small">' + acc.rows_count + ' حركة — ختامي: ' + rcFormatMoney(acc.closing) + '</span>' +
+                '</div></td></tr>';
+        }
+        for (const row of groups.get(id)) {
+            html += '<tr>' + RC.columns.map(c =>
+                '<td class="' + rcAlignClass(c) + ' ' + rcAmountClass(c, row[c.key]) + '">' + rcFormatCell(c, row[c.key]) + '</td>'
+            ).join('') + '</tr>';
+        }
+    }
+    return html;
+}
+
 function rcRenderTable() {
     const head = document.getElementById('rcTableHead');
     const body = document.getElementById('rcTableBody');
@@ -648,16 +691,7 @@ function rcRenderTable() {
                 </td>
             </tr>`;
     } else {
-        body.innerHTML = rows
-            .map(
-                (row) => `<tr>${RC.columns
-                    .map(
-                        (column) =>
-                            `<td class="${rcAlignClass(column)} ${rcAmountClass(column, row[column.key])}">${rcFormatCell(column, row[column.key])}</td>`
-                    )
-                    .join('')}</tr>`
-            )
-            .join('');
+        body.innerHTML = rcRenderStatementRows(rows);
 
         // M2: رسالة سقف العرض — تحت الجدول (العدّاد في rcRenderPagination يبقى الكامل)
         if (totalRows > RC_MAX_TABLE_ROWS) {

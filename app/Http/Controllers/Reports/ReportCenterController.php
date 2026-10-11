@@ -312,6 +312,27 @@ class ReportCenterController extends Controller
         }
         $report = ReportRegistry::get($key);
 
+        $resolved = app(\App\Services\ReportViewResolver::class)->for($report, $result['meta']);
+
+        if ($resolved['mode'] === 'multi') {
+            $rowsByAcc = collect($result['rows'])->groupBy('_account_id');
+            $accounts = [];
+            foreach ($result['meta']['accounts'] ?? [] as $acc) {
+                $accounts[] = array_merge($acc, [
+                    'rows' => $rowsByAcc->get($acc['id'], collect())->all(),
+                ]);
+            }
+
+            return view('reports.multi-statement', [
+                'report'   => $report,
+                'columns'  => $result['columns'],
+                'accounts' => $accounts,
+                'meta'     => $result['meta'],
+                'filters'  => $request->query->all(),
+                'totals'   => $result['totals'],
+            ]);
+        }
+
         return view('reports.print', [
             'report'  => $report,
             'rows'    => $result['rows'],

@@ -103,6 +103,7 @@ class AccountStatementReport implements Report
             ['key' => 'date',         'label' => 'التاريخ',         'type' => 'date'],
             ['key' => 'doc_type',     'label' => 'نوع المستند',     'type' => 'text'],
             ['key' => 'doc_number',   'label' => 'رقم المستند',     'type' => 'text'],
+            ['key' => 'entry_no',     'label' => 'رقم القيد',       'type' => 'text'],
             ['key' => 'description',  'label' => 'البيان',          'type' => 'text'],
             ['key' => 'debit',        'label' => 'مدين',            'type' => 'money', 'footer' => 'sum'],
             ['key' => 'credit',       'label' => 'دائن',            'type' => 'money', 'footer' => 'sum'],
@@ -330,6 +331,7 @@ class AccountStatementReport implements Report
                     'date' => $dateFrom ?? '',
                     'doc_type' => 'opening',
                     'doc_number' => '',
+                    'entry_no' => '',
                     'description' => $isSingle ? '' : $accLabel,
                     'debit' => $openD,
                     'credit' => $openC,
@@ -361,6 +363,7 @@ class AccountStatementReport implements Report
                     'date' => $line->entryDate ? Carbon::parse($line->entryDate)->format('Y-m-d') : '',
                     'doc_type' => $line->docType ?? '',
                     'doc_number' => $line->docNumber ?? '',
+                    'entry_no' => $line->entryNo ?? '',
                     'description' => $line->description2 ?? '',
                     'debit' => $debit,
                     'credit' => $credit,
@@ -378,6 +381,7 @@ class AccountStatementReport implements Report
                     'date' => '',
                     'doc_type' => 'closing',
                     'doc_number' => '',
+                    'entry_no' => '',
                     'description' => 'رصيد ختامي',
                     'debit' => round($accDebit, 2),
                     'credit' => round($accCredit, 2),
@@ -394,6 +398,23 @@ class AccountStatementReport implements Report
             'accounts_count' => count($accountIds),
             'swapped' => $swapped,
         ];
+
+        $rowsByAcc = collect($rows)->groupBy('_account_id');
+        $meta['accounts'] = [];
+        foreach ($scope as $acc) {
+            $accId = (int) $acc['accountID'];
+            $accRows = $rowsByAcc->get($accId, collect());
+            if ($accRows->isEmpty()) continue;
+            $lastRow = $accRows->last();
+            $meta['accounts'][] = [
+                'id'         => $accId,
+                'code'       => $acc['accCode'],
+                'name'       => $acc['accName'],
+                'nature'     => (int) $acc['nature'],
+                'closing'    => round($lastRow['balance'] ?? 0, 2),
+                'rows_count' => $accRows->count(),
+            ];
+        }
 
         if (!$isSingle) {
             array_unshift($columns, ['key' => 'account', 'label' => 'الحساب', 'type' => 'text']);

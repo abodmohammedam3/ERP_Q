@@ -19,6 +19,10 @@ class Item extends Model
         'updated_by',
     ];
 
+    protected $casts = [
+        'is_active' => 'boolean',
+    ];
+
     // إذا أردت إضافة سكوب للأصناف النشطة
     public function scopeActive($query)
     {

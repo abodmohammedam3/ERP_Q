@@ -9,9 +9,8 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 /**
  * طلب إنشاء صنف.
  *
- * ملاحظة (قرار Q2): يُسمح بتكرار أسماء الأصناف —
- * لا قاعدة unique على التطبيق ولا على قاعدة البيانات
- * (يُضاف فهرس بحث فقط على itemName2 في الهجرة 2026_10_12_000001).
+ * قرار المستخدم: الإبقاء على قاعدة unique على itemName2
+ * (نقض قرار Q2 السابق «التكرار مسموح»).
  *
  * الشكل المرجعي للاستجابة عند الفشل موحّد مع عقد الواجهة الحالي:
  * { success: false, message: ..., errors: {...} } مع HTTP 422
@@ -27,7 +26,7 @@ class ItemStoreRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'itemName2' => ['required', 'string', 'max:255'],
+            'itemName2' => ['required', 'string', 'max:255', 'unique:Items,itemName2'],
         ];
     }
 
@@ -35,6 +34,7 @@ class ItemStoreRequest extends FormRequest
     {
         return [
             'itemName2.required' => 'اسم الصنف مطلوب',
+            'itemName2.unique'   => 'هذا الصنف موجود بالفعل',
             'itemName2.max'      => 'اسم الصنف لا يجوز أن يتجاوز 255 حرفاً',
         ];
     }

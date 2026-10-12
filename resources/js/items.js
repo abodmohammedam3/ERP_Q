@@ -6,6 +6,14 @@ let itemsData = [];
 let editingItemId = null;
 let deletingItemId = null;
 
+/* Pagination (limit 100 + بحث prefix من الخادم) */
+let itemsPage = 1;
+let itemsLastPage = 1;
+let itemsSearchTerm = '';
+
+/* بحث مؤجّل (Debounced) — يمنع طلب HTTP عند كل ضغطة مفتاح */
+let itemsSearchTimer = null;
+
 const itemsApi = {
     list: '/setting/inventory/items/list',
     store: '/setting/inventory/items',
@@ -24,14 +32,25 @@ const csrfToken = document
 
 async function loadItems() {
     try {
-        const res = await fetch(itemsApi.list, {
+        const params = new URLSearchParams({
+            page: itemsPage,
+        });
+
+        if (itemsSearchTerm) {
+            params.set('search', itemsSearchTerm);
+        }
+
+        const res = await fetch(`${itemsApi.list}?${params}`, {
             headers: { 'Accept': 'application/json' },
         });
         const json = await res.json();
 
         if (json.success) {
             itemsData = json.data || [];
-            renderItems();
+            itemsLastPage = json.meta?.last_page || 1;
+
+            renderItems(itemsData);
+            renderItemsPagination();
         }
     } catch (e) {
         console.error('خطأ في تحميل الأصناف:', e);
@@ -134,21 +153,63 @@ function renderItems(data) {
 
 function filterItems() {
 
-    const term =
-        document
-            .getElementById('searchItemInput')
-            ?.value
-            .trim()
-            .toLowerCase() || '';
+    /*
+     * ✅ بحث مؤجّل (Debounced) 300ms — نمط purchases.js:601-603
+     */
+    clearTimeout(itemsSearchTimer);
 
-    const filtered =
-        itemsData.filter(it =>
-            (it.itemName2 || '')
-                .toLowerCase()
-                .includes(term)
-        );
+    itemsSearchTimer = setTimeout(() => {
 
-    renderItems(filtered);
+        /* بحث prefix من الخادم — الوحدة هي النموذج المعياري */
+        itemsSearchTerm =
+            document
+                .getElementById('searchItemInput')
+                ?.value
+                .trim() || '';
+
+        itemsPage = 1;
+
+        loadItems();
+
+    }, 300);
+}
+
+/* =========================================================
+   Pagination
+========================================================= */
+
+function renderItemsPagination() {
+
+    const container =
+        document.getElementById('itemsPagination');
+
+    if (!container) return;
+
+    /* صفحة واحدة = لا نُظهر أزرار التنقل */
+    if (itemsLastPage <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+
+    let html = '';
+
+    for (let p = 1; p <= itemsLastPage; p++) {
+        html += `
+            <button type="button"
+                    class="btn btn-sm ${p === itemsPage ? 'btn-primary' : 'btn-outline-primary'}"
+                    onclick="goToItemPage(${p})">
+                ${p}
+            </button>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+async function goToItemPage(page) {
+
+    itemsPage = page;
+    await loadItems();
 }
 
 /* =========================================================
@@ -476,4 +537,5 @@ Object.assign(window, {
     printItems,
     filterItems,
     loadItems,
+    goToItemPage,
 });

@@ -15,3 +15,6 @@
         </div>
     </div>
 </div>
+
+{{-- أزرار التنقل بين الصفحات (limit 100 لكل صفحة) --}}
+<div class="d-flex gap-1 justify-content-center mb-3" id="itemsPagination"></div>

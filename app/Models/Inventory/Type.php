@@ -16,5 +16,7 @@ class Type extends Model
         'name',
         'code',
         'is_active',
+        'created_by',
+        'updated_by',
     ];
 }

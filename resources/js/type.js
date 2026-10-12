@@ -1,13 +1,15 @@
 /* =========================================================
-   شاشة أنواع الأصناف
+   شاشة أنواع الأصناف — نمط الوحدة 1 (بحث Prefix + ترقيم من الخادم)
 ========================================================= */
 
-let typeModalInstance;
-let currentTypeId = null;
-let allTypesData = [];
-let filteredTypesData = [];
-let currentPage = 1;
-const rowsPerPage = 5;
+let typesData = [];
+let editingTypeId = null;
+let deletingTypeId = null;
+
+/* Pagination (limit 100 + بحث prefix من الخادم) */
+let typesPage = 1;
+let typesLastPage = 1;
+let typesSearchTerm = '';
 
 const typeApi = {
     list: '/setting/inventory/types/list',
@@ -22,327 +24,195 @@ const csrfToken = document
     ?.getAttribute('content') || '';
 
 /* =========================================================
-   التهيئة الأولية
+   تحميل البيانات
 ========================================================= */
 
-document.addEventListener('DOMContentLoaded', function () {
-
-    const modalElement = document.getElementById('typeModal');
-    if (modalElement) {
-        typeModalInstance = new bootstrap.Modal(modalElement);
-    }
-
-    /*
-     * قراءة البيانات الأولية من الجدول
-     * (يعتمد على data-* الموجودة في Blade)
-     */
-    const rows =
-        document.querySelectorAll('#typesTableBody tr.type-row');
-
-    if (rows.length > 0) {
-
-        rows.forEach(row => {
-
-            allTypesData.push({
-                id: parseInt(row.dataset.id, 10),
-                name: row.dataset.name || '',
-                code: row.dataset.code || null,
-                is_active: row.dataset.active === '1' ? 1 : 0,
-            });
+async function loadTypes() {
+    try {
+        const params = new URLSearchParams({
+            page: typesPage,
         });
 
-    } else {
+        if (typesSearchTerm) {
+            params.set('search', typesSearchTerm);
+        }
 
-        reloadTypesTable();
-        return;
+        const res = await fetch(`${typeApi.list}?${params}`, {
+            headers: { 'Accept': 'application/json' },
+        });
+        const json = await res.json();
+
+        if (json.success) {
+            typesData = json.data || [];
+            typesLastPage = json.meta?.last_page || 1;
+
+            renderTypes(typesData);
+            renderTypesPagination();
+
+            /* العدّاد = الإجمالي الحقيقي عبر الصفحات */
+            const badge = document.getElementById('typesCountBadge');
+            if (badge) {
+                badge.textContent = json.meta?.total ?? typesData.length;
+            }
+        }
+    } catch (e) {
+        console.error('خطأ في تحميل الأنواع:', e);
     }
-
-    filteredTypesData = [...allTypesData];
-    applyFiltersAndRender();
-});
+}
 
 /* =========================================================
    عرض الجدول
 ========================================================= */
 
-function renderTypes(types) {
+function renderTypes(data) {
 
-    const tbody =
-        document.getElementById('typesTableBody');
+    const list = Array.isArray(data)
+        ? data
+        : typesData;
 
+    const tbody = document.getElementById('typesTableBody');
     if (!tbody) return;
 
-    tbody.innerHTML = '';
-
-    const start = (currentPage - 1) * rowsPerPage;
-    const end = Math.min(start + rowsPerPage, types.length);
-    const pageTypes = types.slice(start, end);
-
     /* ---------- حالة: لا توجد بيانات ---------- */
-    if (pageTypes.length === 0) {
+    if (!list.length) {
 
-        const emptyTpl =
-            document.getElementById('emptyTypeRowTemplate');
+        const emptyTpl = document.getElementById('emptyTypeRowTemplate');
+
+        tbody.innerHTML = '';
 
         if (emptyTpl) {
-            tbody.appendChild(
-                emptyTpl.content.cloneNode(true)
-            );
+            tbody.appendChild(emptyTpl.content.cloneNode(true));
         }
 
         return;
     }
 
     /* ---------- حالة: يوجد بيانات ---------- */
-    const rowTpl =
-        document.getElementById('typeRowTemplate');
-
-    const codeBadgeTpl =
-        document.getElementById('typeCodeBadgeTemplate');
-
-    const codeDashTpl =
-        document.getElementById('typeCodeDashTemplate');
+    const rowTpl = document.getElementById('typeRowTemplate');
+    const codeBadgeTpl = document.getElementById('typeCodeBadgeTemplate');
+    const codeDashTpl = document.getElementById('typeCodeDashTemplate');
 
     if (!rowTpl) return;
 
-    const fragment =
-        document.createDocumentFragment();
+    const fragment = document.createDocumentFragment();
 
-    pageTypes.forEach((type, index) => {
+    list.forEach((type, i) => {
 
-        const serial = start + index + 1;
-        const isActive = type.is_active == 1;
-
-        const rowFragment =
-            rowTpl.content.cloneNode(true);
-
-        const row =
-            rowFragment.querySelector('tr');
+        const rowFragment = rowTpl.content.cloneNode(true);
+        const row = rowFragment.querySelector('tr');
+        const isAct = !!type.is_active;
 
         /* بيانات الصف (data-*) */
         row.dataset.id = type.id;
         row.dataset.name = type.name;
         row.dataset.code = type.code ?? '';
-        row.dataset.active = isActive ? 1 : 0;
+        row.dataset.active = isAct ? 1 : 0;
 
         /* الرقم التسلسلي واسم النوع */
-        row.querySelector('.row-index').textContent = serial;
+        row.querySelector('.row-index').textContent = i + 1;
         row.querySelector('.row-name').textContent = type.name;
 
-        /* خلية الرمز */
-        const codeCell =
-            row.querySelector('.row-code');
+        /* خلية الرمز (شارة أو —) */
+        const codeCell = row.querySelector('.row-code');
+        if (codeCell) {
+            codeCell.innerHTML = '';
 
-        if (type.code && codeBadgeTpl) {
-
-            const badgeFragment =
-                codeBadgeTpl.content.cloneNode(true);
-
-            badgeFragment.querySelector('span')
-                .textContent = type.code;
-
-            codeCell.appendChild(badgeFragment);
-
-        } else if (codeDashTpl) {
-
-            codeCell.appendChild(
-                codeDashTpl.content.cloneNode(true)
-            );
+            if (type.code && codeBadgeTpl) {
+                const badgeFragment = codeBadgeTpl.content.cloneNode(true);
+                badgeFragment.querySelector('span').textContent = type.code;
+                codeCell.appendChild(badgeFragment);
+            } else if (codeDashTpl) {
+                codeCell.appendChild(codeDashTpl.content.cloneNode(true));
+            }
         }
 
         /* زر الحالة */
-        const statusBtn =
-            row.querySelector('.toggle-status-btn');
-
-        statusBtn.classList.add(
-            isActive ? 'btn-success' : 'btn-secondary'
-        );
-
-        statusBtn.textContent =
-            isActive ? 'نشط' : 'غير نشط';
-
-        statusBtn.title =
-            isActive ? 'تعطيل' : 'تفعيل';
+        const statusBtn = row.querySelector('.toggle-status-btn');
+        statusBtn.classList.add(isAct ? 'btn-success' : 'btn-secondary');
+        statusBtn.textContent = isAct ? 'نشط' : 'غير نشط';
+        statusBtn.title = isAct ? 'تعطيل' : 'تفعيل';
 
         fragment.appendChild(rowFragment);
     });
 
+    tbody.innerHTML = '';
     tbody.appendChild(fragment);
 }
 
 /* =========================================================
-   تحديث عدد الأنواع
-========================================================= */
-
-function updateTypesCount(count) {
-
-    const badge =
-        document.getElementById('typesCountBadge');
-
-    if (badge) {
-        badge.innerText = count;
-    }
-}
-
-/* =========================================================
-   الترقيم
-========================================================= */
-
-function renderPagination(totalItems) {
-
-    const paginationList =
-        document.getElementById('typesPaginationList');
-
-    if (!paginationList) return;
-
-    paginationList.innerHTML = '';
-
-    const totalPages =
-        Math.ceil(totalItems / rowsPerPage);
-
-    if (totalPages <= 1) return;
-
-    const itemTpl =
-        document.getElementById('paginationItemTemplate');
-
-    const prevTpl =
-        document.getElementById('paginationPrevTemplate');
-
-    const nextTpl =
-        document.getElementById('paginationNextTemplate');
-
-    const fragment =
-        document.createDocumentFragment();
-
-    /* ---------- زر السابق ---------- */
-    if (prevTpl) {
-
-        const prevFragment =
-            prevTpl.content.cloneNode(true);
-
-        const prevLi =
-            prevFragment.querySelector('.page-item');
-
-        const prevBtn =
-            prevFragment.querySelector('.page-link');
-
-        prevBtn.dataset.page = currentPage - 1;
-
-        if (currentPage === 1) {
-
-            prevLi.classList.add('disabled');
-            prevBtn.disabled = true;
-        }
-
-        fragment.appendChild(prevFragment);
-    }
-
-    /* ---------- أرقام الصفحات ---------- */
-    if (itemTpl) {
-
-        for (let page = 1; page <= totalPages; page++) {
-
-            const pageFragment =
-                itemTpl.content.cloneNode(true);
-
-            const pageLi =
-                pageFragment.querySelector('.page-item');
-
-            const pageBtn =
-                pageFragment.querySelector('.page-link');
-
-            pageBtn.textContent = page;
-            pageBtn.dataset.page = page;
-
-            if (page === currentPage) {
-                pageLi.classList.add('active');
-            }
-
-            fragment.appendChild(pageFragment);
-        }
-    }
-
-    /* ---------- زر التالي ---------- */
-    if (nextTpl) {
-
-        const nextFragment =
-            nextTpl.content.cloneNode(true);
-
-        const nextLi =
-            nextFragment.querySelector('.page-item');
-
-        const nextBtn =
-            nextFragment.querySelector('.page-link');
-
-        nextBtn.dataset.page = currentPage + 1;
-
-        if (currentPage === totalPages) {
-
-            nextLi.classList.add('disabled');
-            nextBtn.disabled = true;
-        }
-
-        fragment.appendChild(nextFragment);
-    }
-
-    paginationList.appendChild(fragment);
-}
-
-/* =========================================================
-   البحث والتصفية
+   البحث (Prefix من الخادم — نمط الوحدة 1)
 ========================================================= */
 
 function filterTypes() {
 
-    const searchText =
+    typesSearchTerm =
         document
             .getElementById('searchTypeInput')
             ?.value
-            .toLowerCase()
             .trim() || '';
 
-    if (!searchText) {
+    typesPage = 1;
 
-        filteredTypesData = [...allTypesData];
-
-    } else {
-
-        filteredTypesData =
-            allTypesData.filter(type =>
-                (type.name || '')
-                    .toLowerCase()
-                    .includes(searchText)
-            );
-    }
-
-    currentPage = 1;
-    applyFiltersAndRender();
-}
-
-function applyFiltersAndRender() {
-
-    renderTypes(filteredTypesData);
-
-    updateTypesCount(filteredTypesData.length);
-
-    renderPagination(filteredTypesData.length);
+    loadTypes();
 }
 
 /* =========================================================
-   مودال الإضافة/التعديل
+   Pagination
+========================================================= */
+
+function renderTypesPagination() {
+
+    const container = document.getElementById('typesPaginationList');
+    if (!container) return;
+
+    /* صفحة واحدة = لا نُظهر أزرار التنقل */
+    if (typesLastPage <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+
+    let html = '';
+
+    for (let p = 1; p <= typesLastPage; p++) {
+        html += `
+            <li class="page-item ${p === typesPage ? 'active' : ''}">
+                <button type="button"
+                        class="page-link"
+                        onclick="goToTypePage(${p})">
+                    ${p}
+                </button>
+            </li>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+async function goToTypePage(page) {
+    typesPage = page;
+    await loadTypes();
+}
+
+/* =========================================================
+   فتح المودال (إضافة)
 ========================================================= */
 
 function openTypeModal() {
 
+    editingTypeId = null;
+
+    document.getElementById('typeModalLabel').innerHTML =
+        '<i class="bi bi-tags"></i> إضافة نوع';
+
     document.getElementById('typeForm').reset();
     document.getElementById('typeID').value = '';
 
-    currentTypeId = null;
+    const modal = bootstrap.Modal.getOrCreateInstance(
+        document.getElementById('typeModal'),
+        { focus: false }
+    );
 
-    document.getElementById('typeModalLabel').innerText =
-        'إضافة نوع جديد';
-
-    typeModalInstance?.show();
+    modal.show();
 }
 
 /* =========================================================
@@ -354,27 +224,28 @@ function editType(btn) {
     const row = btn.closest('tr');
     if (!row) return;
 
-    const id = parseInt(row.dataset.id, 10);
-    const name = row.dataset.name || '';
-    const code = row.dataset.code || '';
+    editingTypeId = row.dataset.id;
 
-    document.getElementById('typeID').value = id;
-    document.getElementById('typeName').value = name;
-    document.getElementById('typeCode').value = code;
+    document.getElementById('typeModalLabel').innerHTML =
+        '<i class="bi bi-pencil-square"></i> تعديل النوع';
 
-    currentTypeId = id;
+    document.getElementById('typeID').value = row.dataset.id;
+    document.getElementById('typeName').value = row.dataset.name || '';
+    document.getElementById('typeCode').value = row.dataset.code || '';
 
-    document.getElementById('typeModalLabel').innerText =
-        'تعديل بيانات النوع';
+    const modal = bootstrap.Modal.getOrCreateInstance(
+        document.getElementById('typeModal'),
+        { focus: false }
+    );
 
-    typeModalInstance?.show();
+    modal.show();
 }
 
 /* =========================================================
    حفظ
 ========================================================= */
 
-function saveType() {
+async function saveType() {
 
     const form = document.getElementById('typeForm');
 
@@ -383,310 +254,282 @@ function saveType() {
         return;
     }
 
-    const id = document.getElementById('typeID').value;
     const name = document.getElementById('typeName').value.trim();
     const code = document.getElementById('typeCode').value.trim();
 
-    const url =
-        id
-            ? typeApi.update(id)
-            : typeApi.store;
+    const isEdit = editingTypeId !== null;
 
-    const formData = new FormData();
-    formData.append('name', name);
-    if (code) formData.append('code', code);
-    if (id) formData.append('_method', 'PUT');
+    const payload = {
+        name: name,
+        code: code || null,
+    };
 
-    fetch(url, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': csrfToken,
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json',
-        },
-        body: formData,
-    })
-        .then(response =>
-            response
-                .json()
-                .then(data => ({ status: response.status, data }))
-        )
-        .then(({ status, data }) => {
+    const url = isEdit ? typeApi.update(editingTypeId) : typeApi.store;
+    const method = isEdit ? 'PUT' : 'POST';
 
-            if (status !== 200 || !data.success) {
-                throw new Error(
-                    data.message || 'حدث خطأ غير معروف'
-                );
-            }
+    try {
 
+        const res = await fetch(url, {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const json = await res.json();
+
+        if (!json.success) {
             showSystemToast(
-                data.message || 'تم حفظ النوع بنجاح',
-                'success'
-            );
-
-            typeModalInstance?.hide();
-            reloadTypesTable();
-        })
-        .catch(error => {
-
-            console.error('خطأ:', error);
-
-            showSystemToast(
-                error.message || 'حدث خطأ في الاتصال بالخادم',
+                json.message || 'حدث خطأ',
                 'danger'
             );
-        });
+            return;
+        }
+
+        if (
+            document.activeElement &&
+            document.activeElement.blur
+        ) {
+            document.activeElement.blur();
+        }
+
+        const modalInstance = bootstrap.Modal.getInstance(
+            document.getElementById('typeModal')
+        );
+        if (modalInstance) {
+            modalInstance.hide();
+        }
+
+        await loadTypes();
+
+        showSystemToast(
+            json.message || 'تم الحفظ بنجاح',
+            'success'
+        );
+
+    } catch (e) {
+        console.error(e);
+        showSystemToast('حدث خطأ أثناء الحفظ', 'danger');
+    }
 }
 
 /* =========================================================
-   حذف
+   حذف (نافذة تأكيد موحّدة — نمط الإعدادات)
 ========================================================= */
 
 function deleteType(btn) {
 
-    if (!confirm('هل أنت متأكد من حذف هذا النوع نهائياً؟')) {
-        return;
-    }
-
     const row = btn.closest('tr');
     if (!row) return;
 
-    const id = parseInt(row.dataset.id, 10);
+    deletingTypeId = row.dataset.id;
 
-    const formData = new FormData();
-    formData.append('_method', 'DELETE');
-
-    fetch(typeApi.destroy(id), {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': csrfToken,
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json',
-        },
-        body: formData,
-    })
-        .then(response =>
-            response
-                .json()
-                .then(data => ({ status: response.status, data }))
-        )
-        .then(({ status, data }) => {
-
-            if (status !== 200 || !data.success) {
-                throw new Error(
-                    data.message || 'حدث خطأ غير معروف'
-                );
-            }
-
-            showSystemToast(
-                data.message || 'تم حذف النوع بنجاح',
-                'success'
-            );
-
-            reloadTypesTable();
-        })
-        .catch(error => {
-
-            console.error('خطأ:', error);
-
-            showSystemToast(
-                error.message || 'حدث خطأ في الاتصال بالخادم',
-                'danger'
-            );
-        });
+    document
+        .getElementById('deleteConfirmModal')
+        ?.classList
+        .add('show');
 }
+
+/* =========================================================
+   أحداث الصفحة
+========================================================= */
+
+document.addEventListener('DOMContentLoaded', () => {
+
+    /* ---------- إلغاء الحذف ---------- */
+    document
+        .getElementById('deleteCancelBtn')
+        ?.addEventListener('click', () => {
+
+            deletingTypeId = null;
+
+            document
+                .getElementById('deleteConfirmModal')
+                ?.classList
+                .remove('show');
+        });
+
+    /* ---------- تأكيد الحذف ---------- */
+    document
+        .getElementById('deleteConfirmBtn')
+        ?.addEventListener('click', async function () {
+
+            if (!deletingTypeId) return;
+
+            this.disabled = true;
+
+            try {
+
+                const res = await fetch(
+                    typeApi.destroy(deletingTypeId),
+                    {
+                        method: 'DELETE',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                    }
+                );
+
+                const json = await res.json();
+
+                if (!json.success) {
+                    showSystemToast(
+                        json.message || 'حدث خطأ',
+                        'danger'
+                    );
+                    return;
+                }
+
+                document
+                    .getElementById('deleteConfirmModal')
+                    ?.classList
+                    .remove('show');
+
+                deletingTypeId = null;
+
+                await loadTypes();
+
+                showSystemToast(
+                    json.message || 'تم الحذف بنجاح',
+                    'success'
+                );
+
+            } catch (e) {
+                console.error(e);
+                showSystemToast('حدث خطأ أثناء الحذف', 'danger');
+            } finally {
+                this.disabled = false;
+            }
+        });
+
+    /* ---------- تحميل الأنواع ---------- */
+    loadTypes();
+});
 
 /* =========================================================
    تبديل الحالة
 ========================================================= */
 
-function toggleTypeStatus(btn) {
+async function toggleTypeStatus(btn) {
 
     const row = btn.closest('tr');
     if (!row) return;
 
-    const id = parseInt(row.dataset.id, 10);
+    const id = row.dataset.id;
 
-    const formData = new FormData();
-    formData.append('_method', 'PATCH');
+    try {
 
-    fetch(typeApi.toggle(id), {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': csrfToken,
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json',
-        },
-        body: formData,
-    })
-        .then(response =>
-            response
-                .json()
-                .then(data => ({ status: response.status, data }))
-        )
-        .then(({ status, data }) => {
+        const res = await fetch(typeApi.toggle(id), {
+            method: 'PATCH',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+            },
+        });
 
-            if (status !== 200 || !data.success) {
-                throw new Error(
-                    data.message || 'حدث خطأ غير معروف'
-                );
-            }
+        const json = await res.json();
 
+        if (!json.success) {
             showSystemToast(
-                data.message || 'تم تغيير حالة النوع بنجاح',
-                'success'
-            );
-
-            reloadTypesTable();
-        })
-        .catch(error => {
-
-            console.error('خطأ:', error);
-
-            showSystemToast(
-                error.message || 'حدث خطأ في الاتصال بالخادم',
+                json.message || 'حدث خطأ',
                 'danger'
             );
-        });
-}
-
-/* =========================================================
-   إعادة تحميل الجدول من الخادم
-========================================================= */
-
-function reloadTypesTable() {
-
-    fetch(typeApi.list, {
-        method: 'GET',
-        headers: {
-            'Accept': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-        },
-    })
-        .then(response => response.json())
-        .then(data => {
-
-            if (data.success) {
-
-                allTypesData = data.data || [];
-                filteredTypesData = [...allTypesData];
-
-                currentPage = 1;
-                applyFiltersAndRender();
-
-            } else {
-
-                showSystemToast(
-                    'حدث خطأ أثناء تحميل الأنواع',
-                    'danger'
-                );
-            }
-        })
-        .catch(error => {
-
-            console.error('خطأ:', error);
-
-            showSystemToast(
-                'حدث خطأ في الاتصال بالخادم',
-                'danger'
-            );
-        });
-}
-
-/* =========================================================
-   أحداث الترقيم (Delegation)
-========================================================= */
-
-document.addEventListener('click', function (e) {
-
-    const target =
-        e.target.closest('#typesPaginationList .page-link');
-
-    if (!target) return;
-
-    const page = parseInt(target.dataset.page, 10);
-    if (!page || page < 1) return;
-
-    const totalPages =
-        Math.ceil(filteredTypesData.length / rowsPerPage);
-
-    if (page > totalPages) return;
-
-    currentPage = page;
-
-    renderTypes(filteredTypesData);
-    renderPagination(filteredTypesData.length);
-});
-
-/* =========================================================
-   طباعة
-========================================================= */
-
-function printTypes() {
-
-    const table = document.getElementById('typesTable');
-    if (!table) return;
-
-    let printContents = `
-        <html dir="rtl" lang="ar">
-        <head>
-            <title>طباعة قائمة الأنواع</title>
-            <style>
-                body { font-family: Arial, sans-serif; padding: 20px; }
-                h2 { text-align: center; margin-bottom: 20px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; text-align: center; }
-                th, td { border: 1px solid #000; padding: 8px; }
-                th { background-color: #f8f9fa; }
-                .no-print { display: none !important; }
-                .btn { display: none; }
-            </style>
-        </head>
-        <body>
-            <h2>قائمة أنواع الأصناف</h2>
-            <table>
-                <thead>${table.querySelector('thead').innerHTML}</thead>
-                <tbody>
-    `;
-
-    const allRows =
-        document.querySelectorAll('#typesTableBody tr.type-row');
-
-    allRows.forEach(row => {
-
-        const cells = row.querySelectorAll('td');
-
-        let rowHtml = '<tr>';
-
-        for (let i = 0; i < Math.min(cells.length - 1, 4); i++) {
-            rowHtml += cells[i].outerHTML;
+            return;
         }
 
-        rowHtml += '</tr>';
-        printContents += rowHtml;
-    });
+        await loadTypes();
 
-    printContents += `</tbody></table></body></html>`;
+        showSystemToast(json.message, 'success');
 
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(printContents);
-    printWindow.document.close();
-
-    setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-    }, 250);
+    } catch (e) {
+        console.error(e);
+        showSystemToast('حدث خطأ أثناء تبديل الحالة', 'danger');
+    }
 }
 
 /* =========================================================
-   Fallback للتنبيهات
+   طباعة — القائمة الكاملة عبر full=1
 ========================================================= */
 
-if (typeof showSystemToast !== 'function') {
+async function printTypes() {
 
-    window.showSystemToast = function (message) {
-        alert(message);
-    };
+    try {
+
+        const res = await fetch(`${typeApi.list}?full=1`, {
+            headers: { 'Accept': 'application/json' },
+        });
+        const json = await res.json();
+
+        const rows = json.success && Array.isArray(json.data)
+            ? json.data
+            : [];
+
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
+
+        const escapeHtml = (value) => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        let rowsHtml = '';
+
+        rows.forEach((type, i) => {
+            rowsHtml += `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td>${escapeHtml(type.name)}</td>
+                    <td>${type.code ? escapeHtml(type.code) : '—'}</td>
+                    <td>${type.is_active ? 'نشط' : 'غير نشط'}</td>
+                </tr>
+            `;
+        });
+
+        printWindow.document.write(`
+            <html dir="rtl" lang="ar">
+            <head>
+                <title>طباعة قائمة الأنواع</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; }
+                    h2 { text-align: center; margin-bottom: 20px; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; text-align: center; }
+                    th, td { border: 1px solid #000; padding: 8px; }
+                    th { background-color: #f8f9fa; }
+                </style>
+            </head>
+            <body>
+                <h2>قائمة أنواع الأصناف</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>الرقم</th>
+                            <th>اسم النوع</th>
+                            <th>الرمز</th>
+                            <th>الحالة</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+
+        setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+        }, 250);
+
+    } catch (e) {
+        console.error(e);
+        showSystemToast('تعذّرت طباعة القائمة', 'danger');
+    }
 }
+
 /* ═══════════════════════════════════════════════════════════
    تصدير الدوال للنطاق العام
    ═══════════════════════════════════════════════════════════ */
@@ -698,5 +541,9 @@ Object.assign(window, {
     toggleTypeStatus,
     printTypes,
     filterTypes,
-    reloadTypesTable,
+    loadTypes,
+    goToTypePage,
 });
+
+
+

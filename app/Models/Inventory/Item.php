@@ -15,6 +15,8 @@ class Item extends Model
     protected $fillable = [
         'itemName2',
         'is_active',
+        'created_by',
+        'updated_by',
     ];
 
     // إذا أردت إضافة سكوب للأصناف النشطة

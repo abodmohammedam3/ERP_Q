@@ -900,11 +900,11 @@ class OpeningBalanceController extends Controller
 
     private function buildEntryLines(OpeningBalance $balance): array
     {
-        $offsetAccount = CharAccount::where('system_key', 'ownerCapital')->first();
+        $offsetAccount = CharAccount::where('system_key', 'capital')->first();
 
         if (!$offsetAccount) {
             throw new \RuntimeException(
-                'حساب رأس مال المالك غير موجود (system_key = ownerCapital)'
+                'حساب رأس المال غير موجود (system_key = capital)'
             );
         }
 

@@ -24,7 +24,7 @@ class PurchaseInvoiceService
 
     private const ACCRUED_COSTS_CACHE_KEY = 'accounting.accrued_purchase_costs_id';
     private const ACCRUED_COSTS_CACHE_TTL = 3600;
-    private const ACCRUED_COSTS_SYSTEM_KEY = 'AccruedPurchaseCosts';
+    private const ACCRUED_COSTS_SYSTEM_KEY = 'accrued_expenses';
 
     private const INVENTORY_ACCOUNT_CACHE_TTL = 3600;
 

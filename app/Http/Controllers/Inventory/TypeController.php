@@ -3,118 +3,129 @@
 namespace App\Http\Controllers\Inventory;
 
 use App\Http\Controllers\Controller;
-use App\Models\Inventory\Type;
+use App\Http\Requests\Inventory\TypeStoreRequest;
+use App\Http\Requests\Inventory\TypeUpdateRequest;
+use App\Http\Resources\Inventory\TypeResource;
+use App\Services\Inventory\TypeService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\View\View;
 
+/**
+ * Controller نحيف — كل منطق الأعمال في TypeService (نمط الوحدة المرجعية).
+ */
 class TypeController extends Controller
 {
-    public function index()
+    public function __construct(private readonly TypeService $service)
     {
-        $types = Type::orderBy('id', 'asc')->get();
+    }
+
+    public function index(): View
+    {
+        $types = $this->service->allForView();
+
         return view('setting.inventory.types.index', compact('types'));
     }
 
-    public function list(Request $request)
+    public function list(Request $request): JsonResponse
     {
-        $types = Type::orderBy('id', 'asc')->get();
-        return response()->json([
-            'success' => true,
-            'data' => $types,
-        ]);
-    }
+        $page   = max(1, (int) $request->input('page', 1));
+        $search = trim((string) $request->input('search', ''));
+        $full   = $request->boolean('full');
 
-    public function store(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255|unique:type,name',
-            'code' => 'nullable|string|max:50',
-        ], [
-            'name.unique' => 'هذا النوع موجود بالفعل',
-            'name.required' => 'اسم النوع مطلوب',
-        ]);
+        // full=1: القائمة الكاملة (طباعة/تصدير) — عقد متوافق مع الواجهة الحالية
+        if ($full) {
+            $types = $this->service->allForView();
 
-        if ($validator->fails()) {
             return response()->json([
-                'success' => false,
-                'message' => $validator->errors()->first('name'),
-                'errors' => $validator->errors()
-            ], 422);
+                'success' => true,
+                'data'    => TypeResource::collection($types),
+            ]);
         }
 
-        $type = Type::create([
-            'name' => $request->name,
-            'code' => $request->code,
-            'is_active' => 1,
-        ]);
+        $paginator = $this->service->list($search ?: null, $page);
 
         return response()->json([
             'success' => true,
-            'message' => 'تم إضافة النوع بنجاح',
-            'data' => $type,
-        ]);
-    }
-
-    public function update(Request $request, $id)
-    {
-        $type = Type::findOrFail($id);
-
-        $validator = Validator::make($request->all(), [
-            'name' => [
-                'required',
-                'string',
-                'max:255',
-                Rule::unique('type', 'name')->ignore($type->id, 'id'),
+            'data'    => TypeResource::collection($paginator->items()),
+            'meta'    => [
+                'current_page' => $paginator->currentPage(),
+                'last_page'    => $paginator->lastPage(),
+                'per_page'     => $paginator->perPage(),
+                'total'        => $paginator->total(),
             ],
-            'code' => 'nullable|string|max:50',
-        ], [
-            'name.unique' => 'هذا النوع موجود بالفعل',
-            'name.required' => 'اسم النوع مطلوب',
         ]);
+    }
 
-        if ($validator->fails()) {
+    public function store(TypeStoreRequest $request): JsonResponse
+    {
+        try {
+            $type = $this->service->store($request->validated());
+
             return response()->json([
-                'success' => false,
-                'message' => $validator->errors()->first('name'),
-                'errors' => $validator->errors()
-            ], 422);
+                'success' => true,
+                'message' => 'تم إضافة النوع بنجاح',
+                'data'    => new TypeResource($type),
+            ]);
+        } catch (\RuntimeException $e) {
+            return $this->fail($e);
         }
-
-        $type->update([
-            'name' => $request->name,
-            'code' => $request->code,
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'تم تحديث النوع بنجاح',
-            'data' => $type,
-        ]);
     }
 
-    public function destroy($id)
+    public function update(TypeUpdateRequest $request, $id): JsonResponse
     {
-        $type = Type::findOrFail($id);
-        $type->delete();
+        try {
+            $type = $this->service->update((int) $id, $request->validated());
 
-        return response()->json([
-            'success' => true,
-            'message' => 'تم حذف النوع بنجاح',
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'تم تحديث النوع بنجاح',
+                'data'    => new TypeResource($type),
+            ]);
+        } catch (\RuntimeException $e) {
+            return $this->fail($e);
+        }
     }
 
-    public function toggleStatus($id)
+    public function destroy($id): JsonResponse
     {
-        $type = Type::findOrFail($id);
-        $newStatus = !$type->is_active;
-        $type->update(['is_active' => $newStatus]);
+        try {
+            $this->service->delete((int) $id);
 
-        $statusText = $newStatus ? 'تم التفعيل' : 'تم التعطيل';
+            return response()->json([
+                'success' => true,
+                'message' => 'تم حذف النوع بنجاح',
+            ]);
+        } catch (\RuntimeException $e) {
+            return $this->fail($e);
+        }
+    }
+
+    public function toggleStatus($id): JsonResponse
+    {
+        try {
+            $type = $this->service->toggleStatus((int) $id);
+
+            $statusText = $type->is_active ? 'تم التفعيل' : 'تم التعطيل';
+
+            return response()->json([
+                'success' => true,
+                'message' => $statusText . ' بنجاح',
+                'data'    => new TypeResource($type),
+            ]);
+        } catch (\RuntimeException $e) {
+            return $this->fail($e);
+        }
+    }
+
+    /**
+     * رسالة استثناء موحّدة → عقد الواجهة {success,message} مع 422.
+     */
+    private function fail(\RuntimeException $e): JsonResponse
+    {
         return response()->json([
-            'success' => true,
-            'message' => $statusText . ' بنجاح',
-            'data' => $type,
-        ]);
+            'success' => false,
+            'message' => $e->getMessage(),
+        ], 422);
     }
 }

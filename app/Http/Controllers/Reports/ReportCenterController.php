@@ -259,6 +259,31 @@ class ReportCenterController extends Controller
             ])
             ->values();
 
+        // تحديد مجموعة التقييد لكل حساب مؤهل (customers / suppliers)
+        $restrictKeys = ['customers', 'suppliers'];
+        $treeById = collect($tree)->keyBy('accountID');
+
+        $eligible = collect($eligible)->map(function ($a) use ($treeById, $restrictKeys) {
+            $current = $treeById->get($a['accountID']);
+            $group = null;
+            $hops = 0;
+
+            while ($current && $hops < 10) {
+                $sk = is_array($current) ? ($current['system_key'] ?? null) : ($current->system_key ?? null);
+                if (in_array($sk, $restrictKeys, true)) {
+                    $group = $sk;
+                    break;
+                }
+                $pid = is_array($current) ? ($current['accParent'] ?? null) : ($current->accParent ?? null);
+                if (!$pid) break;
+                $current = $treeById->get($pid);
+                $hops++;
+            }
+
+            $a['restrict_group'] = $group;
+            return $a;
+        })->values();
+
         return $this->ok([
             'parents'   => ChartAccountScope::parents(),
             'eligible'  => $eligible,

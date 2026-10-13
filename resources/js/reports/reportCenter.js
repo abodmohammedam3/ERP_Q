@@ -5,6 +5,8 @@
  * منطق الشاشة الرئيسية للتقارير.
  * JS نقي — لا HTML strings، لا CSS، لا inline styles.
  * كل بناء DOM عبر createElement / textContent.
+ *
+ * R11: دعم restrict لتصفية مودال الحساب (customers / suppliers)
  * =========================================================
  */
 
@@ -32,6 +34,7 @@ const RC = {
     pickerScopeKey: null,
     pickerIsOpen: false,
     pickerSelectionMade: false,
+    pickerRestrict: '',
 };
 
 /* ════════════════════════════════════════════════════════
@@ -1019,15 +1022,17 @@ function rcInit() {
         });
     }
 
+    // ── R11.5: click delegation مع دعم restrict ──
     document.getElementById('rcFilters').addEventListener('click', (event) => {
         const openTrigger = event.target.closest('[data-picker-open]');
         if (openTrigger) {
             const hiddenId = openTrigger.dataset.pickerOpen;
             const mode = openTrigger.dataset.pickerMode || 'all';
+            const restrict = openTrigger.dataset.pickerRestrict || '';
             const textInput = openTrigger.matches('input[type="text"]')
                 ? openTrigger
                 : document.getElementById(`${hiddenId}-text`);
-            rcOpenAccountPicker(hiddenId, mode, textInput ? textInput.value : '');
+            rcOpenAccountPicker(hiddenId, mode, textInput ? textInput.value : '', restrict);
             return;
         }
 
@@ -1053,8 +1058,10 @@ function rcInit() {
             rcRenderPickerList();
         });
 
+        // ── R11.6: مسح restrict عند إغلاق المودال ──
         rcPickerModalEl.addEventListener('hidden.bs.modal', () => {
             RC.pickerIsOpen = false;
+            RC.pickerRestrict = '';
             if (RC.pickerTargetId && !RC.pickerSelectionMade) {
                 const hidden = document.getElementById(RC.pickerTargetId);
                 const text = document.getElementById(`${RC.pickerTargetId}-text`);
@@ -1117,10 +1124,12 @@ const RC_PICKER_CACHE_KEY = 'rc.picker.v1';
 const RC_PICKER_MAX_RENDER = 300;
 let rcPickerSearchTimer = null;
 
+// ── R11.4: rcBuildAccountPicker مع restrict ──
 function rcBuildAccountPicker(filter, id) {
     const isParent = filter.mode === 'parent' || filter.key === 'account_parent';
     const isChild = filter.mode === 'child';
     const mode = isParent ? 'parent' : (isChild ? 'child' : 'all');
+    const restrict = filter.restrict || '';
     const placeholder = isParent
         ? 'اكتب أو اضغط Enter لاختيار الحساب الرئيسي...'
         : (isChild ? 'اكتب أو اضغط Enter لاختيار حساب...' : 'اكتب أو اضغط Enter لاختيار حساباً...');
@@ -1135,6 +1144,7 @@ function rcBuildAccountPicker(filter, id) {
     text.id = `${id}-text`;
     text.dataset.pickerOpen = id;
     text.dataset.pickerMode = mode;
+    text.dataset.pickerRestrict = restrict;
     text.placeholder = placeholder;
     if (isChild) text.disabled = true;
 
@@ -1146,6 +1156,7 @@ function rcBuildAccountPicker(filter, id) {
     searchBtn.type = 'button';
     searchBtn.dataset.pickerOpen = id;
     searchBtn.dataset.pickerMode = mode;
+    searchBtn.dataset.pickerRestrict = restrict;
     if (isChild) searchBtn.disabled = true;
 
     const clearBtn = rcEl('button', {
@@ -1165,13 +1176,15 @@ function rcBuildAccountPicker(filter, id) {
     return wrapper;
 }
 
-async function rcOpenAccountPicker(hiddenId, mode = 'all', initialSearch = '') {
+// ── R11.6: rcOpenAccountPicker مع restrict ──
+async function rcOpenAccountPicker(hiddenId, mode = 'all', initialSearch = '', restrict = '') {
     const modalEl = document.getElementById('rcAccountPickerModal');
     if (!modalEl) return;
 
     RC.pickerTargetId = hiddenId;
     RC.pickerSelectionMade = false;
     RC.pickerIsOpen = true;
+    RC.pickerRestrict = restrict || '';
 
     if (mode === 'child') {
         const parent = rcReadParentChoice();
@@ -1283,6 +1296,7 @@ function rcRenderPickerLoading() {
     if (empty) empty.style.display = 'none';
 }
 
+// ── R11.7: rcRenderPickerList مع تصفية restrict ──
 function rcRenderPickerList() {
     const body = document.getElementById('rcPickerBody');
     const empty = document.getElementById('rcPickerEmpty');
@@ -1292,6 +1306,11 @@ function rcRenderPickerList() {
     const isParentMode = RC.pickerMode === 'parent';
     const isChildMode = RC.pickerMode === 'child';
     let rows = RC.pickerAccounts || [];
+
+    // تصفية حسب مجموعة مقيّدة (customers / suppliers / ...)
+    if (RC.pickerRestrict) {
+        rows = rows.filter((a) => a.restrict_group === RC.pickerRestrict);
+    }
 
     if (isParentMode) {
         rows = rcPickerParents();
@@ -1512,6 +1531,7 @@ function rcCancelPicker(hiddenId) {
     }
 }
 
+// ── R11.4/R11.5 (متابعة): تمرير restrict من Enter و dblclick ──
 function rcAttachPickerFieldEvents(textInput, hiddenId, mode) {
     if (!textInput) return;
 
@@ -1530,7 +1550,8 @@ function rcAttachPickerFieldEvents(textInput, hiddenId, mode) {
 
         if (e.key === 'Enter') {
             e.preventDefault();
-            rcOpenAccountPicker(hiddenId, mode || 'all', textInput.value.trim());
+            const restrict = textInput.dataset.pickerRestrict || '';
+            rcOpenAccountPicker(hiddenId, mode || 'all', textInput.value.trim(), restrict);
             return;
         }
 
@@ -1549,7 +1570,8 @@ function rcAttachPickerFieldEvents(textInput, hiddenId, mode) {
     textInput.addEventListener('dblclick', () => {
         const hidden = document.getElementById(hiddenId);
         if (hidden && hidden.value) {
-            rcOpenAccountPicker(hiddenId, mode || 'all', '');
+            const restrict = textInput.dataset.pickerRestrict || '';
+            rcOpenAccountPicker(hiddenId, mode || 'all', '', restrict);
         }
     });
 

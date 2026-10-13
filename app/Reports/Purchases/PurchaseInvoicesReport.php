@@ -44,12 +44,14 @@ class PurchaseInvoicesReport implements Report
     {
         return [
             [
-                'key'    => 'supplier_id',
-                'label'  => 'المورد',
-                'type'   => 'item',
-                'source' => 'suppliers',
-                'placeholder' => 'اختر المورد...',
-                'col'    => 'col-md-3',
+                'key'         => 'supplier_id',
+                'label'       => 'المورد',
+                'type'        => 'account',
+                'mode'        => 'all',
+                'source'      => 'accounts',
+                'restrict'    => 'suppliers',
+                'placeholder' => 'اكتب أو اضغط Enter لاختيار المورد...',
+                'col'         => 'col-md-3',
             ],
             [
                 'key'   => 'date_from',

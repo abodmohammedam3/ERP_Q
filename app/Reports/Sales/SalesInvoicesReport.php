@@ -44,12 +44,14 @@ class SalesInvoicesReport implements Report
     {
         return [
             [
-                'key'    => 'customer_id',
-                'label'  => 'العميل',
-                'type'   => 'item',
-                'source' => 'customers',
-                'placeholder' => 'اختر العميل...',
-                'col'    => 'col-md-3',
+                'key'         => 'customer_id',
+                'label'       => 'العميل',
+                'type'        => 'account',
+                'mode'        => 'all',
+                'source'      => 'accounts',
+                'restrict'    => 'customers',
+                'placeholder' => 'اكتب أو اضغط Enter لاختيار العميل...',
+                'col'         => 'col-md-3',
             ],
             [
                 'key'   => 'date_from',

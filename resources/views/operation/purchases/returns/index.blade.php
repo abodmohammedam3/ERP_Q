@@ -69,31 +69,37 @@
 
             <div class="modal-body">
 
+                <!-- ✅ حقل البحث مع زر التفريغ -->
                 <div class="row g-2 mb-3">
-                    <div class="col-md-10">
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="originalPurchaseInvoiceSearchInput"
-                            placeholder="أدخل رقم الفاتورة أو اسم المورد..."
-                            onkeydown="if(event.key==='Enter') performOriginalPurchaseInvoiceSearch()"
-                        >
-                    </div>
-                    <div class="col-md-2">
-                        <button
-                            type="button"
-                            class="btn btn-primary w-100"
-                            onclick="performOriginalPurchaseInvoiceSearch()"
-                        >
-                            <i class="bi bi-search"></i>
-                            بحث
-                        </button>
+                    <div class="col-md-12">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white">
+                                <i class="bi bi-search text-muted"></i>
+                            </span>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="originalPurchaseInvoiceSearchInput"
+                                placeholder="أدخل رقم الفاتورة أو اسم المورد..."
+                                oninput="debouncedOriginalPurchaseInvoiceSearch()"
+                                autocomplete="off"
+                            >
+                            <button
+                                type="button"
+                                class="btn btn-outline-secondary"
+                                id="btnClearOriginalInvoiceSearch"
+                                onclick="clearOriginalPurchaseInvoiceSearch()"
+                                title="تفريغ البحث"
+                            >
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <div class="table-responsive">
-                    <table class="table table-bordered table-hover align-middle">
-                        <thead class="table-light">
+                <div class="table-responsive" style="max-height: 450px;">
+                    <table class="table table-bordered table-hover align-middle mb-0">
+                        <thead class="table-light sticky-top">
                             <tr class="text-center">
                                 <th>رقم الفاتورة</th>
                                 <th>التاريخ</th>
@@ -101,13 +107,14 @@
                                 <th>العملة</th>
                                 <th>طريقة الدفع</th>
                                 <th>الإجمالي</th>
-                                <th>اختيار</th>
+                                <th>الحالة</th>
                             </tr>
                         </thead>
                         <tbody id="originalPurchaseInvoiceSearchResults">
                             <tr>
                                 <td colspan="7" class="text-center text-muted py-4">
-                                    أدخل بيانات البحث ثم اضغط بحث
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    جاري التحميل...
                                 </td>
                             </tr>
                         </tbody>
@@ -137,31 +144,37 @@
 
             <div class="modal-body">
 
+                <!-- ✅ حقل البحث مع زر التفريغ -->
                 <div class="row g-2 mb-3">
-                    <div class="col-md-10">
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="purchaseReturnSearchInput"
-                            placeholder="أدخل رقم المرتجع أو رقم الفاتورة أو اسم المورد..."
-                            onkeydown="if(event.key==='Enter') performPurchaseReturnSearch()"
-                        >
-                    </div>
-                    <div class="col-md-2">
-                        <button
-                            type="button"
-                            class="btn btn-danger w-100"
-                            onclick="performPurchaseReturnSearch()"
-                        >
-                            <i class="bi bi-search"></i>
-                            بحث
-                        </button>
+                    <div class="col-md-12">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white">
+                                <i class="bi bi-search text-muted"></i>
+                            </span>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="purchaseReturnSearchInput"
+                                placeholder="أدخل رقم المرتجع أو رقم الفاتورة أو اسم المورد..."
+                                oninput="debouncedPurchaseReturnSearch()"
+                                autocomplete="off"
+                            >
+                            <button
+                                type="button"
+                                class="btn btn-outline-secondary"
+                                id="btnClearPurchaseReturnSearch"
+                                onclick="clearPurchaseReturnSearch()"
+                                title="تفريغ البحث"
+                            >
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <div class="table-responsive">
-                    <table class="table table-bordered table-hover align-middle">
-                        <thead class="table-light">
+                <div class="table-responsive" style="max-height: 450px;">
+                    <table class="table table-bordered table-hover align-middle mb-0">
+                        <thead class="table-light sticky-top">
                             <tr class="text-center">
                                 <th>رقم المرتجع</th>
                                 <th>التاريخ</th>
@@ -169,13 +182,15 @@
                                 <th>المورد</th>
                                 <th>طريقة الدفع</th>
                                 <th>الإجمالي</th>
-                                <th>عرض</th>
+                                <th>الحالة</th>
+                                <th style="min-width: 180px;">إجراءات</th>
                             </tr>
                         </thead>
                         <tbody id="purchaseReturnSearchResults">
                             <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
-                                    أدخل بيانات البحث ثم اضغط بحث
+                                <td colspan="8" class="text-center text-muted py-4">
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    جاري التحميل...
                                 </td>
                             </tr>
                         </tbody>

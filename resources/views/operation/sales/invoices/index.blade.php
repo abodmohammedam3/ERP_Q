@@ -49,8 +49,7 @@
 
 </div>
 
-{{-- ✅ النظام الموحّد للنوافذ (اختياري للعملاء/العملات) --}}
-    @include('shared.lookup-modal')
+@include('shared.lookup-modal')
 
 
 <!-- ===================================================== -->
@@ -71,31 +70,37 @@
 
             <div class="modal-body">
 
+                <!-- ✅ حقل البحث مع زر التفريغ -->
                 <div class="row g-2 mb-3">
-                    <div class="col-md-10">
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="salesInvoiceSearchInput"
-                            placeholder="أدخل رقم الفاتورة أو اسم العميل..."
-                            onkeydown="if(event.key==='Enter') performSalesInvoiceSearch()"
-                        >
-                    </div>
-                    <div class="col-md-2">
-                        <button
-                            type="button"
-                            class="btn btn-primary w-100"
-                            onclick="performSalesInvoiceSearch()"
-                        >
-                            <i class="bi bi-search"></i>
-                            بحث
-                        </button>
+                    <div class="col-md-12">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white">
+                                <i class="bi bi-search text-muted"></i>
+                            </span>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="salesInvoiceSearchInput"
+                                placeholder="أدخل رقم الفاتورة أو اسم العميل..."
+                                oninput="debouncedSalesInvoiceSearch()"
+                                autocomplete="off"
+                            >
+                            <button
+                                type="button"
+                                class="btn btn-outline-secondary"
+                                id="btnClearSalesInvoiceSearch"
+                                onclick="clearSalesInvoiceSearch()"
+                                title="تفريغ البحث"
+                            >
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <div class="table-responsive">
-                    <table class="table table-bordered table-hover align-middle">
-                        <thead class="table-light">
+                <div class="table-responsive" style="max-height: 450px;">
+                    <table class="table table-bordered table-hover align-middle mb-0">
+                        <thead class="table-light sticky-top">
                             <tr class="text-center">
                                 <th>رقم الفاتورة</th>
                                 <th>التاريخ</th>
@@ -103,13 +108,15 @@
                                 <th>العملة</th>
                                 <th>طريقة الدفع</th>
                                 <th>الإجمالي</th>
-                                <th>اختيار</th>
+                                <th>الحالة</th>
+                                <th style="min-width: 180px;">إجراءات</th>
                             </tr>
                         </thead>
                         <tbody id="salesInvoiceSearchResults">
                             <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
-                                    أدخل بيانات البحث ثم اضغط بحث
+                                <td colspan="8" class="text-center text-muted py-4">
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    جاري التحميل...
                                 </td>
                             </tr>
                         </tbody>
@@ -125,5 +132,9 @@
 
 
 @push('scripts')
-    @vite(['resources/js/pages/sales-invoice.js'])
+<script>
+    window.SALES_SYSTEM_CURRENCY_ID   = @json($systemCurrencyId ?? null);
+    window.SALES_SYSTEM_CURRENCY_CODE = @json($systemCurrencyCode ?? '');
+</script>
+@vite(['resources/js/pages/sales-invoice.js'])
 @endpush

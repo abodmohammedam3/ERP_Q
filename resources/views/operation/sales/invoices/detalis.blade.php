@@ -1,5 +1,5 @@
 <!-- ========================= -->
-<!-- تفاصيل الفاتورة -->
+<!-- تفاصيل فاتورة البيع -->
 <!-- ========================= -->
 
 <div class="card mb-3">
@@ -166,6 +166,30 @@
         حفظ وإضافة فاتورة
     </button>
 
+    <!-- ✅ زر الترحيل (للمسودات) -->
+    <button
+        type="button"
+        class="btn btn-success d-none"
+        id="btnPostSalesInvoice"
+        onclick="postCurrentSalesInvoice()"
+        disabled
+    >
+        <i class="bi bi-check2-circle"></i>
+        ترحيل
+    </button>
+
+    <!-- ✅ زر إلغاء الترحيل (للمرحّلات) -->
+    <button
+        type="button"
+        class="btn btn-warning d-none"
+        id="btnUnpostSalesInvoice"
+        onclick="unpostCurrentSalesInvoice()"
+        disabled
+    >
+        <i class="bi bi-arrow-counterclockwise"></i>
+        إلغاء الترحيل
+    </button>
+
     <button
         type="button"
         class="btn btn-warning"
@@ -192,7 +216,7 @@
 
 
 {{-- ===================================================== --}}
-{{-- ✅ قالب صف التفاصيل (معدَّل — يفتح نافذة الأرصدة) --}}
+{{-- ✅ قالب صف التفاصيل --}}
 {{-- ===================================================== --}}
 <template id="salesRowTemplate">
     <tr class="sales-detail-row">
@@ -237,7 +261,7 @@
             >
         </td>
 
-        {{-- الوحدة (input + hidden ID) --}}
+        {{-- الوحدة --}}
         <td>
             <input type="hidden" class="row-unit-id">
             <input
@@ -401,7 +425,7 @@
 
 
 {{-- ===================================================== --}}
-{{-- ✅ نافذة الفرز (تُفتح من نافذة الأرصدة) --}}
+{{-- ✅ نافذة الفرز --}}
 {{-- ===================================================== --}}
 <div class="modal fade" id="sortingFromBalanceModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">

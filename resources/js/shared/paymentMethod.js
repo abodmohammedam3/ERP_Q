@@ -1,5 +1,5 @@
 /**
- * Payment Method Module - إدارة طريقة الدفع (نقد، بنك، شبكة)
+ * Payment Method Module - إدارة طريقة الدفع (نقد، بنك)
  * هذه النسخة مبسطة وخالية من الأخطاء
  */
 
@@ -8,8 +8,7 @@ window.PaymentMethod = {
     methodSelectId: 'PaymentMethod',
     containers: {
         cash: 'cashAccountContainer',
-        bank: 'bankAccountContainer',
-        network: 'walletAccountContainer'
+        bank: 'bankAccountContainer'
     },
     isDisabled: false,
     _initialized: false,

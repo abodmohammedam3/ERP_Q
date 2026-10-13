@@ -25,6 +25,7 @@ use App\Http\Controllers\Operation\Purchases\PurchaseReturnController;
 use App\Http\Controllers\Operation\Sales\SalesInvoiceApiController;
 use App\Http\Controllers\Operation\Purchases\PurchaseReturnApiController;
 use App\Http\Controllers\Operation\Purchases\PurchaseInvoiceApiController;
+use App\Http\Controllers\Operation\Sales\SalesReturnApiController;
 
 
 
@@ -878,21 +879,77 @@ Route::post(
     '/operation/sales/invoices/{id}/unpost',
     [SalesInvoiceApiController::class, 'unpost']
 )->name('sales.invoices.unpost');
-
 // =====================================================
 // مرتجعات المبيعات
 // =====================================================
 
-Route::get('/operation/sales/returns', [SalesReturnController::class, 'index'])->name('sales.returns.index');
-Route::get('/operation/sales/returns/next-number', [SalesReturnController::class, 'nextNumber'])->name('sales.returns.nextNumber');
-Route::get('/operation/sales/returns/list', [SalesReturnController::class, 'list'])->name('sales.returns.list');
-Route::get('/operation/sales/returns/available-quantity', [SalesReturnController::class, 'availableQuantity'])->name('sales.returns.availableQuantity');
-Route::get('/operation/sales/returns/{id}/print', [SalesReturnController::class, 'print'])->name('sales.returns.print');
-Route::get('/operation/sales/returns/{id}', [SalesReturnController::class, 'show'])->name('sales.returns.show');
-Route::post('/operation/sales/returns', [SalesReturnController::class, 'store'])->name('sales.returns.store');
-Route::put('/operation/sales/returns/{id}', [SalesReturnController::class, 'update'])->name('sales.returns.update');
-Route::delete('/operation/sales/returns/{id}', [SalesReturnController::class, 'destroy'])->name('sales.returns.destroy');
+// -----------------------------------------------------
+// Web (Views)
+// -----------------------------------------------------
 
+Route::get(
+    '/operation/sales/returns',
+    [SalesReturnController::class, 'index']
+)->name('sales.returns.index');
+
+Route::get(
+    '/operation/sales/returns/{id}/print',
+    [SalesReturnController::class, 'print']
+)->name('sales.returns.print');
+
+// -----------------------------------------------------
+// API (JSON)
+// ⚠️ المسارات الثابتة قبل /{id}
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/sales/returns/next-number',
+    [SalesReturnApiController::class, 'nextNumber']
+)->name('sales.returns.nextNumber');
+
+Route::get(
+    '/operation/sales/returns/available-quantity',
+    [SalesReturnApiController::class, 'availableQuantity']
+)->name('sales.returns.availableQuantity');
+
+Route::get(
+    '/operation/sales/returns/list',
+    [SalesReturnApiController::class, 'list']
+)->name('sales.returns.list');
+
+Route::get(
+    '/operation/sales/returns/{id}',
+    [SalesReturnApiController::class, 'show']
+)->name('sales.returns.show');
+
+Route::post(
+    '/operation/sales/returns',
+    [SalesReturnApiController::class, 'store']
+)->name('sales.returns.store');
+
+Route::put(
+    '/operation/sales/returns/{id}',
+    [SalesReturnApiController::class, 'update']
+)->name('sales.returns.update');
+
+Route::delete(
+    '/operation/sales/returns/{id}',
+    [SalesReturnApiController::class, 'destroy']
+)->name('sales.returns.destroy');
+
+// -----------------------------------------------------
+// الترحيل / إلغاء الترحيل
+// -----------------------------------------------------
+
+Route::post(
+    '/operation/sales/returns/{id}/post',
+    [SalesReturnApiController::class, 'post']
+)->name('sales.returns.post');
+
+Route::post(
+    '/operation/sales/returns/{id}/unpost',
+    [SalesReturnApiController::class, 'unpost']
+)->name('sales.returns.unpost');
 // =====================================================
 // مرتجعات المشتريات
 // =====================================================

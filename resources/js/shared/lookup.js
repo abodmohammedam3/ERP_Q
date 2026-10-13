@@ -137,24 +137,6 @@ const LookupConfigs = {
             (row.bankName || '').includes(s) ||
             (row.coinsName || '').includes(s),
     },
-
-    /* ✅ #11: نافذة الشبكة — بيانات كاملة */
-    bank_network: {
-        title: 'اختيار بنك الشبكة',
-        icon: 'bi-credit-card-2-front',
-        columns: [
-            { key: 'bankName', label: 'اسم البنك', align: 'start' },
-            { key: 'accountNumber', label: 'رقم الحساب', align: 'center', width: '160px' },
-            { key: 'coinsName', label: 'العملة', align: 'center', width: '110px' },
-            { key: 'coinsExchangeRate', label: 'سعر الصرف', align: 'center', width: '110px' },
-        ],
-        cacheKey: 'banks_network',
-        filter: (row, s) =>
-            !s ||
-            (row.bankName || '').includes(s) ||
-            (row.accountNumber || '').includes(s) ||
-            (row.coinsName || '').includes(s),
-    },
 };
 
 /* =========================================================================
@@ -162,16 +144,15 @@ const LookupConfigs = {
    ========================================================================= */
 
 const lookupEndpointMap = {
-    supplier: '/setting/suppliers/search',
-    customer: '/setting/customers/search',
-    currency: '/setting/accounting/coins/list',
-    warehouse: '/setting/inventory/warehouses/list',
-    item: '/setting/inventory/items/search',
-    type: '/setting/inventory/types/list',
-    unit: '/setting/inventory/units/list',
-    box: '/setting/accounting/boxes/list',
-    bank: '/setting/accounting/banks/list',
-    bank_network: '/operation/purchases/banks/list-full',
+    supplier:     '/setting/suppliers/search',
+    customer:     '/setting/customers/search',
+    currency:     '/setting/accounting/coins/list',
+    warehouse:    '/setting/inventory/warehouses/list',
+    item:         '/setting/inventory/items/search',
+    type:         '/setting/inventory/types/list',
+    unit:         '/setting/inventory/units/list',
+    box:          '/setting/accounting/boxes/list',
+    bank:         '/setting/accounting/banks/list',
 };
 
 /* =========================================================================
@@ -179,16 +160,15 @@ const lookupEndpointMap = {
    ========================================================================= */
 
 const lookupCache = {
-    suppliers: [],
-    customers: [],
-    coins: [],
+    suppliers:  [],
+    customers:  [],
+    coins:      [],
     warehouses: [],
-    items: [],
-    types: [],
-    units: [],
-    boxes: [],
-    banks: [],
-    banks_network: [],
+    items:      [],
+    types:      [],
+    units:      [],
+    boxes:      [],
+    banks:      [],
 };
 
 const lookupLoadedFlags = {};

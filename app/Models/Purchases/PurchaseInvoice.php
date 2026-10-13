@@ -67,18 +67,16 @@ class PurchaseInvoice extends Model
     // ============================================
     // ثوابت طريقة الدفع
     // ============================================
-    const PAYMENT_CREDIT  = 1;  // أجل
-    const PAYMENT_CASH    = 2;  // نقدي
-    const PAYMENT_BANK    = 3;  // بنك
-    const PAYMENT_NETWORK = 4;  // شبكة
+    const PAYMENT_CREDIT = 1;  // أجل
+    const PAYMENT_CASH   = 2;  // نقدي
+    const PAYMENT_BANK   = 3;  // بنك
 
     // ============================================
     // ثوابت نوع المستند للقيود المحاسبية
     // ============================================
-    const DOC_TYPE_PURCHASE_CREDIT  = 'purchase_invoice_credit';
-    const DOC_TYPE_PURCHASE_CASH    = 'purchase_invoice_cash';
-    const DOC_TYPE_PURCHASE_BANK    = 'purchase_invoice_bank';
-    const DOC_TYPE_PURCHASE_NETWORK = 'purchase_invoice_network';
+    const DOC_TYPE_PURCHASE_CREDIT = 'purchase_invoice_credit';
+    const DOC_TYPE_PURCHASE_CASH   = 'purchase_invoice_cash';
+    const DOC_TYPE_PURCHASE_BANK   = 'purchase_invoice_bank';
 
     // ============================================
     // العلاقات
@@ -194,11 +192,10 @@ class PurchaseInvoice extends Model
     public function getJournalDocTypeAttribute(): string
     {
         return match ((int) $this->payment_method) {
-            self::PAYMENT_CREDIT  => self::DOC_TYPE_PURCHASE_CREDIT,
-            self::PAYMENT_CASH    => self::DOC_TYPE_PURCHASE_CASH,
-            self::PAYMENT_BANK    => self::DOC_TYPE_PURCHASE_BANK,
-            self::PAYMENT_NETWORK => self::DOC_TYPE_PURCHASE_NETWORK,
-            default               => 'purchase_invoice',
+            self::PAYMENT_CREDIT => self::DOC_TYPE_PURCHASE_CREDIT,
+            self::PAYMENT_CASH   => self::DOC_TYPE_PURCHASE_CASH,
+            self::PAYMENT_BANK   => self::DOC_TYPE_PURCHASE_BANK,
+            default              => 'purchase_invoice',
         };
     }
 
@@ -208,11 +205,10 @@ class PurchaseInvoice extends Model
     public function getJournalDocTypeLabelAttribute(): string
     {
         return match ((int) $this->payment_method) {
-            self::PAYMENT_CREDIT  => 'فاتورة شراء أجل',
-            self::PAYMENT_CASH    => 'فاتورة شراء نقدي',
-            self::PAYMENT_BANK    => 'فاتورة شراء بنك',
-            self::PAYMENT_NETWORK => 'فاتورة شراء شبكة',
-            default               => 'فاتورة شراء',
+            self::PAYMENT_CREDIT => 'فاتورة شراء أجل',
+            self::PAYMENT_CASH   => 'فاتورة شراء نقدي',
+            self::PAYMENT_BANK   => 'فاتورة شراء بنك',
+            default              => 'فاتورة شراء',
         };
     }
 
@@ -222,10 +218,9 @@ class PurchaseInvoice extends Model
     public static function paymentMethodLabels(): array
     {
         return [
-            self::PAYMENT_CREDIT  => 'أجل',
-            self::PAYMENT_CASH    => 'نقدي',
-            self::PAYMENT_BANK    => 'بنك',
-            self::PAYMENT_NETWORK => 'شبكة',
+            self::PAYMENT_CREDIT => 'أجل',
+            self::PAYMENT_CASH   => 'نقدي',
+            self::PAYMENT_BANK   => 'بنك',
         ];
     }
 

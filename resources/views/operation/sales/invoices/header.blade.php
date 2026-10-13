@@ -1,5 +1,5 @@
 <!-- ========================= -->
-<!-- رأس الفاتورة -->
+<!-- رأس فاتورة البيع -->
 <!-- ========================= -->
 
 <div class="card mb-3">
@@ -41,7 +41,7 @@
                 >
             </div>
 
-            <!-- طريقة الدفع -->
+            <!-- طريقة الدفع — 3 طرق -->
             <div class="col-md-3">
                 <label for="SalesPaymentMethod" class="form-label">طريقة الدفع</label>
                 <select
@@ -53,15 +53,14 @@
                 >
                     <option value="">اختر طريقة الدفع</option>
                     <option value="credit">أجل</option>
-                    <option value="cash">نقد</option>
-                    <option value="bank">تحويل بنكي</option>
-                    <option value="network">عبر شبكة</option>
+                    <option value="cash">نقدي (صندوق)</option>
+                    <option value="bank">بنك</option>
                 </select>
             </div>
 
             <!-- حساب الدفع (ديناميكي) -->
             <div class="col-md-3 d-none" id="salesPaymentAccountContainer">
-                <label for="salesPaymentAccount" class="form-label">الحساب</label>
+                <label for="salesPaymentAccount" class="form-label" id="salesPaymentAccountLabel">الحساب</label>
                 <input type="hidden" id="salesPaymentAccountId">
                 <input
                     type="text"
@@ -118,17 +117,17 @@
                 >
             </div>
 
-            <!-- سعر الصرف -->
+            <!-- سعر الصرف — readonly دائماً -->
             <div class="col-md-2">
                 <label for="SalesExchangeRate" class="form-label">سعر الصرف</label>
                 <input
                     type="number"
                     step="0.000001"
-                    class="form-control"
+                    class="form-control bg-light"
                     id="SalesExchangeRate"
                     name="SalesExchangeRate"
-                    disabled
-                    oninput="salesExchangeRateChanged()"
+                    readonly
+                    tabindex="-1"
                 >
             </div>
 
@@ -137,3 +136,15 @@
     </div>
 
 </div>
+
+<style>
+    /* إخفاء أسهم الزيادة/النقصان في الحقول readonly */
+    input[readonly]::-webkit-outer-spin-button,
+    input[readonly]::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    input[readonly][type=number] {
+        -moz-appearance: textfield;
+    }
+</style>

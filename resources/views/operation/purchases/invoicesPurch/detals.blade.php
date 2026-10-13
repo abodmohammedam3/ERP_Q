@@ -164,7 +164,6 @@
     <div class="card-body">
         <div class="row g-3">
 
-            {{-- ✅ #3: تم حذف حقل النفقات من الواجهة --}}
             <input type="hidden" id="PuInExpenses" name="PuInExpenses" value="0">
 
             <div class="col-md-4">
@@ -221,7 +220,6 @@
                 >
             </div>
 
-            {{-- مجموع التكاليف الإضافية --}}
             <div class="col-md-12">
                 <div class="d-flex justify-content-end">
                     <div class="d-flex align-items-center gap-2 border rounded-3 bg-white p-2 px-3">
@@ -277,6 +275,30 @@
         حفظ وإضافة فاتورة
     </button>
 
+    <!-- ✅ ترحيل الفاتورة (للمسودات) -->
+    <button
+        type="button"
+        class="btn btn-success d-none"
+        id="btnPostInvoice"
+        onclick="postCurrentInvoice()"
+        disabled
+    >
+        <i class="bi bi-check2-circle"></i>
+        ترحيل
+    </button>
+
+    <!-- ✅ إلغاء الترحيل (للمرحّلات) -->
+    <button
+        type="button"
+        class="btn btn-warning d-none"
+        id="btnUnpostInvoice"
+        onclick="unpostCurrentInvoice()"
+        disabled
+    >
+        <i class="bi bi-arrow-counterclockwise"></i>
+        إلغاء الترحيل
+    </button>
+
     <button
         type="button"
         class="btn btn-warning"
@@ -302,9 +324,9 @@
 </div>
 
 
-{{-- ===================================================== --}}
-{{-- قالب صف تفاصيل الفاتورة --}}
-{{-- ===================================================== --}}
+<!-- ========================= -->
+<!-- قالب صف تفاصيل الفاتورة -->
+<!-- ========================= -->
 <template id="invoiceRowTemplate">
     <tr class="purchase-detail-row">
 

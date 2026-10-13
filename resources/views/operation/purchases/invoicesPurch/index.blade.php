@@ -48,7 +48,7 @@
 
 
 <!-- ===================================================== -->
-<!-- نافذة البحث عن الفاتورة — محسّنة -->
+<!-- نافذة البحث عن الفاتورة -->
 <!-- ===================================================== -->
 
 <div
@@ -76,26 +76,31 @@
 
             <div class="modal-body">
 
+                <!-- ✅ حقل البحث مع زر التفريغ -->
                 <div class="row g-2 mb-3">
-                    <div class="col-md-10">
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="invoiceSearchInput"
-                            placeholder="ابحث برقم الفاتورة، اسم المورد، الصنف، النوع، الرمز، طريقة الدفع..."
-                            oninput="debouncedInvoiceSearch()"
-                            autocomplete="off"
-                        >
-                    </div>
-                    <div class="col-md-2">
-                        <button
-                            type="button"
-                            class="btn btn-primary w-100"
-                            onclick="debouncedInvoiceSearch()"
-                        >
-                            <i class="bi bi-search"></i>
-                            بحث
-                        </button>
+                    <div class="col-md-12">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white">
+                                <i class="bi bi-search text-muted"></i>
+                            </span>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="invoiceSearchInput"
+                                placeholder="ابحث برقم الفاتورة، اسم المورد، الصنف، النوع، الرمز، طريقة الدفع..."
+                                oninput="debouncedInvoiceSearch()"
+                                autocomplete="off"
+                            >
+                            <button
+                                type="button"
+                                class="btn btn-outline-secondary"
+                                id="btnClearInvoiceSearch"
+                                onclick="clearInvoiceSearch()"
+                                title="تفريغ البحث"
+                            >
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -109,12 +114,13 @@
                                 <th>العملة</th>
                                 <th>طريقة الدفع</th>
                                 <th>الإجمالي</th>
-                                <th>اختيار</th>
+                                <th>الحالة</th>
+                                <th style="min-width: 180px;">إجراءات</th>
                             </tr>
                         </thead>
                         <tbody id="invoiceSearchResults">
                             <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
+                                <td colspan="8" class="text-center text-muted py-4">
                                     <span class="spinner-border spinner-border-sm me-2"></span>
                                     جاري التحميل...
                                 </td>

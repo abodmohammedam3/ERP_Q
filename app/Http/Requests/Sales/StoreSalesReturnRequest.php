@@ -9,9 +9,7 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 /**
  * التحقق من بيانات مرتجع البيع (إنشاء/تعديل).
  *
- * نُقل إليه منطق التحقق الذي كان داخل
- * SalesReturnController::validateReturn() مع الحفاظ
- * على نفس القواعد والرسائل العربية تماماً.
+ * طرق الدفع المدعومة: 1=أجل، 2=نقدي، 3=بنك.
  */
 class StoreSalesReturnRequest extends FormRequest
 {
@@ -27,7 +25,7 @@ class StoreSalesReturnRequest extends FormRequest
             'return_date'               => ['required', 'date'],
             'original_sales_invoice_id' => ['required', 'exists:sales_invoices,sales_invoice_id'],
             'account_id'                => ['required', 'exists:characcount,accountID'],
-            'payment_method'            => ['required', 'integer', 'in:1,2,3,4'],
+            'payment_method'            => ['required', 'integer', 'in:1,2,3'],
             'coin_id'                   => ['required', 'exists:coins,coinsID'],
             'exchange_rate'             => ['nullable', 'numeric', 'gt:0'],
             'payment_account_id'        => ['nullable', 'exists:characcount,accountID'],
@@ -51,6 +49,7 @@ class StoreSalesReturnRequest extends FormRequest
             'original_sales_invoice_id.exists'   => 'الفاتورة الأصلية غير موجودة',
             'account_id.required'                => 'يجب اختيار العميل',
             'payment_method.required'            => 'طريقة الدفع مطلوبة',
+            'payment_method.in'                  => 'طريقة الدفع غير صحيحة',
             'coin_id.required'                   => 'يجب اختيار العملة',
             'exchange_rate.gt'                   => 'سعر الصرف يجب أن يكون أكبر من صفر',
             'details.required'                   => 'يجب إضافة صنف واحد على الأقل للمرتجع',
@@ -61,7 +60,7 @@ class StoreSalesReturnRequest extends FormRequest
     }
 
     /**
-     * تحققات ما بعد القواعد: منطق طريقة الدفع (نفس منطق الفواتير).
+     * تحققات ما بعد القواعد: منطق طريقة الدفع.
      */
     public function withValidator($validator): void
     {
@@ -69,6 +68,7 @@ class StoreSalesReturnRequest extends FormRequest
             $method    = (int) $this->input('payment_method');
             $accountId = $this->input('payment_account_id');
 
+            // أجل (1) → لا يحتاج حساب دفع
             if ($method === 1 && !empty($accountId)) {
                 $v->errors()->add(
                     'payment_account_id',
@@ -76,7 +76,8 @@ class StoreSalesReturnRequest extends FormRequest
                 );
             }
 
-            if (in_array($method, [2, 3, 4], true) && empty($accountId)) {
+            // نقدي (2) / بنك (3) → يحتاج حساب دفع
+            if (in_array($method, [2, 3], true) && empty($accountId)) {
                 $v->errors()->add(
                     'payment_account_id',
                     'يجب اختيار حساب الدفع'
@@ -85,10 +86,6 @@ class StoreSalesReturnRequest extends FormRequest
         });
     }
 
-    /**
-     * الحفاظ على شكل استجابة الأخطاء الذي تتوقعه الواجهة:
-     * { message, errors } مع حالة 422.
-     */
     protected function failedValidation(Validator $validator): void
     {
         throw new HttpResponseException(

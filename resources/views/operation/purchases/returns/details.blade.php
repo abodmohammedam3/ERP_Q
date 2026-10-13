@@ -18,23 +18,22 @@
             <thead class="table-light">
                 <tr>
                     <th style="width:4%;">الرقم</th>
-                    <th style="width:14%;">الصنف</th>
-                    <th style="width:9%;">النوع</th>
-                    <th style="width:8%;">الرمز</th>
-                    <th style="width:8%;">الوحدة</th>
-                    <th style="width:9%;">المخزن</th>
-                    <th style="width:9%;">سعر الشراء</th>
-                    <th style="width:9%;">الكمية المتاحة</th>
-                    <th style="width:9%;">كمية المرتجع</th>
+                    <th style="width:16%;">الصنف</th>
+                    <th style="width:11%;">النوع</th>
+                    <th style="width:10%;">الرمز</th>
+                    <th style="width:10%;">الوحدة</th>
+                    <th style="width:11%;">سعر الشراء</th>
+                    <th style="width:11%;">الكمية المتاحة</th>
+                    <th style="width:11%;">كمية المرتجع</th>
                     <th style="width:8%;">الخصم</th>
-                    <th style="width:11%;">الإجمالي</th>
+                    <th style="width:12%;">الإجمالي</th>
                     <th style="width:6%;">إجراء</th>
                 </tr>
             </thead>
 
             <tbody id="purchaseReturnDetails">
                 <tr>
-                    <td colspan="12" class="text-center text-muted py-4">
+                    <td colspan="11" class="text-center text-muted py-4">
                         اختر الفاتورة الأصلية لإدراج الأصناف المتاحة للإرجاع
                     </td>
                 </tr>
@@ -42,7 +41,7 @@
 
             <tfoot>
                 <tr>
-                    <td colspan="12" class="p-3 bg-light">
+                    <td colspan="11" class="p-3 bg-light">
                         <div class="d-flex justify-content-end">
                             <div class="d-flex align-items-center gap-3 border rounded-3 bg-white p-2 px-3">
 
@@ -156,6 +155,30 @@
         حفظ وإضافة مرتجع
     </button>
 
+    <!-- ✅ ترحيل المرتجع (للمسودات) -->
+    <button
+        type="button"
+        class="btn btn-success d-none"
+        id="btnPostPurchaseReturn"
+        onclick="postCurrentPurchaseReturn()"
+        disabled
+    >
+        <i class="bi bi-check2-circle"></i>
+        ترحيل
+    </button>
+
+    <!-- ✅ إلغاء الترحيل (للمرحّلات) -->
+    <button
+        type="button"
+        class="btn btn-warning d-none"
+        id="btnUnpostPurchaseReturn"
+        onclick="unpostCurrentPurchaseReturn()"
+        disabled
+    >
+        <i class="bi bi-arrow-counterclockwise"></i>
+        إلغاء الترحيل
+    </button>
+
     <button
         type="button"
         class="btn btn-warning"
@@ -230,16 +253,6 @@
             >
         </td>
 
-        {{-- المخزن --}}
-        <td>
-            <input type="hidden" class="row-warehouse-id">
-            <input
-                type="text"
-                class="form-control form-control-sm row-warehouse"
-                readonly
-            >
-        </td>
-
         {{-- سعر الشراء --}}
         <td>
             <input
@@ -273,16 +286,14 @@
             >
         </td>
 
-        {{-- الخصم --}}
+        {{-- الخصم (للعرض فقط — يجلب من الفاتورة الأصلية) --}}
         <td>
             <input
                 type="number"
-                class="form-control form-control-sm row-discount"
-                value="0"
-                min="0"
-                step="0.01"
-                disabled
-                oninput="calculatePurchaseReturnRow(this)"
+                class="form-control form-control-sm row-discount bg-light"
+                value="0.00"
+                readonly
+                tabindex="-1"
             >
         </td>
 
@@ -311,6 +322,8 @@
         </td>
 
         <input type="hidden" class="row-unit-cost" value="0">
+        <input type="hidden" class="row-original-qty" value="0">
+        <input type="hidden" class="row-original-discount" value="0">
 
     </tr>
 </template>

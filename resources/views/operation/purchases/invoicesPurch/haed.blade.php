@@ -15,14 +15,13 @@
 
         <div class="row g-3">
 
-            <!-- رقم الفاتورة (تلقائي) -->
+            <!-- رقم الفاتورة -->
             <div class="col-md-3">
                 <label for="PurchaseInvoicesON2" class="form-label">رقم الفاتورة</label>
                 <input
                     type="text"
                     class="form-control"
                     id="PurchaseInvoicesON2"
-                    name="PurchaseInvoicesON2"
                     readonly
                 >
             </div>
@@ -34,7 +33,6 @@
                     type="date"
                     class="form-control"
                     id="PurchaseInvoicesDate2"
-                    name="PurchaseInvoicesDate2"
                     disabled
                 >
             </div>
@@ -45,29 +43,24 @@
                 <select
                     class="form-select"
                     id="PuInPaymentMethod2"
-                    name="PuInPaymentMethod2"
                     disabled
                     onchange="paymentMethodChanged(true)"
                 >
                     <option value="">اختر طريقة الدفع</option>
                     <option value="credit">أجل</option>
-                    <option value="cash">نقد</option>
-                    <option value="network">تحويل بنكي / شبكة</option>
+                    <option value="cash">نقدي (صندوق)</option>
+                    <option value="bank">بنك</option>
                 </select>
             </div>
 
-            <!-- حساب الدفع (ديناميكي) -->
+            <!-- حساب الدفع -->
             <div class="col-md-3 d-none" id="paymentAccountContainer">
                 <label for="paymentAccount" class="form-label">الحساب</label>
-                <input
-                    type="hidden"
-                    id="paymentAccountId"
-                >
+                <input type="hidden" id="paymentAccountId">
                 <input
                     type="text"
                     class="form-control"
                     id="paymentAccount"
-                    name="paymentAccount"
                     placeholder="اختر الحساب"
                     autocomplete="off"
                     disabled
@@ -81,16 +74,11 @@
             <!-- المورد -->
             <div class="col-md-4">
                 <label for="supplierName" class="form-label">المورد</label>
-                <input
-                    type="hidden"
-                    id="suplierID"
-                    name="suplierID"
-                >
+                <input type="hidden" id="suplierID">
                 <input
                     type="text"
                     class="form-control"
                     id="supplierName"
-                    name="supplierName"
                     placeholder="اكتب اسم المورد أو رقمه المحاسبي"
                     autocomplete="off"
                     disabled
@@ -105,21 +93,12 @@
             <!-- العملة -->
             <div class="col-md-3">
                 <label for="currencyName" class="form-label">العملة</label>
-                <input
-                    type="hidden"
-                    id="coinsID"
-                    name="coinsID"
-                >
-                <input
-                    type="hidden"
-                    id="currencyCode"
-                    name="currencyCode"
-                >
+                <input type="hidden" id="coinsID">
+                <input type="hidden" id="currencyCode">
                 <input
                     type="text"
                     class="form-control"
                     id="currencyName"
-                    name="currencyName"
                     placeholder="اختر العملة"
                     autocomplete="off"
                     disabled
@@ -131,34 +110,31 @@
                 >
             </div>
 
-            <!-- سعر الصرف -->
+            <!-- ✅ سعر الصرف — readonly غير قابل للإدخال نهائيًا -->
             <div class="col-md-2">
                 <label for="PuInExchangeRate2" class="form-label">سعر الصرف</label>
                 <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    class="form-control"
+                    type="text"
+                    inputmode="none"
+                    class="form-control bg-light"
                     id="PuInExchangeRate2"
-                    name="PuInExchangeRate2"
-                    disabled
-                    oninput="exchangeRateChanged()"
+                    readonly
+                    tabindex="-1"
+                    onkeydown="return false"
+                    onpaste="return false"
+                    oncut="return false"
+                    ondrop="return false"
                 >
             </div>
 
             <!-- المخزن -->
             <div class="col-md-3">
                 <label for="warehouseName" class="form-label">المخزن</label>
-                <input
-                    type="hidden"
-                    id="warehouseID"
-                    name="warehouseID"
-                >
+                <input type="hidden" id="warehouseID">
                 <input
                     type="text"
                     class="form-control"
                     id="warehouseName"
-                    name="warehouseName"
                     placeholder="اختر المخزن"
                     autocomplete="off"
                     disabled
@@ -175,3 +151,12 @@
     </div>
 
 </div>
+
+<style>
+    /* إخفاء أسهم الأرقام في حقل سعر الصرف */
+    #PuInExchangeRate2::-webkit-outer-spin-button,
+    #PuInExchangeRate2::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+</style>

@@ -22,7 +22,6 @@
                     type="text"
                     class="form-control"
                     id="PurchaseReturnNo"
-                    name="PurchaseReturnNo"
                     readonly
                     tabindex="-1"
                 >
@@ -35,70 +34,59 @@
                     type="date"
                     class="form-control"
                     id="PurchaseReturnDate"
-                    name="PurchaseReturnDate"
-                    disabled
+                    readonly
+                    tabindex="-1"
                 >
             </div>
 
             <!-- الفاتورة الأصلية -->
-            <div class="col-md-4">
+            <div class="col-md-6">
                 <label for="originalPurchaseInvoiceNo" class="form-label">الفاتورة الأصلية</label>
-                <div class="input-group">
-                    <input type="hidden" id="originalPurchaseInvoiceId" name="originalPurchaseInvoiceId">
+                <input type="hidden" id="originalPurchaseInvoiceId" name="originalPurchaseInvoiceId">
+                <div
+                    id="originalPurchaseInvoiceWrapper"
+                    onclick="onOriginalInvoiceFieldClick()"
+                >
                     <input
                         type="text"
                         class="form-control"
                         id="originalPurchaseInvoiceNo"
-                        placeholder="اختر الفاتورة الأصلية..."
+                        placeholder="اضغط لاختيار الفاتورة الأصلية..."
                         readonly
+                        style="pointer-events: none; background-color: #fff;"
                     >
-                    <button
-                        type="button"
-                        class="btn btn-outline-primary"
-                        id="btnSelectOriginalPurchaseInvoice"
-                        onclick="searchOriginalPurchaseInvoice()"
-                        disabled
-                    >
-                        <i class="bi bi-search"></i>
-                        اختيار
-                    </button>
                 </div>
             </div>
 
             <!-- طريقة الدفع -->
-            <div class="col-md-2">
+            <div class="col-md-3">
                 <label for="PurchaseReturnPaymentMethod" class="form-label">طريقة الدفع</label>
-                <select
-                    class="form-select"
+                <input type="hidden" id="PurchaseReturnPaymentMethodValue">
+                <input
+                    type="text"
+                    class="form-control"
                     id="PurchaseReturnPaymentMethod"
-                    name="PurchaseReturnPaymentMethod"
-                    disabled
-                    onchange="purchaseReturnPaymentMethodChanged()"
+                    placeholder="تحدد من الفاتورة"
+                    readonly
+                    tabindex="-1"
                 >
-                    <option value="">اختر طريقة الدفع</option>
-                    <option value="credit">أجل</option>
-                    <option value="cash">نقد</option>
-                    <option value="bank">تحويل بنكي</option>
-                    <option value="network">عبر شبكة</option>
-                </select>
             </div>
 
-            <!-- حساب الدفع (ديناميكي) -->
+            <!-- حساب الدفع (يظهر فقط عند نقدي/بنك) -->
             <div class="col-md-3 d-none" id="purchaseReturnPaymentAccountContainer">
-                <label for="purchaseReturnPaymentAccount" class="form-label">الحساب</label>
+                <label for="purchaseReturnPaymentAccount" class="form-label" id="purchaseReturnPaymentAccountLabel">الحساب</label>
                 <input type="hidden" id="purchaseReturnPaymentAccountId">
                 <input
                     type="text"
                     class="form-control"
                     id="purchaseReturnPaymentAccount"
-                    name="purchaseReturnPaymentAccount"
-                    placeholder="اختر الحساب"
-                    autocomplete="off"
-                    disabled
+                    readonly
+                    tabindex="-1"
+                    placeholder="—"
                 >
             </div>
 
-            <!-- المورد (مأخوذ تلقائياً من الفاتورة) -->
+            <!-- المورد -->
             <div class="col-md-4">
                 <label for="purchaseReturnSupplierName" class="form-label">المورد</label>
                 <input type="hidden" id="purchaseReturnSupplierID" name="purchaseReturnSupplierID">
@@ -106,22 +94,22 @@
                     type="text"
                     class="form-control"
                     id="purchaseReturnSupplierName"
-                    name="purchaseReturnSupplierName"
                     readonly
+                    tabindex="-1"
                     placeholder="يتحدد عند اختيار الفاتورة"
                 >
             </div>
 
-            <!-- المخزن الرئيس -->
+            <!-- المخزن -->
             <div class="col-md-3">
-                <label for="purchaseReturnWarehouseName" class="form-label">المخزن الرئيسي</label>
+                <label for="purchaseReturnWarehouseName" class="form-label">المخزن</label>
                 <input type="hidden" id="purchaseReturnWarehouseID" name="purchaseReturnWarehouseID">
                 <input
                     type="text"
                     class="form-control"
                     id="purchaseReturnWarehouseName"
-                    name="purchaseReturnWarehouseName"
                     readonly
+                    tabindex="-1"
                     placeholder="يتحدد تلقائياً"
                 >
             </div>
@@ -134,22 +122,26 @@
                     type="text"
                     class="form-control"
                     id="purchaseReturnCurrencyName"
-                    name="purchaseReturnCurrencyName"
                     readonly
+                    tabindex="-1"
                     placeholder="تحدد تلقائياً"
                 >
             </div>
 
-            <!-- سعر الصرف -->
+            <!-- ✅ سعر الصرف — readonly غير قابل للإدخال نهائيًا -->
             <div class="col-md-2">
                 <label for="PurchaseReturnExchangeRate" class="form-label">سعر الصرف</label>
                 <input
-                    type="number"
-                    step="0.000001"
-                    class="form-control"
+                    type="text"
+                    inputmode="none"
+                    class="form-control bg-light"
                     id="PurchaseReturnExchangeRate"
-                    name="PurchaseReturnExchangeRate"
                     readonly
+                    tabindex="-1"
+                    onkeydown="return false"
+                    onpaste="return false"
+                    oncut="return false"
+                    ondrop="return false"
                 >
             </div>
 
@@ -158,3 +150,12 @@
     </div>
 
 </div>
+
+<style>
+    /* إخفاء أسهم الأرقام في حقل سعر الصرف */
+    #PurchaseReturnExchangeRate::-webkit-outer-spin-button,
+    #PurchaseReturnExchangeRate::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+</style>

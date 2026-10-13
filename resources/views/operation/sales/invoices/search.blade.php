@@ -1,3 +1,7 @@
+<!-- ===================================================== -->
+<!-- نافذة البحث عن فاتورة بيع -->
+<!-- ===================================================== -->
+
 <div
     class="modal fade"
     id="salesInvoiceSearchModal"
@@ -20,14 +24,13 @@
                     البحث عن فاتورة بيع
                 </h5>
 
-               <button
+                <button
                     type="button"
                     class="btn-close"
                     style="margin-right: auto; margin-left: 0;"
                     data-bs-dismiss="modal"
                     aria-label="إغلاق"
                 ></button>
-
 
             </div>
 
@@ -64,11 +67,11 @@
                 </div>
 
 
-                <div class="table-responsive">
+                <div class="table-responsive" style="max-height: 450px;">
 
-                    <table class="table table-bordered table-hover align-middle">
+                    <table class="table table-bordered table-hover align-middle mb-0">
 
-                        <thead class="table-light">
+                        <thead class="table-light sticky-top">
 
                             <tr class="text-center">
 
@@ -78,7 +81,8 @@
                                 <th>العملة</th>
                                 <th>طريقة الدفع</th>
                                 <th>الإجمالي</th>
-                                <th>اختيار</th>
+                                <th>الحالة</th>
+                                <th style="min-width: 180px;">إجراءات</th>
 
                             </tr>
 
@@ -89,10 +93,11 @@
                             <tr>
 
                                 <td
-                                    colspan="7"
+                                    colspan="8"
                                     class="text-center text-muted py-4"
                                 >
-                                    أدخل بيانات البحث ثم اضغط بحث
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    جاري التحميل...
                                 </td>
 
                             </tr>

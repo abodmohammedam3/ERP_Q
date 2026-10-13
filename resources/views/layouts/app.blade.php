@@ -14,7 +14,6 @@
 <body class="bg-light vh-100 overflow-hidden">
 
     <div class="d-flex flex-column vh-100">
-
         <header class="flex-shrink-0">
             @include('layouts.navbar')
         </header>
@@ -26,7 +25,6 @@
                 @yield('content')
             </main>
         </div>
-
     </div>
 
     {{-- Toast --}}
@@ -40,14 +38,14 @@
         </div>
     </div>
 
+    {{-- المودالات الإضافية --}}
+    @stack('modals')
+
     {{-- ✅ الحزمة العامة --}}
     @vite(['resources/js/app.js'])
 
     {{-- حزم الصفحات --}}
     @stack('scripts')
-
-    {{-- المودالات الإضافية --}}
-    @stack('modals')
 
 </body>
 </html>

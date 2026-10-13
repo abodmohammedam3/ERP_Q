@@ -22,6 +22,7 @@ if (csrfToken) {
 import './shared/utils';
 import './shared/state';
 import './shared/modals';
+import './shared/app-confirm';   // ← ✅ هنا في app.js فقط
 
 // ─── نظام التنبيهات ───
 import './system';

@@ -1,24 +1,29 @@
 /* =========================================================================
-   فاتورة البيع — نسخة محدّثة (النافذة read-only)
+   فاتورة البيع — بنفس نمط فاتورة الشراء
    ========================================================================= */
 
 /* =========================================================
    الثوابت
    ========================================================= */
+const SALES_SYSTEM_CURRENCY_ID   = window.SALES_SYSTEM_CURRENCY_ID || null;
+const SALES_SYSTEM_CURRENCY_CODE = window.SALES_SYSTEM_CURRENCY_CODE || '';
 
-const SALES_PAYMENT_TO_INT = { credit: 1, cash: 2, bank: 3, network: 4 };
-const SALES_PAYMENT_TO_STR = { 1: 'credit', 2: 'cash', 3: 'bank', 4: 'network' };
+const SALES_PAYMENT_TO_INT = { credit: 1, cash: 2, bank: 3 };
+const SALES_PAYMENT_TO_STR = { 1: 'credit', 2: 'cash', 3: 'bank' };
+const SALES_PAYMENT_LABELS = { 1: 'أجل', 2: 'نقدي', 3: 'بنك' };
 
 const PIECE_UNIT_NAMES = ['الحبة', 'حبة', 'حبه', 'حب', 'قطعة', 'قطعه'];
 
 /* =========================================================
    الحالة العامة
    ========================================================= */
-
 let salesMode = 'view';
 let currentSalesInvoiceId = null;
+let currentSalesInvoiceIsPosted = false;
+let currentSalesInvoiceHasReturns = false;
 let isSavingSales = false;
 let salesEditSnapshot = null;
+let salesInvoiceSearchTimer = null;
 
 let stockBalancesModalInstance = null;
 let activeStockBalanceInput = null;
@@ -98,6 +103,79 @@ function findDefaultPieceUnit() {
     return null;
 }
 
+function salesExtractPayload(res) {
+    if (res && res.header) {
+        return { header: res.header, details: res.details || [] };
+    }
+    if (res && res.data && res.data.header) {
+        return { header: res.data.header, details: res.data.details || [] };
+    }
+    return { header: {}, details: [] };
+}
+
+/**
+ * ✅ هل العملة الحالية هي عملة النظام؟
+ */
+function isSalesInSystemCurrency() {
+    const coinId = salesGetValue('salesCoinsID');
+    if (!SALES_SYSTEM_CURRENCY_ID || !coinId) return false;
+    return String(coinId) === String(SALES_SYSTEM_CURRENCY_ID);
+}
+
+/* =========================================================
+   ✅ إدارة حالة سعر الصرف والعملة
+   ========================================================= */
+function applySalesExchangeRateState() {
+    const rateEl = document.getElementById('SalesExchangeRate');
+    if (!rateEl) return;
+
+    rateEl.readOnly = true;
+    rateEl.classList.add('bg-light');
+
+    if (isSalesInSystemCurrency()) {
+        rateEl.value = '1.000000';
+    }
+
+    const currencyInput = document.getElementById('salesCurrencyName');
+    const paymentAccountId = salesGetValue('salesPaymentAccountId');
+
+    if (currencyInput) {
+        if (paymentAccountId) {
+            currencyInput.readOnly = true;
+            currencyInput.classList.add('bg-light');
+            currencyInput.style.pointerEvents = 'none';
+            currencyInput.title = 'العملة محددة من حساب الدفع';
+        } else {
+            currencyInput.readOnly = false;
+            currencyInput.classList.remove('bg-light');
+            currencyInput.style.pointerEvents = 'auto';
+            currencyInput.title = '';
+        }
+    }
+}
+
+/* =========================================================
+   ✅ تنظيف الـ modals العالقة
+   ========================================================= */
+function cleanupStuckModals() {
+    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('padding-right');
+
+    document.querySelectorAll('.modal.show').forEach(modalEl => {
+        const instance = bootstrap.Modal.getInstance(modalEl);
+        if (instance) {
+            try { instance.hide(); } catch (e) { /* ignore */ }
+        }
+        modalEl.classList.remove('show');
+        modalEl.style.display = 'none';
+        modalEl.setAttribute('aria-hidden', 'true');
+    });
+
+    document.querySelectorAll('.offcanvas-backdrop').forEach(el => el.remove());
+}
+
 /* =========================================================
    Lookup Hooks
    ========================================================= */
@@ -106,7 +184,43 @@ function registerSalesLookupHooks() {
     if (typeof LookupConfigs === 'undefined') return;
 
     LookupConfigs.currency.onSelect = (row) => {
-        salesSetValue('SalesExchangeRate', row.coinsExchangeRate ?? 1);
+        const isSys = String(row.coinsID) === String(SALES_SYSTEM_CURRENCY_ID);
+        const rate = isSys ? 1 : (parseFloat(row.coinsExchangeRate) || 1);
+
+        salesSetValue('SalesExchangeRate', rate.toFixed(6));
+
+        salesSetValue('salesPaymentAccount', '');
+        salesSetValue('salesPaymentAccountId', '');
+
+        applySalesExchangeRateState();
+        calculateSalesTotals();
+    };
+
+    LookupConfigs.box.onSelect = (row) => {
+        if (row.coinsID) {
+            salesSetValue('salesCoinsID', row.coinsID);
+            salesSetValue('salesCurrencyName', row.coinsName || '');
+
+            const isSys = String(row.coinsID) === String(SALES_SYSTEM_CURRENCY_ID);
+            const rate = isSys ? 1 : (parseFloat(row.coinsExchangeRate) || 1);
+            salesSetValue('SalesExchangeRate', rate.toFixed(6));
+        }
+
+        applySalesExchangeRateState();
+        calculateSalesTotals();
+    };
+
+    LookupConfigs.bank.onSelect = (row) => {
+        if (row.coinsID) {
+            salesSetValue('salesCoinsID', row.coinsID);
+            salesSetValue('salesCurrencyName', row.coinsName || '');
+
+            const isSys = String(row.coinsID) === String(SALES_SYSTEM_CURRENCY_ID);
+            const rate = isSys ? 1 : (parseFloat(row.coinsExchangeRate) || 1);
+            salesSetValue('SalesExchangeRate', rate.toFixed(6));
+        }
+
+        applySalesExchangeRateState();
         calculateSalesTotals();
     };
 }
@@ -116,6 +230,10 @@ function registerSalesLookupHooks() {
    ========================================================= */
 
 document.addEventListener('DOMContentLoaded', () => {
+    cleanupStuckModals();
+
+    window.lookupGetActiveCoinId = () => salesGetValue('salesCoinsID');
+
     registerSalesLookupHooks();
 
     const balancesEl = document.getElementById('stockBalancesModal');
@@ -125,6 +243,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setSalesMode('view');
     clearSalesForm();
+
+    setTimeout(cleanupStuckModals, 100);
+    setTimeout(cleanupStuckModals, 500);
+});
+
+window.addEventListener('load', () => {
+    setTimeout(cleanupStuckModals, 200);
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        cleanupStuckModals();
+    }
 });
 
 /* =========================================================
@@ -136,8 +267,7 @@ function setSalesMode(mode) {
 
     document.querySelectorAll(
         '#SalesInvoiceDate, #SalesPaymentMethod, #salesPaymentAccount, ' +
-        '#customerName, #salesCurrencyName, #SalesExchangeRate, ' +
-        '#SalesStatement, #SalesReference'
+        '#customerName, #salesCurrencyName, #SalesStatement, #SalesReference'
     ).forEach(el => { el.disabled = (mode === 'view'); });
 
     document.querySelectorAll('#salesInvoiceDetails .sales-detail-row')
@@ -149,21 +279,14 @@ function setSalesMode(mode) {
     const newBtn = document.getElementById('btnNewSalesInvoice');
     if (newBtn) newBtn.disabled = (mode !== 'view');
 
-    const searchBtn = document.getElementById('btnSearchSalesInvoice');
-    if (searchBtn) searchBtn.disabled = (mode !== 'view');
-
     const saveBtn = document.getElementById('btnSaveSalesInvoice');
     const saveNewBtn = document.getElementById('btnSaveAndNewSalesInvoice');
     const cancelBtn = document.getElementById('btnCancelSalesInvoice');
-    const editBtn = document.getElementById('btnEditSalesInvoice');
-    const printBtn = document.getElementById('btnPrintSalesInvoice');
 
     if (mode === 'view') {
         if (saveBtn) saveBtn.disabled = true;
         if (saveNewBtn) saveNewBtn.disabled = true;
         if (cancelBtn) cancelBtn.classList.add('d-none');
-        if (editBtn) editBtn.disabled = !hasSalesInvoiceData();
-        if (printBtn) printBtn.disabled = !hasSalesInvoiceData();
 
         const payInput = document.getElementById('salesPaymentAccount');
         if (payInput) payInput.disabled = true;
@@ -174,9 +297,67 @@ function setSalesMode(mode) {
         if (saveBtn) saveBtn.disabled = false;
         if (saveNewBtn) saveNewBtn.disabled = false;
         if (cancelBtn) cancelBtn.classList.remove('d-none');
-        if (editBtn) editBtn.disabled = true;
-        if (printBtn) printBtn.disabled = true;
         salesPaymentMethodChanged();
+    }
+
+    updateSalesSearchButton();
+    updateSalesPostingButtons();
+    applySalesExchangeRateState();
+}
+
+/* =========================================================
+   ✅ إدارة زر البحث
+   ========================================================= */
+
+function updateSalesSearchButton() {
+    const searchBtn = document.getElementById('btnSearchSalesInvoice');
+    if (!searchBtn) return;
+
+    const hasInvoice = !!currentSalesInvoiceId;
+    const isViewMode = salesMode === 'view';
+
+    searchBtn.disabled = !isViewMode || hasInvoice;
+}
+
+/* =========================================================
+   ✅ إدارة أزرار الترحيل / إلغاء الترحيل
+   ========================================================= */
+
+function updateSalesPostingButtons() {
+    const editBtn   = document.getElementById('btnEditSalesInvoice');
+    const postBtn   = document.getElementById('btnPostSalesInvoice');
+    const unpostBtn = document.getElementById('btnUnpostSalesInvoice');
+    const printBtn  = document.getElementById('btnPrintSalesInvoice');
+
+    const hasData  = hasSalesInvoiceData();
+    const isPosted = currentSalesInvoiceIsPosted;
+    const isView   = salesMode === 'view';
+
+    if (editBtn) {
+        editBtn.disabled = !hasData || isPosted || !isView;
+        editBtn.classList.toggle('d-none', isPosted);
+
+        if (currentSalesInvoiceHasReturns && hasData && isView) {
+            editBtn.title = 'لا يمكن تعديل فاتورة لها مرتجعات';
+        } else {
+            editBtn.title = 'تعديل الفاتورة';
+        }
+    }
+
+    if (postBtn) {
+        const show = hasData && !isPosted;
+        postBtn.classList.toggle('d-none', !show);
+        postBtn.disabled = !hasData || isPosted || !isView;
+    }
+
+    if (unpostBtn) {
+        const show = hasData && isPosted;
+        unpostBtn.classList.toggle('d-none', !show);
+        unpostBtn.disabled = !hasData || !isPosted || !isView;
+    }
+
+    if (printBtn) {
+        printBtn.disabled = !hasData;
     }
 }
 
@@ -185,6 +366,8 @@ function setSalesMode(mode) {
    ========================================================= */
 
 async function resetSalesInvoice() {
+    cleanupStuckModals();
+
     clearSalesForm();
     setSalesMode('add');
 
@@ -226,9 +409,13 @@ function clearSalesForm() {
 
     hideSalesPaymentAccounts();
 
-    setSalesMode('view');
     currentSalesInvoiceId = null;
+    currentSalesInvoiceIsPosted = false;
+    currentSalesInvoiceHasReturns = false;
     salesEditSnapshot = null;
+
+    setSalesMode('view');
+    applySalesExchangeRateState();
 }
 
 function setEmptySalesMessage() {
@@ -286,6 +473,12 @@ function enableSalesRow(row) {
 
     row.querySelectorAll('input, select, button').forEach(el => {
         if (el.classList.contains('row-total')) return;
+        if (el.classList.contains('row-item')) return;
+        if (el.classList.contains('row-type')) return;
+        if (el.classList.contains('row-code')) return;
+        if (el.classList.contains('row-unit')) return;
+        if (el.classList.contains('row-warehouse')) return;
+        if (el.classList.contains('row-cost-price')) return;
         if (el.type === 'hidden') return;
         el.disabled = (salesMode === 'view');
     });
@@ -354,10 +547,12 @@ function calculateSalesTotals() {
     if (totalEl) totalEl.textContent = total.toFixed(2);
 }
 
-function salesExchangeRateChanged() { calculateSalesTotals(); }
+function salesExchangeRateChanged() {
+    // سعر الصرف readonly — لا شيء
+}
 
 /* =========================================================
-   طرق الدفع
+   طرق الدفع — 3 طرق
    ========================================================= */
 
 function salesPaymentMethodChanged(clearPrevious = false) {
@@ -371,6 +566,7 @@ function salesPaymentMethodChanged(clearPrevious = false) {
     const methodEl = document.getElementById('SalesPaymentMethod');
     const container = document.getElementById('salesPaymentAccountContainer');
     const input = document.getElementById('salesPaymentAccount');
+    const label = document.getElementById('salesPaymentAccountLabel');
 
     if (!methodEl || !container || !input) return;
 
@@ -381,6 +577,7 @@ function salesPaymentMethodChanged(clearPrevious = false) {
         input.disabled = true;
         input.value = '';
         salesSetValue('salesPaymentAccountId', '');
+        applySalesExchangeRateState();
         return;
     }
 
@@ -390,14 +587,14 @@ function salesPaymentMethodChanged(clearPrevious = false) {
     if (method === 'bank') {
         input.dataset.lookup = 'bank';
         input.dataset.lookupDisplayField = 'bankName';
+        if (label) label.textContent = 'الحساب البنكي';
     } else {
         input.dataset.lookup = 'box';
         input.dataset.lookupDisplayField = 'boxName';
+        if (label) label.textContent = 'الصندوق';
     }
 
-    const labels = { cash: 'الصندوق', bank: 'الحساب البنكي', network: 'حساب المحفظة' };
-    const lbl = container.querySelector('label');
-    if (lbl) lbl.textContent = labels[method] || 'الحساب';
+    applySalesExchangeRateState();
 }
 
 function hideSalesPaymentAccounts() {
@@ -406,7 +603,7 @@ function hideSalesPaymentAccounts() {
 }
 
 /* =========================================================
-   البحث عن فاتورة
+   البحث عن فاتورة — النقر على الصف
    ========================================================= */
 
 function searchSalesInvoice() {
@@ -419,14 +616,35 @@ function searchSalesInvoice() {
 
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 7;
+    td.colSpan = 8;
     td.className = 'text-center text-muted py-4';
-    td.textContent = 'أدخل بيانات البحث ثم اضغط بحث';
+    td.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري التحميل...';
     tr.appendChild(td);
     tb.appendChild(tr);
 
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
-    setTimeout(() => document.getElementById('salesInvoiceSearchInput')?.focus(), 200);
+
+    setTimeout(() => {
+        document.getElementById('salesInvoiceSearchInput')?.focus();
+        performSalesInvoiceSearch();
+    }, 250);
+}
+
+function debouncedSalesInvoiceSearch() {
+    clearTimeout(salesInvoiceSearchTimer);
+    salesInvoiceSearchTimer = setTimeout(performSalesInvoiceSearch, 350);
+}
+
+/**
+ * ✅ تفريغ البحث — إعادة عرض كل الفواتير
+ */
+function clearSalesInvoiceSearch() {
+    salesSetValue('salesInvoiceSearchInput', '');
+    performSalesInvoiceSearch();
+
+    setTimeout(() => {
+        document.getElementById('salesInvoiceSearchInput')?.focus();
+    }, 100);
 }
 
 async function performSalesInvoiceSearch() {
@@ -437,16 +655,39 @@ async function performSalesInvoiceSearch() {
     try {
         const raw = await salesApiGet(`/operation/sales/invoices/list?search=${encodeURIComponent(search)}`);
         const rows = Array.isArray(raw) ? raw : (raw.data || []);
-        const labels = { 1: 'أجل', 2: 'نقد', 3: 'بنك', 4: 'شبكة' };
+
+        if (rows.length === 0) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 8;
+            td.className = 'text-center text-muted py-4';
+            td.textContent = 'لا توجد نتائج مطابقة';
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+            return;
+        }
 
         rows.forEach(inv => {
             const tr = document.createElement('tr');
+            tr.className = 'text-center';
+            tr.style.cursor = 'pointer';
+            tr.title = 'اضغط لتحميل الفاتورة';
+
+            tr.addEventListener('click', () => loadSalesInvoice(inv.sales_invoice_id));
+
+            tr.addEventListener('mouseenter', () => {
+                tr.classList.add('table-primary');
+            });
+            tr.addEventListener('mouseleave', () => {
+                tr.classList.remove('table-primary');
+            });
+
             [
                 inv.invoice_number,
                 inv.invoice_date,
                 inv.customer_name,
                 inv.coin_name,
-                labels[inv.payment_method] || '',
+                SALES_PAYMENT_LABELS[inv.payment_method] || '',
                 Number(inv.total).toFixed(2)
             ].forEach(v => {
                 const td = document.createElement('td');
@@ -454,19 +695,161 @@ async function performSalesInvoiceSearch() {
                 tr.appendChild(td);
             });
 
-            const tdBtn = document.createElement('td');
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'btn btn-sm btn-primary';
-            btn.textContent = 'عرض';
-            btn.addEventListener('click', () => loadSalesInvoice(inv.sales_invoice_id));
-            tdBtn.appendChild(btn);
-            tr.appendChild(tdBtn);
+            const tdStatus = document.createElement('td');
+            const badge = document.createElement('span');
+            if (inv.is_posted) {
+                badge.className = 'badge bg-success';
+                badge.textContent = 'مرحّلة';
+            } else {
+                badge.className = 'badge bg-secondary';
+                badge.textContent = 'مسودة';
+            }
+            tdStatus.appendChild(badge);
+            tr.appendChild(tdStatus);
+
+            const tdActions = document.createElement('td');
+            tdActions.className = 'text-nowrap';
+            tdActions.addEventListener('click', (e) => e.stopPropagation());
+
+            tdActions.appendChild(buildSalesPostToggleBtn(inv));
+            tdActions.appendChild(buildSalesDeleteBtn(inv));
+            tr.appendChild(tdActions);
+
             tbody.appendChild(tr);
         });
     } catch (e) {
         console.error(e);
         salesNotify('فشل البحث عن الفواتير', 'danger');
+    }
+}
+
+/* =========================================================
+   أزرار الإجراءات
+   ========================================================= */
+
+function buildSalesPostToggleBtn(inv) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm me-1';
+
+    if (inv.is_posted) {
+        btn.classList.add('btn-outline-warning');
+        btn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> إلغاء الترحيل';
+        btn.title = 'فتح الفاتورة للتعديل';
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            unpostSalesInvoice(inv.sales_invoice_id);
+        });
+    } else {
+        btn.classList.add('btn-outline-success');
+        btn.innerHTML = '<i class="bi bi-check2-circle"></i> ترحيل';
+        btn.title = 'ترحيل الفاتورة وإنشاء القيود';
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            postSalesInvoice(inv.sales_invoice_id);
+        });
+    }
+
+    return btn;
+}
+
+function buildSalesDeleteBtn(inv) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm btn-outline-danger';
+    btn.innerHTML = '<i class="bi bi-trash"></i> حذف';
+    btn.title = 'حذف الفاتورة نهائيًا';
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteSalesInvoice(inv.sales_invoice_id, inv.invoice_number);
+    });
+    return btn;
+}
+
+/* =========================================================
+   POST / UNPOST / DELETE (من نافذة البحث)
+   ========================================================= */
+
+async function postSalesInvoice(id) {
+    if (!confirm('هل تريد ترحيل هذه الفاتورة؟\nسيتم إنشاء القيود وحركة المخزون.')) return;
+
+    try {
+        const r = await salesApiSend(`/operation/sales/invoices/${id}/post`, 'POST', {});
+        salesNotify(r.message || 'تم ترحيل الفاتورة بنجاح', 'success');
+        performSalesInvoiceSearch();
+    } catch (e) {
+        salesNotify(e.message, 'danger');
+    }
+}
+
+async function unpostSalesInvoice(id) {
+    if (!confirm('هل تريد إلغاء ترحيل هذه الفاتورة؟\nسيتم حذف القيود وحركة المخزون.')) return;
+
+    try {
+        const r = await salesApiSend(`/operation/sales/invoices/${id}/unpost`, 'POST', {});
+        salesNotify(r.message || 'تم إلغاء ترحيل الفاتورة بنجاح', 'success');
+        performSalesInvoiceSearch();
+
+        if (currentSalesInvoiceId === id) {
+            await loadSalesInvoice(id);
+        }
+    } catch (e) {
+        salesNotify(e.message, 'danger');
+    }
+}
+
+async function deleteSalesInvoice(id, number) {
+    const label = number ? `رقم ${number}` : `#${id}`;
+    if (!confirm(`هل أنت متأكد من حذف الفاتورة ${label}؟\nلا يمكن التراجع عن هذه العملية.`)) return;
+
+    try {
+        const r = await salesApiSend(`/operation/sales/invoices/${id}`, 'DELETE', {});
+        salesNotify(r.message || 'تم حذف الفاتورة بنجاح', 'success');
+        performSalesInvoiceSearch();
+
+        if (currentSalesInvoiceId === id) {
+            clearSalesForm();
+        }
+    } catch (e) {
+        salesNotify(e.message, 'danger');
+    }
+}
+
+/* =========================================================
+   POST / UNPOST من النموذج
+   ========================================================= */
+
+async function postCurrentSalesInvoice() {
+    if (!currentSalesInvoiceId) {
+        salesNotify('لا توجد فاتورة للترحيل', 'warning');
+        return;
+    }
+
+    if (!confirm('هل تريد ترحيل هذه الفاتورة؟\nسيتم إنشاء القيود وحركة المخزون.')) return;
+
+    try {
+        const r = await salesApiSend(`/operation/sales/invoices/${currentSalesInvoiceId}/post`, 'POST', {});
+        salesNotify(r.message || 'تم ترحيل الفاتورة بنجاح', 'success');
+        await loadSalesInvoice(currentSalesInvoiceId);
+    } catch (e) {
+        salesNotify(e.message, 'danger');
+    }
+}
+
+async function unpostCurrentSalesInvoice() {
+    if (!currentSalesInvoiceId) {
+        salesNotify('لا توجد فاتورة', 'warning');
+        return;
+    }
+
+    if (!confirm('هل تريد إلغاء ترحيل هذه الفاتورة؟\nسيتم حذف القيود وحركة المخزون.')) return;
+
+    try {
+        const r = await salesApiSend(`/operation/sales/invoices/${currentSalesInvoiceId}/unpost`, 'POST', {});
+        salesNotify(r.message || 'تم إلغاء ترحيل الفاتورة بنجاح', 'success');
+        await loadSalesInvoice(currentSalesInvoiceId);
+    } catch (e) {
+        salesNotify(e.message, 'danger');
     }
 }
 
@@ -477,8 +860,7 @@ async function performSalesInvoiceSearch() {
 async function loadSalesInvoice(id) {
     try {
         const res = await salesApiGet(`/operation/sales/invoices/${id}`);
-        const h = res.header;
-        const details = res.details || [];
+        const { header: h, details } = salesExtractPayload(res);
 
         clearSalesForm();
 
@@ -538,11 +920,20 @@ async function loadSalesInvoice(id) {
         calculateSalesTotals();
 
         const modalEl = document.getElementById('salesInvoiceSearchModal');
-        if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
+        if (modalEl) {
+            const instance = bootstrap.Modal.getInstance(modalEl);
+            if (instance) instance.hide();
+        }
+
+        setTimeout(cleanupStuckModals, 300);
 
         currentSalesInvoiceId = h.sales_invoice_id;
+        currentSalesInvoiceIsPosted = !!h.is_posted;
+        currentSalesInvoiceHasReturns = !!h.has_returns;
         setSalesMode('view');
         salesEditSnapshot = null;
+
+        applySalesExchangeRateState();
 
         salesNotify('تم تحميل الفاتورة بنجاح', 'success');
     } catch (e) {
@@ -595,15 +986,21 @@ function editSalesInvoice() {
         return;
     }
 
+    if (currentSalesInvoiceHasReturns) {
+        salesNotify('لا يمكن تعديل فاتورة لها مرتجعات. احذف المرتجعات أولًا.', 'warning');
+        return;
+    }
+
     setSalesMode('edit');
     document.querySelectorAll('#salesInvoiceDetails .sales-detail-row')
         .forEach(r => enableSalesRow(r));
     document.querySelectorAll(
         '#SalesInvoiceDate, #SalesPaymentMethod, #salesPaymentAccount, #customerName, ' +
-        '#salesCurrencyName, #SalesExchangeRate, #SalesStatement, #SalesReference'
+        '#SalesStatement, #SalesReference'
     ).forEach(el => el.disabled = false);
 
     salesPaymentMethodChanged();
+    applySalesExchangeRateState();
     salesEditSnapshot = takeSalesSnapshot();
 }
 
@@ -703,9 +1100,12 @@ async function saveSalesInvoice() {
         let r;
         if (salesMode === 'edit' && currentSalesInvoiceId) {
             r = await salesApiSend(`/operation/sales/invoices/${currentSalesInvoiceId}`, 'PUT', payload);
+            currentSalesInvoiceIsPosted = false;
         } else {
             r = await salesApiSend('/operation/sales/invoices', 'POST', payload);
             currentSalesInvoiceId = r.sales_invoice_id;
+            currentSalesInvoiceIsPosted = !!r.is_posted;
+            currentSalesInvoiceHasReturns = false;
             if (r.invoice_number) salesSetValue('SalesInvoiceNo', r.invoice_number);
         }
         salesNotify(r.message || 'تم الحفظ بنجاح', 'success');
@@ -743,7 +1143,7 @@ function printSalesInvoice() {
 }
 
 /* =========================================================================
-   ✅ Modal: الأرصدة والتسعير — READ-ONLY
+   Modal: الأرصدة والتسعير
    ========================================================================= */
 
 function openStockBalancesModal(input) {
@@ -813,9 +1213,6 @@ function filterStockBalances() {
     renderStockBalances(filtered);
 }
 
-/**
- * ✅ READ-ONLY مع منع اختيار الصنف المُستخدم في صف آخر
- */
 function renderStockBalances(rows) {
     const tbody = document.getElementById('stockBalancesBody');
     if (!tbody) return;
@@ -833,7 +1230,6 @@ function renderStockBalances(rows) {
         return;
     }
 
-    /* ✅ جمع الأصناف المُستخدمة في الصفوف الأخرى */
     const usedItemIds = new Set();
     document.querySelectorAll('#salesInvoiceDetails .sales-detail-row').forEach(r => {
         if (r === activeStockBalanceRow) return;
@@ -873,7 +1269,6 @@ function renderStockBalances(rows) {
             tr.appendChild(td);
         });
 
-        /* ✅ زر الاختيار */
         const tdActions = document.createElement('td');
         const btnSelect = document.createElement('button');
         btnSelect.type = 'button';
@@ -940,12 +1335,24 @@ Object.assign(window, {
     salesPaymentMethodChanged,
     searchSalesInvoice,
     performSalesInvoiceSearch,
+    debouncedSalesInvoiceSearch,
+    clearSalesInvoiceSearch,
     loadSalesInvoice,
     editSalesInvoice,
     cancelSalesInvoice,
     saveSalesInvoice,
     saveAndNewSalesInvoice,
     printSalesInvoice,
+
+    postSalesInvoice,
+    unpostSalesInvoice,
+    deleteSalesInvoice,
+    postCurrentSalesInvoice,
+    unpostCurrentSalesInvoice,
+    updateSalesPostingButtons,
+    updateSalesSearchButton,
+    applySalesExchangeRateState,
+    cleanupStuckModals,
 
     openStockBalancesModal,
     fetchStockBalances,

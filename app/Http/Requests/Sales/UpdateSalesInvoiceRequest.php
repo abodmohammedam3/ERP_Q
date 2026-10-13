@@ -5,10 +5,9 @@ namespace App\Http\Requests\Sales;
 /**
  * التحقق من بيانات تعديل فاتورة البيع.
  *
- * نفس قواعد الإنشاء (كما كان سلوك validateInvoice الأصلي
- * يُستخدم للإنشاء والتعديل معًا).
+ * نفس قواعد الإنشاء — يرث كل شيء من StoreSalesInvoiceRequest.
  */
 class UpdateSalesInvoiceRequest extends StoreSalesInvoiceRequest
 {
-    // نفس القواعد والرسائل — تُعدّل هنا فقط لو اختلف سلوك التحديث.
+    // يرث كل القواعد والرسائل — لا يحتاج تعديل.
 }

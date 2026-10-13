@@ -26,14 +26,13 @@
                     <span class="input-group-text bg-white">
                         <i class="bi bi-search"></i>
                     </span>
-                    <input
+                   <input
                         type="text"
                         class="form-control"
                         id="unifiedLookupSearch"
                         placeholder="ابحث..."
                         autocomplete="off"
                         oninput="lookupSearchInput(event)"
-                        onkeydown="lookupSearchKeyDown(event)"
                     >
                 </div>
 

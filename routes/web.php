@@ -22,6 +22,9 @@ use App\Http\Controllers\Operation\ReceiptVoucher\ReceiptVoucherController;
 use App\Http\Controllers\Operation\PaymentVoucher\PaymentVoucherController;
 use App\Http\Controllers\Operation\Sales\SalesReturnController;
 use App\Http\Controllers\Operation\Purchases\PurchaseReturnController;
+use App\Http\Controllers\Operation\Sales\SalesInvoiceApiController;
+use App\Http\Controllers\Operation\Purchases\PurchaseReturnApiController;
+use App\Http\Controllers\Operation\Purchases\PurchaseInvoiceApiController;
 
 
 
@@ -601,13 +604,12 @@ Route::patch(
     '/setting/accounting/coins/{coin}/toggle-status',
     [CoinController::class, 'toggleStatus']
 )->name('coins.toggleStatus');
-
 // =====================================================
 // فواتير الشراء
 // =====================================================
 
 // -----------------------------------------------------
-// عرض الشاشة الرئيسية
+// Web (Views)
 // -----------------------------------------------------
 
 Route::get(
@@ -615,85 +617,64 @@ Route::get(
     [PurchaseInvoiceController::class, 'index']
 )->name('invoicesPurch.index');
 
-
-// -----------------------------------------------------
-// رقم الفاتورة التالي
-// -----------------------------------------------------
-
-Route::get(
-    '/operation/purchases/invoicesPurch/next-number',
-    [PurchaseInvoiceController::class, 'nextNumber']
-)->name('invoicesPurch.nextNumber');
-
-// -----------------------------------------------------
-// ✅ #11: قائمة البنوك مع البيانات الكاملة
-// -----------------------------------------------------
-
-Route::get(
-    '/operation/purchases/banks/list-full',
-    [PurchaseInvoiceController::class, 'listBanksFull']
-)->name('purchases.banks.listFull');
-
-
-// -----------------------------------------------------
-// قائمة الفواتير (JSON) — لنافذة البحث
-// -----------------------------------------------------
-
-Route::get(
-    '/operation/purchases/invoicesPurch/list',
-    [PurchaseInvoiceController::class, 'list']
-)->name('invoicesPurch.list');
-
-
-// -----------------------------------------------------
-// طباعة فاتورة الشراء
-// -----------------------------------------------------
-
 Route::get(
     '/operation/purchases/invoicesPurch/{id}/print',
     [PurchaseInvoiceController::class, 'print']
 )->name('invoicesPurch.print');
 
-
 // -----------------------------------------------------
-// عرض فاتورة واحدة (JSON)
+// API (JSON)
+// ⚠️ المسارات الثابتة قبل /{id}
 // -----------------------------------------------------
 
 Route::get(
+    '/operation/purchases/invoicesPurch/next-number',
+    [PurchaseInvoiceApiController::class, 'nextNumber']
+)->name('invoicesPurch.nextNumber');
+
+Route::get(
+    '/operation/purchases/banks/list-full',
+    [PurchaseInvoiceApiController::class, 'listBanksFull']
+)->name('purchases.banks.listFull');
+
+Route::get(
+    '/operation/purchases/invoicesPurch/list',
+    [PurchaseInvoiceApiController::class, 'list']
+)->name('invoicesPurch.list');
+
+Route::get(
     '/operation/purchases/invoicesPurch/{id}',
-    [PurchaseInvoiceController::class, 'show']
+    [PurchaseInvoiceApiController::class, 'show']
 )->name('invoicesPurch.show');
-
-
-// -----------------------------------------------------
-// حفظ فاتورة جديدة
-// -----------------------------------------------------
 
 Route::post(
     '/operation/purchases/invoicesPurch',
-    [PurchaseInvoiceController::class, 'store']
+    [PurchaseInvoiceApiController::class, 'store']
 )->name('invoicesPurch.store');
-
-
-// -----------------------------------------------------
-// تحديث فاتورة
-// -----------------------------------------------------
 
 Route::put(
     '/operation/purchases/invoicesPurch/{id}',
-    [PurchaseInvoiceController::class, 'update']
+    [PurchaseInvoiceApiController::class, 'update']
 )->name('invoicesPurch.update');
-
-
-// -----------------------------------------------------
-// حذف فاتورة
-// -----------------------------------------------------
 
 Route::delete(
     '/operation/purchases/invoicesPurch/{id}',
-    [PurchaseInvoiceController::class, 'destroy']
+    [PurchaseInvoiceApiController::class, 'destroy']
 )->name('invoicesPurch.destroy');
 
+// -----------------------------------------------------
+// الترحيل / إلغاء الترحيل
+// -----------------------------------------------------
+
+Route::post(
+    '/operation/purchases/invoicesPurch/{id}/post',
+    [PurchaseInvoiceApiController::class, 'post']
+)->name('invoicesPurch.post');
+
+Route::post(
+    '/operation/purchases/invoicesPurch/{id}/unpost',
+    [PurchaseInvoiceApiController::class, 'unpost']
+)->name('invoicesPurch.unpost');
 
 // =====================================================
 // حركات المخزون
@@ -837,98 +818,66 @@ Route::post(
     [InventoryMovementController::class, 'store']
 )->name('movements.store');
 
-
 // =====================================================
 // فواتير البيع
 // =====================================================
 
-// -----------------------------------------------------
-// عرض الشاشة الرئيسية
-// -----------------------------------------------------
-
+// Web
 Route::get(
     '/operation/sales/invoices',
     [SalesInvoiceController::class, 'index']
 )->name('sales.invoices.index');
-
-
-// -----------------------------------------------------
-// رقم الفاتورة التالي
-// -----------------------------------------------------
-
-Route::get(
-    '/operation/sales/invoices/next-number',
-    [SalesInvoiceController::class, 'nextNumber']
-)->name('sales.invoices.nextNumber');
-
-
-// -----------------------------------------------------
-// قائمة الفواتير (JSON)
-// -----------------------------------------------------
-
-Route::get(
-    '/operation/sales/invoices/list',
-    [SalesInvoiceController::class, 'list']
-)->name('sales.invoices.list');
-
-// -----------------------------------------------------
-// آخر تكلفة لصنف في مخزن (مساعد)
-// -----------------------------------------------------
-
-Route::get(
-    '/operation/sales/invoices/helpers/last-cost',
-    [SalesInvoiceController::class, 'lastCost']
-)->name('sales.invoices.lastCost');
-
-// -----------------------------------------------------
-// طباعة فاتورة البيع
-// -----------------------------------------------------
 
 Route::get(
     '/operation/sales/invoices/{id}/print',
     [SalesInvoiceController::class, 'print']
 )->name('sales.invoices.print');
 
+// API
+Route::get(
+    '/operation/sales/invoices/list',
+    [SalesInvoiceApiController::class, 'list']
+)->name('sales.invoices.list');
 
-// -----------------------------------------------------
-// عرض فاتورة واحدة (JSON)
-// -----------------------------------------------------
+Route::get(
+    '/operation/sales/invoices/next-number',
+    [SalesInvoiceApiController::class, 'nextNumber']
+)->name('sales.invoices.nextNumber');
+
+Route::get(
+    '/operation/sales/invoices/helpers/last-cost',
+    [SalesInvoiceApiController::class, 'lastCost']
+)->name('sales.invoices.lastCost');
 
 Route::get(
     '/operation/sales/invoices/{id}',
-    [SalesInvoiceController::class, 'show']
+    [SalesInvoiceApiController::class, 'show']
 )->name('sales.invoices.show');
-
-
-// -----------------------------------------------------
-// حفظ فاتورة جديدة
-// -----------------------------------------------------
 
 Route::post(
     '/operation/sales/invoices',
-    [SalesInvoiceController::class, 'store']
+    [SalesInvoiceApiController::class, 'store']
 )->name('sales.invoices.store');
-
-
-// -----------------------------------------------------
-// تحديث فاتورة
-// -----------------------------------------------------
 
 Route::put(
     '/operation/sales/invoices/{id}',
-    [SalesInvoiceController::class, 'update']
+    [SalesInvoiceApiController::class, 'update']
 )->name('sales.invoices.update');
-
-
-// -----------------------------------------------------
-// حذف فاتورة
-// -----------------------------------------------------
 
 Route::delete(
     '/operation/sales/invoices/{id}',
-    [SalesInvoiceController::class, 'destroy']
+    [SalesInvoiceApiController::class, 'destroy']
 )->name('sales.invoices.destroy');
 
+Route::post(
+    '/operation/sales/invoices/{id}/post',
+    [SalesInvoiceApiController::class, 'post']
+)->name('sales.invoices.post');
+
+Route::post(
+    '/operation/sales/invoices/{id}/unpost',
+    [SalesInvoiceApiController::class, 'unpost']
+)->name('sales.invoices.unpost');
 
 // =====================================================
 // مرتجعات المبيعات
@@ -944,20 +893,77 @@ Route::post('/operation/sales/returns', [SalesReturnController::class, 'store'])
 Route::put('/operation/sales/returns/{id}', [SalesReturnController::class, 'update'])->name('sales.returns.update');
 Route::delete('/operation/sales/returns/{id}', [SalesReturnController::class, 'destroy'])->name('sales.returns.destroy');
 
-
 // =====================================================
 // مرتجعات المشتريات
 // =====================================================
 
-Route::get('/operation/purchases/returns', [PurchaseReturnController::class, 'index'])->name('purchases.returns.index');
-Route::get('/operation/purchases/returns/next-number', [PurchaseReturnController::class, 'nextNumber'])->name('purchases.returns.nextNumber');
-Route::get('/operation/purchases/returns/list', [PurchaseReturnController::class, 'list'])->name('purchases.returns.list');
-Route::get('/operation/purchases/returns/available-quantity', [PurchaseReturnController::class, 'availableQuantity'])->name('purchases.returns.availableQuantity');
-Route::get('/operation/purchases/returns/{id}/print', [PurchaseReturnController::class, 'print'])->name('purchases.returns.print');
-Route::get('/operation/purchases/returns/{id}', [PurchaseReturnController::class, 'show'])->name('purchases.returns.show');
-Route::post('/operation/purchases/returns', [PurchaseReturnController::class, 'store'])->name('purchases.returns.store');
-Route::put('/operation/purchases/returns/{id}', [PurchaseReturnController::class, 'update'])->name('purchases.returns.update');
-Route::delete('/operation/purchases/returns/{id}', [PurchaseReturnController::class, 'destroy'])->name('purchases.returns.destroy');
+// -----------------------------------------------------
+// Web (Views)
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/purchases/returns',
+    [PurchaseReturnController::class, 'index']
+)->name('purchases.returns.index');
+
+Route::get(
+    '/operation/purchases/returns/{id}/print',
+    [PurchaseReturnController::class, 'print']
+)->name('purchases.returns.print');
+
+// -----------------------------------------------------
+// API (JSON)
+// ⚠️ المسارات الثابتة قبل /{id}
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/purchases/returns/next-number',
+    [PurchaseReturnApiController::class, 'nextNumber']
+)->name('purchases.returns.nextNumber');
+
+Route::get(
+    '/operation/purchases/returns/available-quantity',
+    [PurchaseReturnApiController::class, 'availableQuantity']
+)->name('purchases.returns.availableQuantity');
+
+Route::get(
+    '/operation/purchases/returns/list',
+    [PurchaseReturnApiController::class, 'list']
+)->name('purchases.returns.list');
+
+Route::get(
+    '/operation/purchases/returns/{id}',
+    [PurchaseReturnApiController::class, 'show']
+)->name('purchases.returns.show');
+
+Route::post(
+    '/operation/purchases/returns',
+    [PurchaseReturnApiController::class, 'store']
+)->name('purchases.returns.store');
+
+Route::put(
+    '/operation/purchases/returns/{id}',
+    [PurchaseReturnApiController::class, 'update']
+)->name('purchases.returns.update');
+
+Route::delete(
+    '/operation/purchases/returns/{id}',
+    [PurchaseReturnApiController::class, 'destroy']
+)->name('purchases.returns.destroy');
+
+// -----------------------------------------------------
+// الترحيل / إلغاء الترحيل
+// -----------------------------------------------------
+
+Route::post(
+    '/operation/purchases/returns/{id}/post',
+    [PurchaseReturnApiController::class, 'post']
+)->name('purchases.returns.post');
+
+Route::post(
+    '/operation/purchases/returns/{id}/unpost',
+    [PurchaseReturnApiController::class, 'unpost']
+)->name('purchases.returns.unpost');
 
 
 // =====================================================

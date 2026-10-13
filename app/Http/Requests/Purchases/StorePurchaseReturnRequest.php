@@ -8,10 +8,6 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 
 /**
  * التحقق من بيانات مرتجع الشراء (إنشاء/تعديل).
- *
- * نُقل إليه منطق التحقق الذي كان داخل
- * PurchaseReturnController::validateReturn() مع الحفاظ
- * على نفس القواعد والرسائل العربية تماماً.
  */
 class StorePurchaseReturnRequest extends FormRequest
 {
@@ -27,7 +23,7 @@ class StorePurchaseReturnRequest extends FormRequest
             'return_date'                  => ['required', 'date'],
             'original_purchase_invoice_id' => ['required', 'exists:purchase_invoices,purchase_invoice_id'],
             'account_id'                   => ['required', 'exists:characcount,accountID'],
-            'payment_method'               => ['required', 'integer', 'in:1,2,3,4'],
+            'payment_method'               => ['required', 'integer', 'in:1,2,3'],
             'coin_id'                      => ['required', 'exists:coins,coinsID'],
             'warehouse_id'                 => ['nullable', 'exists:stocks,StockID'],
             'exchange_rate'                => ['nullable', 'numeric', 'gt:0'],
@@ -61,9 +57,6 @@ class StorePurchaseReturnRequest extends FormRequest
         ];
     }
 
-    /**
-     * تحققات ما بعد القواعد: منطق طريقة الدفع (نفس منطق الفواتير).
-     */
     public function withValidator($validator): void
     {
         $validator->after(function ($v) {
@@ -77,7 +70,7 @@ class StorePurchaseReturnRequest extends FormRequest
                 );
             }
 
-            if (in_array($method, [2, 3, 4], true) && empty($accountId)) {
+            if (in_array($method, [2, 3], true) && empty($accountId)) {
                 $v->errors()->add(
                     'payment_account_id',
                     'يجب اختيار حساب الدفع'
@@ -86,10 +79,6 @@ class StorePurchaseReturnRequest extends FormRequest
         });
     }
 
-    /**
-     * الحفاظ على شكل استجابة الأخطاء الذي تتوقعه الواجهة:
-     * { message, errors } مع حالة 422.
-     */
     protected function failedValidation(Validator $validator): void
     {
         throw new HttpResponseException(

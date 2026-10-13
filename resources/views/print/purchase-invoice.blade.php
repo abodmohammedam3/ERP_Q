@@ -69,7 +69,6 @@
             color: #000;
         }
 
-        /* ✅ صندوق بيانات البنك */
         .bank-box {
             border: 1px solid #0d6efd;
             background: #f0f7ff;
@@ -269,6 +268,7 @@
 
 @php
     use App\Helpers\Tafqeet;
+    use App\Models\Purchases\PurchaseInvoice;
 
     $currencyName = $invoice->coin->coinsName ?? '';
     $totalWords = Tafqeet::numberToWords(
@@ -282,16 +282,17 @@
         e($totalWords)
     );
 
-    // ✅ خريطة طرق الدفع المحدّثة
+    // ✅ خريطة طرق الدفع (3 طرق فقط)
     $paymentLabels = [
-        1 => 'أجل',
-        2 => 'نقد',
-        3 => 'تحويل بنكي / شبكة',   // ← متوافق مع الفواتير القديمة
-        4 => 'تحويل بنكي / شبكة',
+        PurchaseInvoice::PAYMENT_CREDIT => 'أجل',
+        PurchaseInvoice::PAYMENT_CASH   => 'نقدي',
+        PurchaseInvoice::PAYMENT_BANK   => 'بنك',
     ];
 
     // ✅ هل الفاتورة بحساب بنكي؟
-    $showBank = isset($bank) && $bank && in_array((int) $invoice->payment_method, [3, 4]);
+    $showBank = isset($bank)
+        && $bank
+        && (int) $invoice->payment_method === PurchaseInvoice::PAYMENT_BANK;
 @endphp
 
 {{-- Header --}}
@@ -335,7 +336,7 @@
     </div>
 </div>
 
-{{-- ✅ بيانات البنك (فقط عند الدفع بنكي/شبكة) --}}
+{{-- ✅ بيانات البنك (فقط عند الدفع بنكي) --}}
 @if($showBank)
     <div class="bank-box">
         <span class="bank-box-title">
@@ -421,7 +422,7 @@
         <td class="value">{{ number_format((float) $invoice->total_in_invoice_currency, 2) }}</td>
     </tr>
 
-    {{-- ✅ التكاليف الإضافية (منفصلة - اختيارية) --}}
+    {{-- ✅ التكاليف الإضافية (منفصلة) --}}
     @if((float) $invoice->extra_costs_total > 0)
         <tr>
             <td colspan="2" class="label" style="color: #0d6efd; background: #f0f7ff;">
@@ -449,9 +450,13 @@
 
 {{-- Footer --}}
 <div class="footer">
-    <span class="footer-left">جميع الحقوق محفوظة لشركة بيتاسيس ©</span>
+    <span class="footer-left">
+        جميع الحقوق محفوظة لـ {{ config('company.name', 'النظام') }} ©
+    </span>
     <span class="footer-center">رقم الصفحة: 1</span>
-    <span class="footer-right">المستخدم: مدير النظام</span>
+    <span class="footer-right">
+        المستخدم: {{ auth()->user()->name ?? 'مدير النظام' }}
+    </span>
 </div>
 
 {{-- Print Buttons --}}

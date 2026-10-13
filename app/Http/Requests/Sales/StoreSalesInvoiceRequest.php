@@ -9,9 +9,7 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 /**
  * التحقق من بيانات فاتورة البيع (إنشاء/تعديل).
  *
- * هذا الملف نُقل إليه منطق التحقق الذي كان محشورًا داخل
- * SalesInvoiceController::validateInvoice() (~80 سطرًا)،
- * مع الحفاظ على نفس القواعد والرسائل العربية تمامًا.
+ * 3 طرق دفع: أجل (1) / نقدي (2) / بنك (3)
  */
 class StoreSalesInvoiceRequest extends FormRequest
 {
@@ -26,7 +24,7 @@ class StoreSalesInvoiceRequest extends FormRequest
             'invoice_number'     => ['required', 'string', 'max:50'],
             'invoice_date'       => ['required', 'date'],
             'account_id'         => ['required', 'exists:characcount,accountID'],
-            'payment_method'     => ['required', 'integer', 'in:1,2,3,4'],
+            'payment_method'     => ['required', 'integer', 'in:1,2,3'],
             'coin_id'            => ['required', 'exists:coins,coinsID'],
             'exchange_rate'      => ['nullable', 'numeric', 'min:0'],
             'payment_account_id' => ['nullable', 'exists:characcount,accountID'],
@@ -80,6 +78,7 @@ class StoreSalesInvoiceRequest extends FormRequest
             $method    = (int) $this->input('payment_method');
             $accountId = $this->input('payment_account_id');
 
+            // ✅ أجل: لا يحتاج حساب دفع
             if ($method === 1 && !empty($accountId)) {
                 $v->errors()->add(
                     'payment_account_id',
@@ -87,7 +86,8 @@ class StoreSalesInvoiceRequest extends FormRequest
                 );
             }
 
-            if (in_array($method, [2, 3, 4], true) && empty($accountId)) {
+            // ✅ نقدي (2) أو بنك (3): يجب اختيار حساب الدفع
+            if (in_array($method, [2, 3], true) && empty($accountId)) {
                 $v->errors()->add(
                     'payment_account_id',
                     'يجب اختيار حساب الدفع'

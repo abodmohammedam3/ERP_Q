@@ -2,18 +2,32 @@
 
 namespace App\Services\Purchases;
 
-use App\Models\Purchases\PurchaseReturn;
-use App\Models\Purchases\PurchaseReturnDetail;
-use App\Models\Purchases\PurchaseInvoice;
-use App\Models\Purchases\PurchaseInvoiceDetail;
+use App\Models\Accounting\CharAccount;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\Inventory\InventoryMovementDetail;
+use App\Models\Inventory\Stock;
+use App\Models\Purchases\PurchaseInvoice;
+use App\Models\Purchases\PurchaseInvoiceDetail;
+use App\Models\Purchases\PurchaseReturn;
+use App\Models\Purchases\PurchaseReturnDetail;
 use App\Services\Inventory\InventoryService;
+use App\Services\JournalEntryService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class PurchaseReturnService
 {
+    // =========================================================
+    // CONSTANTS
+    // =========================================================
+
+    private const LOCK_KEY = 'purchase_return_write_lock';
+    private const LOCK_TTL = 15;
+
+    private const INVENTORY_ACCOUNT_CACHE_TTL = 3600;
+
     protected InventoryService $inventoryService;
 
     public function __construct(InventoryService $inventoryService)
@@ -21,6 +35,224 @@ class PurchaseReturnService
         $this->inventoryService = $inventoryService;
     }
 
+    // =========================================================
+    // CREATE — حفظ + ترحيل تلقائي
+    // =========================================================
+    public function create(array $data): PurchaseReturn
+    {
+        return $this->withWriteLock(function () use ($data) {
+            return DB::transaction(function () use ($data) {
+
+                $originalInvoiceId = (int) ($data['original_purchase_invoice_id'] ?? 0);
+
+                $this->lockAndValidateInvoice(
+                    $originalInvoiceId,
+                    $data['account_id'] ?? null,
+                    $data['coin_id'] ?? null,
+                    $data['warehouse_id'] ?? null
+                );
+
+                $details = $data['details'] ?? [];
+
+                $this->validateReturnQuantities($originalInvoiceId, $details);
+
+                $this->lockStockRows($details, $data['warehouse_id'] ?? null);
+
+                $this->validateStockAvailability($details, $data['warehouse_id'] ?? null);
+
+                $nextNumber = $this->nextReturnNumber();
+
+                $header = $this->headerData($data);
+                $header['return_number'] = (string) $nextNumber;
+                $header['created_by']    = auth()->id();
+
+                $purchaseReturn = PurchaseReturn::create($header);
+
+                $this->saveDetails($purchaseReturn, $details);
+                $this->recalculateTotals($purchaseReturn);
+
+                // ✅ ترحيل تلقائي
+                $this->postInternal($purchaseReturn);
+
+                return $purchaseReturn->fresh(['details', 'supplierAccount']);
+            });
+        });
+    }
+
+    // =========================================================
+    // UPDATE — يمنع تعديل المرحّلة
+    // =========================================================
+    public function update(int $id, array $data): PurchaseReturn
+    {
+        return $this->withWriteLock(function () use ($id, $data) {
+            return DB::transaction(function () use ($id, $data) {
+
+                $purchaseReturn = PurchaseReturn::lockForUpdate()->findOrFail($id);
+
+                if ($purchaseReturn->isPosted()) {
+                    throw new \RuntimeException(
+                        'لا يمكن تعديل مرتجع مرحّل. قم بإلغاء الترحيل أولًا.'
+                    );
+                }
+
+                $originalInvoiceId = (int) ($data['original_purchase_invoice_id'] ?? 0);
+
+                $this->lockAndValidateInvoice(
+                    $originalInvoiceId,
+                    $data['account_id'] ?? null,
+                    $data['coin_id'] ?? null,
+                    $data['warehouse_id'] ?? null
+                );
+
+                $details = $data['details'] ?? [];
+
+                $this->validateReturnQuantities(
+                    $originalInvoiceId,
+                    $details,
+                    $purchaseReturn->purchase_return_id
+                );
+
+                $this->lockStockRows($details, $data['warehouse_id'] ?? null);
+
+                $this->validateStockAvailability(
+                    $details,
+                    $data['warehouse_id'] ?? null,
+                    $purchaseReturn->purchase_return_id
+                );
+
+                $header = $this->headerData($data);
+                unset($header['return_number']);
+                unset($header['created_by']);
+                $header['updated_by'] = auth()->id();
+
+                $purchaseReturn->update($header);
+
+                $purchaseReturn->details()->delete();
+                $this->saveDetails($purchaseReturn, $details);
+                $this->recalculateTotals($purchaseReturn);
+
+                return $purchaseReturn->fresh(['details', 'supplierAccount']);
+            });
+        });
+    }
+
+    // =========================================================
+    // DELETE
+    // =========================================================
+    public function delete(int $id): void
+    {
+        $this->withWriteLock(function () use ($id) {
+            DB::transaction(function () use ($id) {
+                $purchaseReturn = PurchaseReturn::lockForUpdate()->findOrFail($id);
+
+                $this->deleteAccountingEntry($purchaseReturn);
+                $this->deleteInventoryMovement($purchaseReturn);
+
+                $purchaseReturn->details()->delete();
+                $purchaseReturn->delete();
+            });
+        });
+    }
+
+    // =========================================================
+    // POST / UNPOST
+    // =========================================================
+    public function post(int $id): PurchaseReturn
+    {
+        return $this->withWriteLock(function () use ($id) {
+            return DB::transaction(function () use ($id) {
+                $purchaseReturn = PurchaseReturn::lockForUpdate()->findOrFail($id);
+
+                if ($purchaseReturn->isPosted()) {
+                    throw new \RuntimeException('مرتجع الشراء مرحّل مسبقًا');
+                }
+
+                $this->postInternal($purchaseReturn);
+
+                return $purchaseReturn->fresh(['details', 'supplierAccount']);
+            });
+        });
+    }
+
+    public function unpost(int $id): PurchaseReturn
+    {
+        return $this->withWriteLock(function () use ($id) {
+            return DB::transaction(function () use ($id) {
+                $purchaseReturn = PurchaseReturn::lockForUpdate()->findOrFail($id);
+
+                if (!$purchaseReturn->isPosted()) {
+                    throw new \RuntimeException('مرتجع الشراء غير مرحّل');
+                }
+
+                $this->unpostInternal($purchaseReturn);
+
+                return $purchaseReturn->fresh(['details', 'supplierAccount']);
+            });
+        });
+    }
+
+    // =========================================================
+    // POST / UNPOST INTERNAL
+    // =========================================================
+    private function postInternal(PurchaseReturn $purchaseReturn): void
+    {
+        $purchaseReturn->loadMissing(['details', 'supplierAccount']);
+
+        $this->syncInventoryMovement($purchaseReturn);
+
+        // ✅ إنشاء القيد واستلام entryID
+        $entryId = $this->syncAccountingEntry($purchaseReturn);
+
+        $purchaseReturn->entryID    = $entryId;
+        $purchaseReturn->is_posted  = true;
+        $purchaseReturn->posted_at  = now();
+        $purchaseReturn->posted_by  = auth()->id();
+        $purchaseReturn->updated_by = auth()->id();
+        $purchaseReturn->save();
+    }
+
+    private function unpostInternal(PurchaseReturn $purchaseReturn): void
+    {
+        $this->deleteAccountingEntry($purchaseReturn);
+        $this->deleteInventoryMovement($purchaseReturn);
+
+        $purchaseReturn->is_posted  = false;
+        $purchaseReturn->posted_at  = null;
+        $purchaseReturn->posted_by  = null;
+        $purchaseReturn->updated_by = auth()->id();
+        $purchaseReturn->save();
+    }
+
+    // =========================================================
+    // WRITE LOCK
+    // =========================================================
+    private function withWriteLock(callable $callback)
+    {
+        $lock = Cache::lock(self::LOCK_KEY, self::LOCK_TTL);
+
+        if (!$lock->get()) {
+            throw new \RuntimeException(
+                'عملية أخرى على مرتجعات الشراء قيد التنفيذ، حاول بعد قليل'
+            );
+        }
+
+        try {
+            return $callback();
+        } catch (\Throwable $e) {
+            Log::error('Purchase return operation failed', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+            ]);
+            throw $e;
+        } finally {
+            $lock->release();
+        }
+    }
+
+    // =========================================================
+    // AVAILABLE FOR RETURN
+    // =========================================================
     public function availableForReturn(int $invoiceDetailId, ?int $exceptReturnId = null): float
     {
         $invoiceDetail = PurchaseInvoiceDetail::find($invoiceDetailId);
@@ -38,111 +270,9 @@ class PurchaseReturnService
         return max(0.0, (float) $invoiceDetail->quantity - (float) $alreadyReturned);
     }
 
-    public function create(array $data): PurchaseReturn
-    {
-        return DB::transaction(function () use ($data) {
-
-            $originalInvoiceId = (int) ($data['original_purchase_invoice_id'] ?? 0);
-
-            $this->lockAndValidateInvoice(
-                $originalInvoiceId,
-                $data['account_id'] ?? null,
-                $data['coin_id'] ?? null,
-                $data['warehouse_id'] ?? null
-            );
-
-            $details = $data['details'] ?? [];
-
-            $this->validateReturnQuantities($originalInvoiceId, $details);
-
-            $this->lockStockRows(
-                $details,
-                $data['warehouse_id'] ?? null
-            );
-
-            $this->validateStockAvailability(
-                $details,
-                $data['warehouse_id'] ?? null
-            );
-
-            $nextNumber = $this->nextReturnNumber();
-
-            $header = $this->headerData($data);
-            $header['return_number'] = (string) $nextNumber;
-
-            $purchaseReturn = PurchaseReturn::create($header);
-
-            $this->saveDetails($purchaseReturn, $details);
-            $this->recalculateTotals($purchaseReturn);
-
-            $purchaseReturn->load('details');
-            $this->syncInventoryMovement($purchaseReturn);
-
-            return $purchaseReturn;
-        });
-    }
-
-    public function update(int $id, array $data): PurchaseReturn
-    {
-        return DB::transaction(function () use ($id, $data) {
-
-            $originalInvoiceId = (int) ($data['original_purchase_invoice_id'] ?? 0);
-
-            $this->lockAndValidateInvoice(
-                $originalInvoiceId,
-                $data['account_id'] ?? null,
-                $data['coin_id'] ?? null,
-                $data['warehouse_id'] ?? null
-            );
-
-            $purchaseReturn = PurchaseReturn::lockForUpdate()->findOrFail($id);
-
-            $details = $data['details'] ?? [];
-
-            $this->validateReturnQuantities($originalInvoiceId, $details, $purchaseReturn->purchase_return_id);
-
-            $this->lockStockRows(
-                $details,
-                $data['warehouse_id'] ?? null
-            );
-
-            $this->validateStockAvailability(
-                $details,
-                $data['warehouse_id'] ?? null,
-                $purchaseReturn->purchase_return_id
-            );
-
-            $header = $this->headerData($data);
-            unset($header['return_number']);
-            $purchaseReturn->update($header);
-
-            $purchaseReturn->details()->delete();
-            $this->saveDetails($purchaseReturn, $details);
-            $this->recalculateTotals($purchaseReturn);
-
-            $purchaseReturn->load('details');
-            $this->syncInventoryMovement($purchaseReturn);
-
-            return $purchaseReturn;
-        });
-    }
-
-    public function delete(int $id): void
-    {
-        DB::transaction(function () use ($id) {
-            $purchaseReturn = PurchaseReturn::lockForUpdate()->findOrFail($id);
-
-            $this->deleteInventoryMovement($purchaseReturn);
-
-            $purchaseReturn->details()->delete();
-            $purchaseReturn->delete();
-        });
-    }
-
-    // =====================================================
-    // القفل + التحقق من الرأس
-    // =====================================================
-
+    // =========================================================
+    // VALIDATION
+    // =========================================================
     protected function lockAndValidateInvoice(
         int $invoiceId,
         $accountId,
@@ -150,6 +280,12 @@ class PurchaseReturnService
         $warehouseId = null
     ): void {
         $invoice = PurchaseInvoice::lockForUpdate()->findOrFail($invoiceId);
+
+        if (!$invoice->isPosted()) {
+            throw ValidationException::withMessages([
+                'original_purchase_invoice_id' => 'لا يمكن الإرجاع من فاتورة غير مرحّلة',
+            ]);
+        }
 
         if ((int) $accountId !== (int) $invoice->account_id) {
             throw ValidationException::withMessages([
@@ -169,10 +305,6 @@ class PurchaseReturnService
             ]);
         }
     }
-
-    // =====================================================
-    // التحقق من التفاصيل
-    // =====================================================
 
     protected function validateReturnQuantities(
         int $originalInvoiceId,
@@ -232,10 +364,9 @@ class PurchaseReturnService
         }
     }
 
-    // =====================================================
-    // قفل صفوف المخزون
-    // =====================================================
-
+    // =========================================================
+    // LOCK STOCK ROWS
+    // =========================================================
     protected function lockStockRows(array $details, $warehouseId): void
     {
         if (!$warehouseId) {
@@ -274,10 +405,9 @@ class PurchaseReturnService
         }
     }
 
-    // =====================================================
-    // فحص الرصيد الفعلي
-    // =====================================================
-
+    // =========================================================
+    // STOCK AVAILABILITY
+    // =========================================================
     protected function validateStockAvailability(
         array $details,
         $warehouseId,
@@ -341,10 +471,9 @@ class PurchaseReturnService
         }
     }
 
-    // =====================================================
-    // المخزون
-    // =====================================================
-
+    // =========================================================
+    // INVENTORY MOVEMENT
+    // =========================================================
     public function syncInventoryMovement(PurchaseReturn $purchaseReturn): void
     {
         $this->deleteInventoryMovement($purchaseReturn);
@@ -431,10 +560,146 @@ class PurchaseReturnService
         }
     }
 
-    // =====================================================
-    // دوال مساعدة
-    // =====================================================
+    // =========================================================
+    // ACCOUNTING ENTRY
+    // =========================================================
+    protected function syncAccountingEntry(PurchaseReturn $purchaseReturn): int
+    {
+        $this->deleteAccountingEntry($purchaseReturn);
 
+        // 1) الحساب المالي
+        $rate     = (float) ($purchaseReturn->exchange_rate ?: 1);
+        $itemsNet = (float) $purchaseReturn->items_total
+                  - (float) $purchaseReturn->discount_total;
+
+        $totalFC = round($itemsNet, 6);
+        $totalBC = round($totalFC * $rate, 6);
+
+        if ($totalBC <= 0) {
+            throw new \RuntimeException(
+                'إجمالي مرتجع الشراء يجب أن يكون أكبر من صفر لإنشاء القيد'
+            );
+        }
+
+        // 2) حساب المخزون (دائن)
+        $warehouseId        = (int) $purchaseReturn->warehouse_id;
+        $inventoryAccountId = $this->getInventoryAccountIdFromWarehouse($warehouseId);
+
+        if ($inventoryAccountId <= 0) {
+            throw new \RuntimeException(
+                'حساب المخزون غير مُعرّف للمخزن رقم ' . $warehouseId
+            );
+        }
+
+        // 3) حساب المدين (المورد أو الدفع)
+        $paymentMethod    = (int) $purchaseReturn->payment_method;
+        $debitAccountId   = $paymentMethod === PurchaseReturn::PAYMENT_CREDIT
+            ? (int) $purchaseReturn->account_id
+            : (int) $purchaseReturn->payment_account_id;
+
+        if ($debitAccountId <= 0) {
+            throw new \RuntimeException(
+                'حساب الدفع غير محدد للمرتجع رقم ' . $purchaseReturn->return_number
+            );
+        }
+
+        // 4) التاريخ والوصف
+        $entryDate = $purchaseReturn->return_date instanceof \DateTimeInterface
+            ? $purchaseReturn->return_date->format('Y-m-d')
+            : (string) ($purchaseReturn->return_date ?: now()->toDateString());
+
+        $docType = $purchaseReturn->journal_doc_type_label;
+
+        $supplierName = $purchaseReturn->supplierAccount->accName ?? '';
+
+        $description = $purchaseReturn->journal_doc_type_label
+            . ' رقم ' . $purchaseReturn->return_number
+            . ($supplierName !== '' ? ' - ' . $supplierName : '');
+
+        // 5) السطور
+        // ✅ القيد: مدين المورد/الدفع + دائن المخزون
+        $lines = [
+            [
+                'accountID'    => $debitAccountId,
+                'coinsID'      => $purchaseReturn->coin_id,
+                'exchangRate'  => $rate,
+                'debit'        => $totalFC,
+                'credit'       => 0,
+                'localDebit'   => $totalBC,
+                'localCredit'  => 0,
+                'description2' => $description,
+            ],
+            [
+                'accountID'    => $inventoryAccountId,
+                'coinsID'      => $purchaseReturn->coin_id,
+                'exchangRate'  => $rate,
+                'debit'        => 0,
+                'credit'       => $totalFC,
+                'localDebit'   => 0,
+                'localCredit'  => $totalBC,
+                'description2' => $description . ' - قيمة البضاعة',
+            ],
+        ];
+
+        // 6) إنشاء القيد
+        $entryId = JournalEntryService::create([
+            'entryDate'   => $entryDate,
+            'docType'     => $docType,
+            'docNumber'   => (string) $purchaseReturn->return_number,
+            'description' => $description,
+            'lines'       => $lines,
+        ]);
+
+        if (!$entryId) {
+            throw new \RuntimeException(
+                'فشل إنشاء القيد المحاسبي لمرتجع الشراء رقم ' . $purchaseReturn->return_number
+            );
+        }
+
+        return (int) $entryId;
+    }
+
+    protected function deleteAccountingEntry(PurchaseReturn $purchaseReturn): void
+    {
+        if (!empty($purchaseReturn->entryID)) {
+            JournalEntryService::delete((int) $purchaseReturn->entryID);
+
+            $purchaseReturn->entryID = null;
+            $purchaseReturn->saveQuietly();
+
+            return;
+        }
+
+        if (!empty($purchaseReturn->return_number)) {
+            JournalEntryService::deleteByDocNumber(
+                (string) $purchaseReturn->return_number
+            );
+        }
+    }
+
+    // =========================================================
+    // INVENTORY ACCOUNT RESOLVER
+    // =========================================================
+    private function getInventoryAccountIdFromWarehouse(int $warehouseId): int
+    {
+        if ($warehouseId <= 0) {
+            return 0;
+        }
+
+        return (int) Cache::remember(
+            "warehouse.inventory_account.{$warehouseId}",
+            self::INVENTORY_ACCOUNT_CACHE_TTL,
+            function () use ($warehouseId) {
+                return (int) Stock::query()
+                    ->where('StockID', $warehouseId)
+                    ->value('accountID');
+            }
+        );
+    }
+
+    // =========================================================
+    // HELPERS
+    // =========================================================
     protected function nextReturnNumber(): int
     {
         $last = PurchaseReturn::lockForUpdate()

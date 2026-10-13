@@ -2,7 +2,7 @@
    فاتورة الشراء — يعتمد على النظام الموحّد للنوافذ
    ========================================================= */
 
-const SYSTEM_CURRENCY_ID = window.PURCHASE_SYSTEM_CURRENCY_ID || null;
+const SYSTEM_CURRENCY_ID   = window.PURCHASE_SYSTEM_CURRENCY_ID || null;
 const SYSTEM_CURRENCY_CODE = window.PURCHASE_SYSTEM_CURRENCY_CODE || '';
 
 /* ✅ الوحدة الافتراضية */
@@ -23,11 +23,15 @@ function findDefaultKiloUnit() {
     return null;
 }
 
-const PAYMENT_METHOD_TO_INT = { credit: 1, cash: 2, network: 4 };
-const PAYMENT_METHOD_TO_STR = { 1: 'credit', 2: 'cash', 3: 'network', 4: 'network' };
+/* ✅ طرق الدفع: أجل / نقدي / بنك */
+const PAYMENT_METHOD_TO_INT = { credit: 1, cash: 2, bank: 3 };
+const PAYMENT_METHOD_TO_STR = { 1: 'credit', 2: 'cash', 3: 'bank' };
+const PAYMENT_METHOD_LABELS = { 1: 'أجل', 2: 'نقدي', 3: 'بنك' };
 
 let invoiceMode = 'view';
 let currentInvoiceId = null;
+let currentInvoiceIsPosted = false;
+let currentInvoiceHasReturns = false;
 let isSavingInvoice = false;
 let editSnapshot = null;
 let invoiceSearchTimer = null;
@@ -82,23 +86,55 @@ function formatMoney(v) {
 }
 
 /**
- * ✅ #2: سعر الصرف
- * - إذا لم تُختَر عملة → فارغ
- * - إذا كانت العملة الأساسية → 1.00 + معطَّل
- * - إذا كانت عملة أجنبية → مفعَّل
+ * ✅ استخراج الحقول من استجابة API
  */
+function extractPayload(res) {
+    if (res && res.header) {
+        return { header: res.header, details: res.details || [] };
+    }
+    if (res && res.data && res.data.header) {
+        return { header: res.data.header, details: res.data.details || [] };
+    }
+    return { header: {}, details: [] };
+}
+
+/* =========================================================
+   ✅ حماية حقل سعر الصرف من أي إدخال
+   ========================================================= */
+function protectExchangeRateInput() {
+    const rateEl = document.getElementById('PuInExchangeRate2');
+    if (!rateEl) return;
+
+    // ✅ جعله readonly دائمًا
+    rateEl.readOnly = true;
+    rateEl.disabled = false;
+    rateEl.classList.add('bg-light');
+
+    // ✅ منع أي إدخال (احتياط قوي)
+    rateEl.addEventListener('keydown', (e) => e.preventDefault());
+    rateEl.addEventListener('keypress', (e) => e.preventDefault());
+    rateEl.addEventListener('paste', (e) => e.preventDefault());
+    rateEl.addEventListener('cut', (e) => e.preventDefault());
+    rateEl.addEventListener('drop', (e) => e.preventDefault());
+}
+
+/* =========================================================
+   ✅ سعر الصرف — readonly دائماً
+   ========================================================= */
 function applyExchangeRateState() {
     const rateEl = document.getElementById('PuInExchangeRate2');
     if (!rateEl) return;
 
+    // ✅ سعر الصرف دائماً readonly — لا يمكن الكتابة فيه
+    rateEl.readOnly = true;
+    rateEl.disabled = false;
+    rateEl.classList.add('bg-light');
+
     const coinId = document.getElementById('coinsID')?.value || '';
 
-    // لا توجد عملة مختارة بعد → اترك الحقل فارغًا
     if (!coinId) {
         rateEl.value = '';
-        rateEl.disabled = (invoiceMode === 'view');
-        rateEl.readOnly = false;
-        rateEl.classList.remove('bg-light');
+        protectExchangeRateInput();
         return;
     }
 
@@ -106,14 +142,10 @@ function applyExchangeRateState() {
 
     if (isSys) {
         rateEl.value = '1.00';
-        rateEl.disabled = true;
-        rateEl.readOnly = true;
-        rateEl.classList.add('bg-light');
-    } else {
-        rateEl.disabled = (invoiceMode === 'view');
-        rateEl.readOnly = false;
-        rateEl.classList.remove('bg-light');
     }
+
+    // ✅ أعد الحماية بعد أي تعديل
+    protectExchangeRateInput();
 }
 
 function registerCurrencyLookupHook() {
@@ -158,18 +190,64 @@ function registerTypeLookupHook() {
     };
 }
 
+/* =========================================================
+   ✅ تنظيف الـ modals العالقة
+   ========================================================= */
+function cleanupStuckModals() {
+    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('padding-right');
+
+    document.querySelectorAll('.modal.show').forEach(modalEl => {
+        const instance = bootstrap.Modal.getInstance(modalEl);
+        if (instance) {
+            try { instance.hide(); } catch (e) { /* ignore */ }
+        }
+        modalEl.classList.remove('show');
+        modalEl.style.display = 'none';
+        modalEl.setAttribute('aria-hidden', 'true');
+    });
+
+    document.querySelectorAll('.offcanvas-backdrop').forEach(el => el.remove());
+}
+
+/* =========================================================
+   التهيئة
+   ========================================================= */
+
 document.addEventListener('DOMContentLoaded', () => {
+    cleanupStuckModals();
+
     registerCurrencyLookupHook();
     registerItemLookupHook();
     registerTypeLookupHook();
 
+    // ✅ حماية حقل سعر الصرف من أي إدخال
+    protectExchangeRateInput();
+
     setInvoiceMode('view');
     clearInvoiceForm();
+
+    setTimeout(cleanupStuckModals, 100);
+    setTimeout(cleanupStuckModals, 500);
 });
 
-/**
- * ✅ #4: تعطيل زر البحث عند add/edit
- */
+window.addEventListener('load', () => {
+    setTimeout(cleanupStuckModals, 200);
+    protectExchangeRateInput();
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        cleanupStuckModals();
+    }
+});
+
+/* =========================================================
+   أوضاع الشاشة
+   ========================================================= */
+
 function setInvoiceMode(mode) {
     invoiceMode = mode;
 
@@ -189,22 +267,14 @@ function setInvoiceMode(mode) {
     const newBtn = document.getElementById('btnNewInvoice');
     if (newBtn) newBtn.disabled = (mode !== 'view');
 
-    // ✅ #4: تعطيل زر البحث عند add/edit
-    const searchBtn = document.getElementById('btnSearchInvoice');
-    if (searchBtn) searchBtn.disabled = (mode !== 'view');
-
     const saveBtn = document.getElementById('btnSaveInvoice');
     const saveNewBtn = document.getElementById('btnSaveAndNew');
     const cancelBtn = document.getElementById('btnCancelInvoice');
-    const editBtn = document.getElementById('btnEditInvoice');
-    const printBtn = document.getElementById('btnPrintInvoice');
 
     if (mode === 'view') {
         if (saveBtn) saveBtn.disabled = true;
         if (saveNewBtn) saveNewBtn.disabled = true;
         if (cancelBtn) cancelBtn.classList.add('d-none');
-        if (editBtn) editBtn.disabled = !hasInvoiceData();
-        if (printBtn) printBtn.disabled = !hasInvoiceData();
 
         const paymentInput = document.getElementById('paymentAccount');
         if (paymentInput) paymentInput.disabled = true;
@@ -215,15 +285,74 @@ function setInvoiceMode(mode) {
         if (saveBtn) saveBtn.disabled = false;
         if (saveNewBtn) saveNewBtn.disabled = false;
         if (cancelBtn) cancelBtn.classList.remove('d-none');
-        if (editBtn) editBtn.disabled = true;
-        if (printBtn) printBtn.disabled = true;
         paymentMethodChanged();
     }
 
+    updateSearchButton();
+    updatePostingButtons();
     applyExchangeRateState();
+    protectExchangeRateInput();
+}
+
+/* =========================================================
+   ✅ إدارة زر البحث
+   ========================================================= */
+
+function updateSearchButton() {
+    const searchBtn = document.getElementById('btnSearchInvoice');
+    if (!searchBtn) return;
+
+    const hasInvoice = !!currentInvoiceId;
+    const isViewMode = invoiceMode === 'view';
+
+    searchBtn.disabled = !isViewMode || hasInvoice;
+}
+
+/* =========================================================
+   ✅ إدارة أزرار الترحيل / إلغاء الترحيل / التعديل
+   ========================================================= */
+
+function updatePostingButtons() {
+    const editBtn   = document.getElementById('btnEditInvoice');
+    const postBtn   = document.getElementById('btnPostInvoice');
+    const unpostBtn = document.getElementById('btnUnpostInvoice');
+    const printBtn  = document.getElementById('btnPrintInvoice');
+
+    const hasData  = hasInvoiceData();
+    const isPosted = currentInvoiceIsPosted;
+    const isView   = invoiceMode === 'view';
+
+    if (editBtn) {
+        editBtn.disabled = !hasData || isPosted || !isView;
+        editBtn.classList.toggle('d-none', isPosted);
+
+        if (currentInvoiceHasReturns && hasData && isView) {
+            editBtn.title = 'لا يمكن تعديل فاتورة لها مرتجعات';
+        } else {
+            editBtn.title = 'تعديل الفاتورة';
+        }
+    }
+
+    if (postBtn) {
+        const show = hasData && !isPosted;
+        postBtn.classList.toggle('d-none', !show);
+        postBtn.disabled = !hasData || isPosted || !isView;
+    }
+
+    if (unpostBtn) {
+        const show = hasData && isPosted;
+        unpostBtn.classList.toggle('d-none', !show);
+        unpostBtn.disabled = !hasData || !isPosted || !isView;
+    }
+
+    if (printBtn) {
+        printBtn.disabled = !hasData;
+    }
 }
 
 async function resetInvoice() {
+    cleanupStuckModals();
+
     clearInvoiceForm();
     setInvoiceMode('add');
 
@@ -264,15 +393,14 @@ function clearInvoiceForm() {
         'paymentAccountId', 'AmountWords']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
 
-    // ✅ #2: اترك سعر الصرف فارغًا عند الدخول
     const rateEl = document.getElementById('PuInExchangeRate2');
     if (rateEl) {
         rateEl.value = '';
-        rateEl.readOnly = false;
-        rateEl.classList.remove('bg-light');
+        rateEl.readOnly = true;
+        rateEl.disabled = false;
+        rateEl.classList.add('bg-light');
     }
 
-    // تصفير حقل النفقات المخفي
     const expEl = document.getElementById('PuInExpenses');
     if (expEl) expEl.value = '0';
 
@@ -306,9 +434,12 @@ function clearInvoiceForm() {
     const otherCostDesc = document.getElementById('otherCostDescriptionContainer');
     if (otherCostDesc) otherCostDesc.classList.add('d-none');
 
-    setInvoiceMode('view');
     currentInvoiceId = null;
+    currentInvoiceIsPosted = false;
+    currentInvoiceHasReturns = false;
     editSnapshot = null;
+
+    setInvoiceMode('view');
 }
 
 function setEmptyDetailsMessage() {
@@ -326,9 +457,6 @@ function setEmptyDetailsMessage() {
     tbody.appendChild(tr);
 }
 
-/**
- * ✅ #1: الوحدة الافتراضية = كيلو
- */
 function addInvoiceRow() {
     if (invoiceMode === 'view') return;
 
@@ -360,7 +488,6 @@ function addInvoiceRow() {
             unitSelect.appendChild(opt);
         });
 
-        // ✅ #1: تعيين "كيلو" كافتراضي
         const kiloUnit = findDefaultKiloUnit();
         if (kiloUnit) {
             unitSelect.value = String(kiloUnit.UnitID);
@@ -419,10 +546,6 @@ function calculateRow(input) {
     calculateTotals();
 }
 
-/**
- * الإجمالي = الأصناف − الخصم فقط
- * (التكاليف الإضافية منفصلة، ولا تدخل في الإجمالي)
- */
 function calculateTotals() {
     let itemsTotal = 0, discountTotal = 0;
 
@@ -537,8 +660,8 @@ function paymentMethodChanged(clearPrevious = false) {
     container.classList.remove('d-none');
     input.disabled = (invoiceMode === 'view');
 
-    if (method === 'network') {
-        input.dataset.lookup = 'bank_network';
+    if (method === 'bank') {
+        input.dataset.lookup = 'bank';
         input.dataset.lookupDisplayField = 'bankName';
         input.dataset.lookupIdField = 'accountID';
     } else {
@@ -547,7 +670,7 @@ function paymentMethodChanged(clearPrevious = false) {
         input.dataset.lookupIdField = 'accountID';
     }
 
-    const labels = { cash: 'الصندوق', network: 'حساب البنك / الشبكة' };
+    const labels = { cash: 'الصندوق', bank: 'الحساب البنكي' };
     const lbl = container.querySelector('label');
     if (lbl) lbl.textContent = labels[method] || 'الحساب';
 }
@@ -572,6 +695,10 @@ function otherCostChanged() {
     calculateTotals();
 }
 
+/* =========================================================
+   البحث عن فاتورة — النقر على الصف
+   ========================================================= */
+
 function searchInvoice() {
     const modalEl = document.getElementById('invoiceSearchModal');
     if (!modalEl) return;
@@ -584,7 +711,7 @@ function searchInvoice() {
 
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 7;
+    td.colSpan = 8;
     td.className = 'text-center text-muted py-4';
     td.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري التحميل...';
     tr.appendChild(td);
@@ -603,6 +730,17 @@ function debouncedInvoiceSearch() {
     invoiceSearchTimer = setTimeout(performInvoiceSearch, 350);
 }
 
+function clearInvoiceSearch() {
+    const searchInput = document.getElementById('invoiceSearchInput');
+    if (searchInput) searchInput.value = '';
+
+    performInvoiceSearch();
+
+    setTimeout(() => {
+        searchInput?.focus();
+    }, 100);
+}
+
 async function performInvoiceSearch() {
     const search = document.getElementById('invoiceSearchInput').value.trim();
     const tbody = document.getElementById('invoiceSearchResults');
@@ -611,12 +749,11 @@ async function performInvoiceSearch() {
     try {
         const raw = await apiGet(`/operation/purchases/invoicesPurch/list?search=${encodeURIComponent(search)}`);
         const rows = Array.isArray(raw) ? raw : (raw.data || []);
-        const labels = { 1: 'أجل', 2: 'نقد', 3: 'تحويل بنكي / شبكة', 4: 'تحويل بنكي / شبكة' };
 
         if (rows.length === 0) {
             const tr = document.createElement('tr');
             const td = document.createElement('td');
-            td.colSpan = 7;
+            td.colSpan = 8;
             td.className = 'text-center text-muted py-4';
             td.textContent = 'لا توجد نتائج مطابقة';
             tr.appendChild(td);
@@ -626,27 +763,52 @@ async function performInvoiceSearch() {
 
         rows.forEach(inv => {
             const tr = document.createElement('tr');
+            tr.className = 'text-center';
+            tr.style.cursor = 'pointer';
+            tr.title = 'اضغط لتحميل الفاتورة';
+
+            tr.addEventListener('click', () => loadInvoice(inv.purchase_invoice_id));
+
+            tr.addEventListener('mouseenter', () => {
+                tr.classList.add('table-primary');
+            });
+            tr.addEventListener('mouseleave', () => {
+                tr.classList.remove('table-primary');
+            });
+
             [
                 inv.invoice_number,
                 inv.invoice_date,
                 inv.supplier_name,
                 inv.coin_name,
-                labels[inv.payment_method] || '',
-                Number(inv.total).toFixed(2)
+                PAYMENT_METHOD_LABELS[inv.payment_method] || '',
+                Number(inv.total).toFixed(2),
             ].forEach(v => {
                 const td = document.createElement('td');
                 td.textContent = v;
                 tr.appendChild(td);
             });
 
-            const tdBtn = document.createElement('td');
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'btn btn-sm btn-primary';
-            btn.textContent = 'عرض';
-            btn.addEventListener('click', () => loadInvoice(inv.purchase_invoice_id));
-            tdBtn.appendChild(btn);
-            tr.appendChild(tdBtn);
+            const tdStatus = document.createElement('td');
+            const badge = document.createElement('span');
+            if (inv.is_posted) {
+                badge.className = 'badge bg-success';
+                badge.textContent = 'مرحّلة';
+            } else {
+                badge.className = 'badge bg-secondary';
+                badge.textContent = 'مسودة';
+            }
+            tdStatus.appendChild(badge);
+            tr.appendChild(tdStatus);
+
+            const tdActions = document.createElement('td');
+            tdActions.className = 'text-nowrap';
+            tdActions.addEventListener('click', (e) => e.stopPropagation());
+
+            tdActions.appendChild(buildPostToggleBtn(inv));
+            tdActions.appendChild(buildDeleteBtn(inv));
+            tr.appendChild(tdActions);
+
             tbody.appendChild(tr);
         });
     } catch (e) {
@@ -655,11 +817,164 @@ async function performInvoiceSearch() {
     }
 }
 
+/* =========================================================
+   أزرار الإجراءات
+   ========================================================= */
+
+function buildPostToggleBtn(inv) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm me-1';
+
+    if (inv.is_posted) {
+        btn.classList.add('btn-outline-warning');
+        btn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> إلغاء الترحيل';
+        btn.title = 'فتح الفاتورة للتعديل';
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            unpostInvoice(inv.purchase_invoice_id);
+        });
+    } else {
+        btn.classList.add('btn-outline-success');
+        btn.innerHTML = '<i class="bi bi-check2-circle"></i> ترحيل';
+        btn.title = 'ترحيل الفاتورة وإنشاء القيود';
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            postInvoice(inv.purchase_invoice_id);
+        });
+    }
+
+    return btn;
+}
+
+function buildDeleteBtn(inv) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm btn-outline-danger';
+    btn.innerHTML = '<i class="bi bi-trash"></i> حذف';
+    btn.title = 'حذف الفاتورة نهائيًا';
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteInvoice(inv.purchase_invoice_id, inv.invoice_number);
+    });
+    return btn;
+}
+
+/* =========================================================
+   POST / UNPOST / DELETE (من نافذة البحث)
+   ========================================================= */
+
+async function postInvoice(id) {
+    if (!confirm('هل تريد ترحيل هذه الفاتورة؟\nسيتم إنشاء القيود وحركة المخزون.')) return;
+
+    try {
+        const r = await apiSend(
+            `/operation/purchases/invoicesPurch/${id}/post`,
+            'POST',
+            {}
+        );
+        notify(r.message || 'تم ترحيل الفاتورة بنجاح', 'success');
+        performInvoiceSearch();
+    } catch (e) {
+        notify(e.message, 'danger');
+    }
+}
+
+async function unpostInvoice(id) {
+    if (!confirm('هل تريد إلغاء ترحيل هذه الفاتورة؟\nسيتم حذف القيود وحركة المخزون.')) return;
+
+    try {
+        const r = await apiSend(
+            `/operation/purchases/invoicesPurch/${id}/unpost`,
+            'POST',
+            {}
+        );
+        notify(r.message || 'تم إلغاء ترحيل الفاتورة بنجاح', 'success');
+        performInvoiceSearch();
+
+        if (currentInvoiceId === id) {
+            await loadInvoice(id);
+        }
+    } catch (e) {
+        notify(e.message, 'danger');
+    }
+}
+
+async function deleteInvoice(id, number) {
+    const label = number ? `رقم ${number}` : `#${id}`;
+    if (!confirm(`هل أنت متأكد من حذف الفاتورة ${label}؟\nلا يمكن التراجع عن هذه العملية.`)) return;
+
+    try {
+        const r = await apiSend(
+            `/operation/purchases/invoicesPurch/${id}`,
+            'DELETE',
+            {}
+        );
+        notify(r.message || 'تم حذف الفاتورة بنجاح', 'success');
+        performInvoiceSearch();
+
+        if (currentInvoiceId === id) {
+            clearInvoiceForm();
+        }
+    } catch (e) {
+        notify(e.message, 'danger');
+    }
+}
+
+/* =========================================================
+   POST / UNPOST من النموذج
+   ========================================================= */
+
+async function postCurrentInvoice() {
+    if (!currentInvoiceId) {
+        notify('لا توجد فاتورة للترحيل', 'warning');
+        return;
+    }
+
+    if (!confirm('هل تريد ترحيل هذه الفاتورة؟\nسيتم إنشاء القيود وحركة المخزون.')) return;
+
+    try {
+        const r = await apiSend(
+            `/operation/purchases/invoicesPurch/${currentInvoiceId}/post`,
+            'POST',
+            {}
+        );
+        notify(r.message || 'تم ترحيل الفاتورة بنجاح', 'success');
+        await loadInvoice(currentInvoiceId);
+    } catch (e) {
+        notify(e.message, 'danger');
+    }
+}
+
+async function unpostCurrentInvoice() {
+    if (!currentInvoiceId) {
+        notify('لا توجد فاتورة', 'warning');
+        return;
+    }
+
+    if (!confirm('هل تريد إلغاء ترحيل هذه الفاتورة؟\nسيتم حذف القيود وحركة المخزون.')) return;
+
+    try {
+        const r = await apiSend(
+            `/operation/purchases/invoicesPurch/${currentInvoiceId}/unpost`,
+            'POST',
+            {}
+        );
+        notify(r.message || 'تم إلغاء ترحيل الفاتورة بنجاح', 'success');
+        await loadInvoice(currentInvoiceId);
+    } catch (e) {
+        notify(e.message, 'danger');
+    }
+}
+
+/* =========================================================
+   تحميل فاتورة
+   ========================================================= */
+
 async function loadInvoice(id) {
     try {
         const res = await apiGet(`/operation/purchases/invoicesPurch/${id}`);
-        const h = res.header;
-        const details = res.details || [];
+        const { header: h, details } = extractPayload(res);
 
         clearInvoiceForm();
 
@@ -683,7 +998,6 @@ async function loadInvoice(id) {
         document.getElementById('PuInStatement2').value = h.statement ?? '';
         document.getElementById('invoiceReference').value = h.reference ?? '';
 
-        // ✅ حقل النفقات مخفي - نضبطه من البيانات القادمة
         const expEl = document.getElementById('PuInExpenses');
         if (expEl) expEl.value = h.expenses ?? 0;
 
@@ -751,15 +1065,24 @@ async function loadInvoice(id) {
         calculateTotals();
 
         const modalEl = document.getElementById('invoiceSearchModal');
-        if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
+        if (modalEl) {
+            const instance = bootstrap.Modal.getInstance(modalEl);
+            if (instance) instance.hide();
+        }
+
+        setTimeout(cleanupStuckModals, 300);
 
         currentInvoiceId = h.purchase_invoice_id;
+        currentInvoiceIsPosted = !!h.is_posted;
+        currentInvoiceHasReturns = !!h.has_returns;
         setInvoiceMode('view');
         applyExchangeRateState();
+        protectExchangeRateInput();
         editSnapshot = null;
 
         notify('تم تحميل الفاتورة بنجاح', 'success');
     } catch (e) {
+        console.error('loadInvoice error:', e);
         notify('فشل تحميل الفاتورة: ' + e.message, 'danger');
     }
 }
@@ -817,6 +1140,11 @@ function editInvoice() {
         return;
     }
 
+    if (currentInvoiceHasReturns) {
+        notify('لا يمكن تعديل فاتورة لها مرتجعات. احذف المرتجعات أولًا.', 'warning');
+        return;
+    }
+
     setInvoiceMode('edit');
 
     document.querySelectorAll('#purchaseInvoiceDetails .purchase-detail-row')
@@ -836,6 +1164,7 @@ function editInvoice() {
 
     paymentMethodChanged();
     applyExchangeRateState();
+    protectExchangeRateInput();
     editSnapshot = takeSnapshot();
 }
 
@@ -950,9 +1279,12 @@ async function saveInvoice() {
         let r;
         if (invoiceMode === 'edit' && currentInvoiceId) {
             r = await apiSend(`/operation/purchases/invoicesPurch/${currentInvoiceId}`, 'PUT', payload);
+            currentInvoiceIsPosted = false;
         } else {
             r = await apiSend('/operation/purchases/invoicesPurch', 'POST', payload);
             currentInvoiceId = r.purchase_invoice_id;
+            currentInvoiceIsPosted = !!r.is_posted;
+            currentInvoiceHasReturns = false;
             if (r.invoice_number) {
                 document.getElementById('PurchaseInvoicesON2').value = r.invoice_number;
             }
@@ -989,11 +1321,16 @@ function printInvoice() {
     );
 }
 
+/* =========================================================
+   تصدير للـ HTML
+   ========================================================= */
+
 Object.assign(window, {
     resetInvoice,
     searchInvoice,
     performInvoiceSearch,
     debouncedInvoiceSearch,
+    clearInvoiceSearch,
     saveInvoice,
     saveAndNewInvoice,
     editInvoice,
@@ -1010,6 +1347,16 @@ Object.assign(window, {
     otherCostChanged,
     hidePaymentAccounts,
     applyExchangeRateState,
+    protectExchangeRateInput,
     setInvoiceMode,
     clearInvoiceForm,
+
+    postInvoice,
+    unpostInvoice,
+    deleteInvoice,
+    postCurrentInvoice,
+    unpostCurrentInvoice,
+    updatePostingButtons,
+    updateSearchButton,
+    cleanupStuckModals,
 });

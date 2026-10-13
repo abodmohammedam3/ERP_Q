@@ -104,7 +104,6 @@
         }
         .items-table tbody td.text-start { text-align: right; }
 
-        /* عمود الإجمالي — أخضر الآن */
         .items-table tbody td.col-total {
             color: #198754;
             font-weight: 700;
@@ -112,7 +111,6 @@
 
         .items-table tbody tr:nth-child(even) { background: #f8f9fa; }
 
-        /* منع تقسيم الصف بين صفحتين */
         .items-table tbody tr {
             page-break-inside: avoid;
         }
@@ -142,19 +140,16 @@
             width: 25%;
         }
 
-        /* الصف الأول — إجمالي الأصناف + عدد الأصناف — أخضر الآن */
         .totals .row-items .label,
         .totals .row-items .value {
             color: #198754;
         }
 
-        /* الصف الثاني — إجمالي الخصم + البيان — أحمر الآن */
         .totals .row-discount .label,
         .totals .row-discount .value {
             color: #dc3545;
         }
 
-        /* خلية البيان المدمجة */
         .totals .statement-cell {
             background: #fff;
             color: #000;
@@ -167,7 +162,6 @@
             margin-left: 4px;
         }
 
-        /* الصف الثالث — إجمالي الفاتورة — أخضر الآن */
         .totals .row-grand .label,
         .totals .row-grand .value {
             background: #e7f1ff;
@@ -225,7 +219,7 @@
         }
 
         /* ============================================================
-           Footer — ثابت أسفل الصفحة
+           Footer
            ============================================================ */
         .footer {
             position: fixed;
@@ -252,7 +246,6 @@
             color: #6c757d;
             flex: 1;
         }
-        /* المستخدم — أخضر الآن */
         .footer-right {
             text-align: left;
             color: #198754;
@@ -296,6 +289,7 @@
 
 @php
     use App\Helpers\Tafqeet;
+    use App\Models\Sales\SalesInvoice;
 
     $currencyName = $invoice->coin->coinsName ?? '';
     $totalWords = Tafqeet::numberToWords(
@@ -303,16 +297,19 @@
         $currencyName
     );
 
-    // استبدال "فقط لا غير" بـ span أزرق
     $totalWordsHtml = str_replace(
         'فقط لا غير',
         '<span class="only-text">فقط لا غير</span>',
         e($totalWords)
     );
 
-    $paymentLabels = [1 => 'أجل', 2 => 'نقد', 3 => 'بنك', 4 => 'شبكة'];
+    // ✅ خريطة طرق الدفع (3 طرق)
+    $paymentLabels = [
+        SalesInvoice::PAYMENT_CREDIT => 'أجل',
+        SalesInvoice::PAYMENT_CASH   => 'نقدي',
+        SalesInvoice::PAYMENT_BANK   => 'بنك',
+    ];
 
-    // عدد الأصناف
     $itemsCount = $invoice->details->count();
 @endphp
 
@@ -428,14 +425,18 @@
     <div class="signature">المالية</div>
 </div>
 
-{{-- Footer — ثابت أسفل الصفحة --}}
+{{-- Footer --}}
 <div class="footer">
-    <span class="footer-left">جميع الحقوق محفوظة لشركة بيتاسيس ©</span>
+    <span class="footer-left">
+        جميع الحقوق محفوظة لـ {{ config('company.name', 'النظام') }} ©
+    </span>
     <span class="footer-center">رقم الصفحة: 1</span>
-    <span class="footer-right">المستخدم: مدير النظام</span>
+    <span class="footer-right">
+        المستخدم: {{ auth()->user()->name ?? 'مدير النظام' }}
+    </span>
 </div>
 
-{{-- Print Buttons (لا تُطبع) --}}
+{{-- Print Buttons --}}
 <div class="no-print" style="text-align: center; margin-top: 40px;">
     <button onclick="window.print()" style="
         padding: 10px 30px;

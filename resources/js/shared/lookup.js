@@ -102,28 +102,40 @@ const LookupConfigs = {
             !s || (row.UnitName || '').includes(s),
     },
 
+    /* ✅ الصندوق — مع العملة وسعر الصرف + فلترة حسب العملة */
     box: {
         title: 'اختيار الصندوق',
         icon: 'bi-cash-stack',
         columns: [
             { key: 'accountID', label: 'الرقم المحاسبي', width: '130px', align: 'center' },
             { key: 'boxName', label: 'اسم الصندوق', align: 'start' },
+            { key: 'coinsName', label: 'العملة', width: '110px', align: 'center' },
+            { key: 'coinsExchangeRate', label: 'سعر الصرف', width: '110px', align: 'center' },
         ],
         cacheKey: 'boxes',
+        filterByCoin: true,
         filter: (row, s) =>
-            !s || (row.boxName || '').includes(s),
+            !s ||
+            (row.boxName || '').includes(s) ||
+            (row.coinsName || '').includes(s),
     },
 
+    /* ✅ البنك — مع العملة وسعر الصرف + فلترة حسب العملة */
     bank: {
         title: 'اختيار البنك',
         icon: 'bi-bank',
         columns: [
             { key: 'accountID', label: 'الرقم المحاسبي', width: '130px', align: 'center' },
             { key: 'bankName', label: 'اسم البنك', align: 'start' },
+            { key: 'coinsName', label: 'العملة', width: '110px', align: 'center' },
+            { key: 'coinsExchangeRate', label: 'سعر الصرف', width: '110px', align: 'center' },
         ],
         cacheKey: 'banks',
+        filterByCoin: true,
         filter: (row, s) =>
-            !s || (row.bankName || '').includes(s),
+            !s ||
+            (row.bankName || '').includes(s) ||
+            (row.coinsName || '').includes(s),
     },
 
     /* ✅ #11: نافذة الشبكة — بيانات كاملة */
@@ -159,7 +171,6 @@ const lookupEndpointMap = {
     unit: '/setting/inventory/units/list',
     box: '/setting/accounting/boxes/list',
     bank: '/setting/accounting/banks/list',
-    /* ✅ #11: endpoint البنوك الكامل */
     bank_network: '/operation/purchases/banks/list-full',
 };
 
@@ -316,44 +327,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* =========================================================================
-   9) Event Delegation
+   9) Event Delegation — blur
    ========================================================================= */
-
-document.addEventListener('keydown', (e) => {
-    const target = e.target;
-    if (!target || !target.dataset || !target.dataset.lookup) return;
-
-    const value = (target.value || '').trim();
-
-    if (e.key === 'Enter') {
-        e.preventDefault();
-
-        lookupKeyDownHandled = true;
-        lookupJustOpened = true;
-
-        setTimeout(() => {
-            lookupKeyDownHandled = false;
-            lookupJustOpened = false;
-        }, 600);
-
-        openLookup(target.dataset.lookup, target);
-        return;
-    }
-
-    if (e.key === 'Tab' && !e.shiftKey && value !== '') {
-        e.preventDefault();
-
-        lookupKeyDownHandled = true;
-        lookupJustOpened = true;
-
-        setTimeout(() => {
-            lookupKeyDownHandled = false;
-            lookupJustOpened = false;
-        }, 600);
-
-        openLookup(target.dataset.lookup, target);
-    }
-}, true);
 
 document.addEventListener('blur', (e) => {
     const target = e.target;
@@ -389,6 +364,27 @@ document.addEventListener('blur', (e) => {
         if (document.querySelector('.modal.show')) return;
         openLookup(target.dataset.lookup, target);
     }, 150);
+}, true);
+
+/* =========================================================================
+   9.b) ✅ النقر على حقل data-lookup يفتح النافذة
+   ========================================================================= */
+
+document.addEventListener('click', (e) => {
+    const target = e.target;
+    if (!target || !target.dataset || !target.dataset.lookup) return;
+
+    // لا تفتح إذا كان الحقل معطّلًا (disabled)
+    if (target.disabled) return;
+
+    // لا تفتح إذا كان هناك modal مفتوح
+    if (document.querySelector('.modal.show')) return;
+
+    // لا تفتح إذا كان النقر حديثًا بعد إغلاق النافذة
+    if (Date.now() - lookupLastClosedAt < 300) return;
+
+    // ✅ افتح النافذة بالنقر
+    openLookup(target.dataset.lookup, target);
 }, true);
 
 /* =========================================================================
@@ -530,14 +526,8 @@ function lookupRenderRows(rows, config) {
             tr.appendChild(td);
         });
 
+        // ✅ الاختيار بالنقر فقط
         tr.addEventListener('click', () => lookupSelectRow(row));
-
-        tr.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                lookupSelectRow(row);
-            }
-        });
 
         fragment.appendChild(tr);
     });
@@ -560,7 +550,18 @@ function lookupFilterAndRender() {
     if (!config) return;
 
     const search = (document.getElementById('unifiedLookupSearch')?.value || '').trim();
-    const source = lookupCache[config.cacheKey] || [];
+    let source = lookupCache[config.cacheKey] || [];
+
+    // ✅ فلترة حسب العملة النشطة
+    if (config.filterByCoin && typeof window.lookupGetActiveCoinId === 'function') {
+        const activeCoinId = window.lookupGetActiveCoinId();
+
+        if (activeCoinId) {
+            source = source.filter(row =>
+                String(row.coinsID) === String(activeCoinId)
+            );
+        }
+    }
 
     const filtered = !search
         ? source
@@ -580,17 +581,6 @@ function lookupSearchInput() {
     }, 200);
 }
 
-function lookupSearchKeyDown(e) {
-    if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        lookupFocusFirstRow();
-    } else if (e.key === 'Enter') {
-        e.preventDefault();
-        const first = document.querySelector('#unifiedLookupBody .lookup-row');
-        if (first) first.click();
-    }
-}
-
 /* =========================================================================
    13) التركيز
    ========================================================================= */
@@ -601,7 +591,7 @@ function lookupFocusFirstRow() {
 }
 
 /* =========================================================================
-   14) اختيار صف
+   14) اختيار صف — بالنقر فقط
    ========================================================================= */
 
 function lookupSelectRow(row) {
@@ -692,7 +682,6 @@ function lookupSetupFocusTrap(modalEl) {
 
 window.openLookup = openLookup;
 window.lookupSearchInput = lookupSearchInput;
-window.lookupSearchKeyDown = lookupSearchKeyDown;
 window.lookupCache = lookupCache;
 window.LookupConfigs = LookupConfigs;
 window.lookupEnsureLoaded = lookupEnsureLoaded;

@@ -1,6 +1,7 @@
-<!-- ========================= -->
-<!-- رأس مرتجع البيع -->
-<!-- ========================= -->
+
+{{-- ========================= --}}
+{{-- رأس مرتجع البيع --}}
+{{-- ========================= --}}
 
 <div class="card mb-3">
 
@@ -15,127 +16,189 @@
 
         <div class="row g-3">
 
-            <!-- رقم المرتجع -->
+            {{-- رقم المرتجع --}}
             <div class="col-md-3">
                 <label for="SalesReturnNo" class="form-label">رقم المرتجع</label>
                 <input
                     type="text"
                     class="form-control"
                     id="SalesReturnNo"
-                    name="SalesReturnNo"
                     readonly
                     tabindex="-1"
                 >
             </div>
 
-            <!-- التاريخ -->
+            {{-- التاريخ --}}
             <div class="col-md-3">
                 <label for="SalesReturnDate" class="form-label">التاريخ</label>
                 <input
                     type="date"
                     class="form-control"
                     id="SalesReturnDate"
-                    name="SalesReturnDate"
-                    disabled
+                    readonly
+                    tabindex="-1"
                 >
             </div>
 
-            <!-- الفاتورة الأصلية -->
-            <div class="col-md-4">
-                <label for="originalSalesInvoiceNo" class="form-label">الفاتورة الأصلية</label>
-                <div class="input-group">
-                    <input type="hidden" id="originalSalesInvoiceId" name="originalSalesInvoiceId">
+            {{-- الفاتورة الأصلية --}}
+            <div class="col-md-6">
+                <label for="originalSalesInvoiceNo" class="form-label">
+                    الفاتورة الأصلية
+                </label>
+
+                <input
+                    type="hidden"
+                    id="originalSalesInvoiceId"
+                    name="originalSalesInvoiceId"
+                >
+
+                <div
+                    id="originalSalesInvoiceWrapper"
+                    onclick="onOriginalInvoiceFieldClick()"
+                >
                     <input
                         type="text"
                         class="form-control"
                         id="originalSalesInvoiceNo"
-                        placeholder="اختر الفاتورة الأصلية..."
+                        placeholder="اضغط لاختيار الفاتورة الأصلية..."
                         readonly
+                        style="pointer-events: none; background-color: #fff;"
                     >
-                    <button
-                        type="button"
-                        class="btn btn-outline-primary"
-                        id="btnSelectOriginalInvoice"
-                        onclick="searchOriginalInvoice()"
-                        disabled
-                    >
-                        <i class="bi bi-search"></i>
-                        اختيار
-                    </button>
                 </div>
             </div>
 
-            <!-- طريقة الدفع -->
-            <div class="col-md-2">
-                <label for="SalesReturnPaymentMethod" class="form-label">طريقة الدفع</label>
-                <select
-                    class="form-select"
-                    id="SalesReturnPaymentMethod"
-                    name="SalesReturnPaymentMethod"
-                    disabled
-                    onchange="salesReturnPaymentMethodChanged()"
+            {{-- طريقة الدفع --}}
+            <div class="col-md-3">
+                <label for="SalesReturnPaymentMethod" class="form-label">
+                    طريقة الدفع
+                </label>
+
+                <input
+                    type="hidden"
+                    id="SalesReturnPaymentMethodValue"
                 >
-                    <option value="">اختر طريقة الدفع</option>
-                    <option value="credit">أجل</option>
-                    <option value="cash">نقد</option>
-                    <option value="bank">تحويل بنكي</option>
-                    <option value="network">عبر شبكة</option>
-                </select>
+
+                <input
+                    type="text"
+                    class="form-control"
+                    id="SalesReturnPaymentMethod"
+                    placeholder="تحدد من الفاتورة"
+                    readonly
+                    tabindex="-1"
+                >
             </div>
 
-            <!-- حساب الدفع (ديناميكي) -->
-            <div class="col-md-3 d-none" id="salesReturnPaymentAccountContainer">
-                <label for="salesReturnPaymentAccount" class="form-label">الحساب</label>
-                <input type="hidden" id="salesReturnPaymentAccountId">
+            {{-- حساب الدفع: يظهر عند الحاجة --}}
+            <div
+                class="col-md-3 d-none"
+                id="salesReturnPaymentAccountContainer"
+            >
+                <label
+                    for="salesReturnPaymentAccount"
+                    class="form-label"
+                    id="salesReturnPaymentAccountLabel"
+                >
+                    الحساب
+                </label>
+
+                <input
+                    type="hidden"
+                    id="salesReturnPaymentAccountId"
+                >
+
                 <input
                     type="text"
                     class="form-control"
                     id="salesReturnPaymentAccount"
-                    name="salesReturnPaymentAccount"
-                    placeholder="اختر الحساب"
-                    autocomplete="off"
-                    disabled
+                    readonly
+                    tabindex="-1"
+                    placeholder="—"
                 >
             </div>
 
-            <!-- العميل (مأخوذ تلقائياً من الفاتورة) -->
+            {{-- العميل --}}
             <div class="col-md-4">
-                <label for="salesReturnCustomerName" class="form-label">العميل</label>
-                <input type="hidden" id="salesReturnCustomerID" name="salesReturnCustomerID">
+                <label for="salesReturnCustomerName" class="form-label">
+                    العميل
+                </label>
+
+                <input
+                    type="hidden"
+                    id="salesReturnCustomerID"
+                    name="salesReturnCustomerID"
+                >
+
                 <input
                     type="text"
                     class="form-control"
                     id="salesReturnCustomerName"
-                    name="salesReturnCustomerName"
                     readonly
+                    tabindex="-1"
                     placeholder="يتحدد عند اختيار الفاتورة"
                 >
             </div>
 
-            <!-- العملة (مأخوذة تلقائياً من الفاتورة) -->
+            {{-- المخزن --}}
             <div class="col-md-3">
-                <label for="salesReturnCurrencyName" class="form-label">العملة</label>
-                <input type="hidden" id="salesReturnCoinsID" name="salesReturnCoinsID">
+                <label for="salesReturnWarehouseName" class="form-label">
+                    المخزن
+                </label>
+
+                <input
+                    type="hidden"
+                    id="salesReturnWarehouseID"
+                    name="salesReturnWarehouseID"
+                >
+
+                <input
+                    type="text"
+                    class="form-control"
+                    id="salesReturnWarehouseName"
+                    readonly
+                    tabindex="-1"
+                    placeholder="يتحدد تلقائياً"
+                >
+            </div>
+
+            {{-- العملة --}}
+            <div class="col-md-3">
+                <label for="salesReturnCurrencyName" class="form-label">
+                    العملة
+                </label>
+
+                <input
+                    type="hidden"
+                    id="salesReturnCoinsID"
+                    name="salesReturnCoinsID"
+                >
+
                 <input
                     type="text"
                     class="form-control"
                     id="salesReturnCurrencyName"
-                    name="salesReturnCurrencyName"
                     readonly
+                    tabindex="-1"
                     placeholder="تحدد تلقائياً"
                 >
             </div>
 
-            <!-- سعر الصرف -->
+            {{-- سعر الصرف: للعرض فقط --}}
             <div class="col-md-2">
-                <label for="SalesReturnExchangeRate" class="form-label">سعر الصرف</label>
+                <label for="SalesReturnExchangeRate" class="form-label">
+                    سعر الصرف
+                </label>
+
                 <input
-                    type="number"
-                    step="0.000001"
-                    class="form-control"
+                    type="text"
+                    inputmode="none"
+                    class="form-control bg-light"
                     id="SalesReturnExchangeRate"
-                    name="SalesReturnExchangeRate"
                     readonly
+                    tabindex="-1"
+                    onkeydown="return false"
+                    onpaste="return false"
+                    oncut="return false"
+                    ondrop="return false"
                 >
             </div>
 
@@ -144,3 +207,11 @@
     </div>
 
 </div>
+
+<style>
+    #SalesReturnExchangeRate::-webkit-outer-spin-button,
+    #SalesReturnExchangeRate::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+</style>

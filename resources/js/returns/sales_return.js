@@ -1,36 +1,33 @@
 /* =========================================================================
    مرتجع المبيعات — إدارة مرتجعات البيع
-   متوافق 100% مع header / details / index
-   طرق الدفع: credit (1), cash (2), bank (3)
    ========================================================================= */
 
-/* =========================================================
+/* =========================
    ثوابت
-   ========================================================= */
+   ========================= */
 
-const SALES_RETURN_PAYMENT_MAP = {
-    'credit': 1,
-    'cash':   2,
-    'bank':   3,
-};
+/** تسميات طرق الدفع */
+const SALES_RETURN_PAYMENT_LABELS = { 1: 'أجل', 2: 'نقدي', 3: 'بنك' };
 
-const SALES_RETURN_PAYMENT_REVERSE = {
-    1: 'credit',
-    2: 'cash',
-    3: 'bank',
-};
+/** خرائط التحويل (للتوافق مع أي كود خارجي) */
+const SALES_RETURN_PAYMENT_TO_INT = { credit: 1, cash: 2, bank: 3 };
+const SALES_RETURN_PAYMENT_TO_STR = { 1: 'credit', 2: 'cash', 3: 'bank' };
 
-const SALES_RETURN_PAYMENT_LABELS = {
-    1: 'أجل',
-    2: 'نقد',
-    3: 'تحويل بنكي',
-};
+/** الوضعيات */
+const SALES_RETURN_MODES = Object.freeze({ VIEW: 'view', ADD: 'add', EDIT: 'edit' });
 
-/* =========================================================
-   حالة عامة
-   ========================================================= */
+/** حقول الصف التي تبقى للقراءة فقط دائماً */
+const SALES_RETURN_READONLY_ROW_CLASSES = [
+    'row-num', 'row-total', 'row-available', 'row-discount',
+    'row-price', 'row-item', 'row-type', 'row-code',
+    'row-unit', 'row-warehouse',
+];
 
-let salesReturnMode = 'view';
+/* =========================
+   الحالة العامة
+   ========================= */
+
+let salesReturnMode = SALES_RETURN_MODES.VIEW;
 let currentSalesReturnId = null;
 let currentSalesReturnIsPosted = false;
 let isSavingSalesReturn = false;
@@ -38,215 +35,249 @@ let isSavingSalesReturn = false;
 let originalInvoiceSearchTimer = null;
 let salesReturnSearchTimer = null;
 
-const SALES_RETURN_CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
+const SALES_RETURN_CSRF =
+    document.querySelector('meta[name="csrf-token"]')?.content || '';
 
-/* =========================================================
-   Helpers — API
-   ========================================================= */
+/* =========================================================================
+   طبقة API
+   ========================================================================= */
 
 function salesReturnApiHeaders(json = false) {
-    const h = {
-        'Accept': 'application/json',
-        'X-CSRF-TOKEN': SALES_RETURN_CSRF,
-    };
+    const h = { Accept: 'application/json', 'X-CSRF-TOKEN': SALES_RETURN_CSRF };
     if (json) h['Content-Type'] = 'application/json';
     return h;
 }
 
+/**
+ * طلب GET موحّد.
+ * @param {string} url
+ * @returns {Promise<any>}
+ */
 async function salesReturnApiGet(url) {
     const r = await fetch(url, { headers: salesReturnApiHeaders() });
     if (!r.ok) throw new Error(`فشل الطلب: ${r.status}`);
     return r.json();
 }
 
+/**
+ * طلب JSON موحّد (POST/PUT/DELETE).
+ * @param {string} url
+ * @param {string} method
+ * @param {object} body
+ */
 async function salesReturnApiSend(url, method, body) {
     const r = await fetch(url, {
         method,
         headers: salesReturnApiHeaders(true),
-        body: JSON.stringify(body),
+        body: JSON.stringify(body ?? {}),
     });
-
     const json = await r.json().catch(() => ({}));
-
     if (!r.ok) {
         let message = json.message || 'فشل الطلب';
-        if (json.errors) {
-            message = Object.values(json.errors).flat().join(' | ');
-        } else if (json.error) {
-            message = json.error;
-        }
+        if (json.errors) message = Object.values(json.errors).flat().join(' | ');
+        else if (json.error) message = json.error;
 
-        const e = new Error(message);
-        e.errors = json.errors;
-        e.raw = json;
-        console.error('API Error:', json);
-        throw e;
+        const err = new Error(message);
+        err.errors = json.errors;
+        err.raw = json;
+        throw err;
     }
     return json;
 }
 
-/* =========================================================
-   Helpers — UI
-   ========================================================= */
+/* =========================================================================
+   أدوات مساعدة
+   ========================================================================= */
 
+/**
+ * يعرض إشعاراً للمستخدم (Toast مخصص إن توفّر، وإلا console).
+ * @param {string} message
+ * @param {'info'|'success'|'warning'|'danger'} type
+ */
 function salesReturnNotify(message, type = 'info') {
     if (typeof window.showSystemToast === 'function') {
         window.showSystemToast(message, type);
-    } else {
-        console.warn(`[${type}] ${message}`);
-        alert(message);
+        return;
     }
+    const fn = type === 'danger' ? console.error : console.warn;
+    fn(`[SalesReturn:${type}] ${message}`);
 }
 
+/** قراءة قيمة عنصر بأمان */
 function salesReturnGetValue(id) {
     const el = document.getElementById(id);
     return el ? (el.value || '') : '';
 }
 
+/** تعيين قيمة عنصر بأمان */
 function salesReturnSetValue(id, value) {
     const el = document.getElementById(id);
     if (!el) return;
     el.value = value ?? '';
 }
 
+/** قراءة رقم بأمان مع حد أدنى اختياري */
+function salesReturnReadNumber(id, fallback = 0, min = null) {
+    const raw = salesReturnGetValue(id);
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n)) return fallback;
+    if (min !== null && n < min) return fallback;
+    return n;
+}
+
+/** استخراج مصفوفة من استجابة API مهما كان شكلها */
+function salesReturnExtractArray(raw) {
+    if (Array.isArray(raw)) return raw;
+    if (Array.isArray(raw?.data)) return raw.data;
+    return [];
+}
+
+/** استخراج { header, details } من استجابة API */
 function salesReturnExtractPayload(res) {
-    if (res && res.header) return { header: res.header, details: res.details || [] };
-    if (res && res.data && res.data.header) return { header: res.data.header, details: res.data.details || [] };
+    if (res?.header) return { header: res.header, details: res.details || [] };
+    if (res?.data?.header) return { header: res.data.header, details: res.data.details || [] };
     return { header: {}, details: [] };
 }
 
-function salesReturnGetPaymentMethodInt() {
-    const el = document.getElementById('SalesReturnPaymentMethod');
-    if (!el) return 0;
-    return SALES_RETURN_PAYMENT_MAP[el.value] || 0;
+/** تهريب HTML لتفادي XSS في رسائل المودال */
+function salesReturnEscapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = String(str ?? '');
+    return div.innerHTML;
 }
 
-function salesReturnSetPaymentMethodInt(intValue) {
-    const el = document.getElementById('SalesReturnPaymentMethod');
-    if (!el) return;
-    el.value = SALES_RETURN_PAYMENT_REVERSE[intValue] || '';
+/* =========================================================================
+   مودال تأكيد مخصص (بديل confirm)
+   ========================================================================= */
+
+/**
+ * يعرض مودال تأكيد ويعيد Promise<boolean>.
+ * @param {string} message
+ * @param {{title?:string, okText?:string, cancelText?:string, danger?:boolean}} [opts]
+ * @returns {Promise<boolean>}
+ */
+function salesReturnConfirm(message, opts = {}) {
+    if (typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+        return Promise.resolve(window.confirm(message));
+    }
+
+    return new Promise((resolve) => {
+        const id = `sr-confirm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const title = opts.title || 'تأكيد';
+        const okText = opts.okText || 'تأكيد';
+        const cancelText = opts.cancelText || 'إلغاء';
+        const okClass = opts.danger ? 'btn-danger' : 'btn-primary';
+        const safeMessage = salesReturnEscapeHtml(message).replace(/\n/g, '<br>');
+
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = `
+            <div class="modal fade" id="${id}" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered modal-sm">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h6 class="modal-title">${salesReturnEscapeHtml(title)}</h6>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="mb-0">${safeMessage}</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">${salesReturnEscapeHtml(cancelText)}</button>
+                            <button type="button" class="btn ${okClass} btn-sm" id="${id}-ok">${salesReturnEscapeHtml(okText)}</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+        const modalEl = wrapper.firstElementChild;
+        document.body.appendChild(modalEl);
+
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        let result = false;
+
+        modalEl.querySelector(`#${id}-ok`).addEventListener('click', () => {
+            result = true;
+            modal.hide();
+        });
+
+        modalEl.addEventListener('hidden.bs.modal', () => {
+            resolve(result);
+            modalEl.remove();
+            cleanupStuckModals();
+        }, { once: true });
+
+        modal.show();
+    });
 }
 
-/* =========================================================
-   Helper — ضبط قيمة عنصر داخل الصف (حماية من null)
-   ========================================================= */
+/* =========================================================================
+   تنظيف المودالات
+   ========================================================================= */
 
-function setRowValue(row, selector, value) {
-    const el = row.querySelector(selector);
-    if (el) el.value = value ?? '';
-}
-
-/* =========================================================
-   Cleanup Modals
-   ========================================================= */
-
+/**
+ * تنظيف آمن: لا يلمس أي مودال ظاهر حالياً حتى لا يكسر Bootstrap.
+ */
 function cleanupStuckModals() {
+    if (document.querySelectorAll('.modal.show').length > 0) return;
+
     document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
     document.body.classList.remove('modal-open');
     document.body.style.removeProperty('overflow');
     document.body.style.removeProperty('padding-right');
 
     document.querySelectorAll('.modal.show').forEach(modalEl => {
-        const instance = bootstrap.Modal.getInstance(modalEl);
-        if (instance) {
-            try { instance.hide(); } catch (e) { /* ignore */ }
-        }
         modalEl.classList.remove('show');
-        modalEl.style.display = 'none';
+        modalEl.style.removeProperty('display');
         modalEl.setAttribute('aria-hidden', 'true');
     });
 
     document.querySelectorAll('.offcanvas-backdrop').forEach(el => el.remove());
 }
 
-/* =========================================================
+/* =========================================================================
    التهيئة
-   ========================================================= */
+   ========================================================================= */
 
 document.addEventListener('DOMContentLoaded', () => {
     cleanupStuckModals();
-    setSalesReturnMode('view');
+    setSalesReturnMode(SALES_RETURN_MODES.VIEW);
     clearSalesReturnForm();
-    bindSalesReturnEvents();
-
-    setTimeout(cleanupStuckModals, 100);
-    setTimeout(cleanupStuckModals, 500);
-});
-
-window.addEventListener('load', () => {
-    setTimeout(cleanupStuckModals, 200);
 });
 
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') cleanupStuckModals();
+    if (document.visibilityState === 'visible') {
+        cleanupStuckModals();
+    }
 });
 
-/* =========================================================
-   ربط الأحداث (Delegation)
-   ========================================================= */
+/* =========================================================================
+   إدارة الوضعية
+   ========================================================================= */
 
-function bindSalesReturnEvents() {
-    document.addEventListener('input', (e) => {
-        if (e.target.classList.contains('row-measure') ||
-            e.target.classList.contains('row-discount')) {
-            calculateSalesReturnRow(e.target);
-        }
-    });
-
-    const invInput = document.getElementById('originalInvoiceSearchInput');
-    if (invInput) {
-        invInput.addEventListener('input', () => {
-            clearTimeout(originalInvoiceSearchTimer);
-            originalInvoiceSearchTimer = setTimeout(performOriginalInvoiceSearch, 350);
-        });
-    }
-
-    const retInput = document.getElementById('salesReturnSearchInput');
-    if (retInput) {
-        retInput.addEventListener('input', () => {
-            clearTimeout(salesReturnSearchTimer);
-            salesReturnSearchTimer = setTimeout(performSalesReturnSearch, 350);
-        });
-    }
-}
-
-/* =========================================================
-   Mode Management
-   ========================================================= */
-
+/**
+ * يضبط وضعية الشاشة (view/add/edit) ويعطّل/يفعّل الأزرار والحقول.
+ * @param {'view'|'add'|'edit'} mode
+ */
 function setSalesReturnMode(mode) {
     salesReturnMode = mode;
 
     document.querySelectorAll('#salesReturnDetails .return-detail-row')
         .forEach(row => enableSalesReturnRow(row));
 
-    const newBtn     = document.getElementById('btnNewSalesReturn');
-    const saveBtn    = document.getElementById('btnSaveSalesReturn');
+    const newBtn = document.getElementById('btnNewSalesReturn');
+    const saveBtn = document.getElementById('btnSaveSalesReturn');
     const saveNewBtn = document.getElementById('btnSaveAndNewSalesReturn');
-    const cancelBtn  = document.getElementById('btnCancelSalesReturn');
+    const cancelBtn = document.getElementById('btnCancelSalesReturn');
 
-    if (newBtn) newBtn.disabled = (mode !== 'view');
+    const isView = mode === SALES_RETURN_MODES.VIEW;
 
-    if (mode === 'view') {
-        if (saveBtn)    saveBtn.disabled = true;
-        if (saveNewBtn) saveNewBtn.disabled = true;
-        if (cancelBtn)  cancelBtn.classList.add('d-none');
-    } else {
-        if (saveBtn)    saveBtn.disabled = false;
-        if (saveNewBtn) saveNewBtn.disabled = false;
-        if (cancelBtn)  cancelBtn.classList.remove('d-none');
-    }
+    if (newBtn) newBtn.disabled = !isView;
+    if (saveBtn) saveBtn.disabled = isView;
+    if (saveNewBtn) saveNewBtn.disabled = isView;
+    if (cancelBtn) cancelBtn.classList.toggle('d-none', isView);
 
-    const selectInvBtn = document.getElementById('btnSelectOriginalInvoice');
-    if (selectInvBtn) selectInvBtn.disabled = (mode === 'view');
-
-    const dateEl = document.getElementById('SalesReturnDate');
-    if (dateEl) dateEl.readOnly = (mode === 'view');
-
-    const statementEl = document.getElementById('SalesReturnStatement');
-    const referenceEl = document.getElementById('SalesReturnReference');
-    if (statementEl) statementEl.readOnly = (mode === 'view');
-    if (referenceEl) referenceEl.readOnly = (mode === 'view');
+    const invoiceWrapper = document.getElementById('originalSalesInvoiceWrapper');
+    if (invoiceWrapper) invoiceWrapper.style.cursor = isView ? 'default' : 'pointer';
 
     updateSalesReturnSearchButton();
     updateSalesReturnPostingButtons();
@@ -257,8 +288,7 @@ function updateSalesReturnSearchButton() {
     if (!searchBtn) return;
 
     const hasReturn = !!currentSalesReturnId;
-    const isViewMode = salesReturnMode === 'view';
-
+    const isViewMode = salesReturnMode === SALES_RETURN_MODES.VIEW;
     searchBtn.disabled = !isViewMode || hasReturn;
 }
 
@@ -270,7 +300,7 @@ function updateSalesReturnPostingButtons() {
 
     const hasData  = hasSalesReturnData();
     const isPosted = currentSalesReturnIsPosted;
-    const isView   = salesReturnMode === 'view';
+    const isView   = salesReturnMode === SALES_RETURN_MODES.VIEW;
 
     if (editBtn) {
         editBtn.disabled = !hasData || isPosted || !isView;
@@ -278,13 +308,13 @@ function updateSalesReturnPostingButtons() {
     }
 
     if (postBtn) {
-        const show = hasData && !isPosted && isView;
+        const show = hasData && !isPosted;
         postBtn.classList.toggle('d-none', !show);
         postBtn.disabled = !hasData || isPosted || !isView;
     }
 
     if (unpostBtn) {
-        const show = hasData && isPosted && isView;
+        const show = hasData && isPosted;
         unpostBtn.classList.toggle('d-none', !show);
         unpostBtn.disabled = !hasData || !isPosted || !isView;
     }
@@ -292,49 +322,50 @@ function updateSalesReturnPostingButtons() {
     if (printBtn) printBtn.disabled = !hasData;
 }
 
-function hasSalesReturnData() {
-    const el = document.getElementById('SalesReturnNo');
-    return el ? el.value.trim() !== '' : false;
-}
+/* =========================================================================
+   نموذج المرتجع
+   ========================================================================= */
 
-/* =========================================================
-   Reset / Clear
-   ========================================================= */
-
+/**
+ * بدء مرتجع جديد: يفتح نافذة اختيار الفاتورة فوراً، ثم يجلب الرقم بالخلفية.
+ */
 async function resetSalesReturn() {
     cleanupStuckModals();
 
     clearSalesReturnForm();
-    setSalesReturnMode('add');
+    setSalesReturnMode(SALES_RETURN_MODES.ADD);
+    salesReturnSetValue('SalesReturnDate', new Date().toISOString().split('T')[0]);
 
+    // الإجراء الأساسي: فتح نافذة اختيار الفاتورة
+    searchOriginalSalesInvoice();
+
+    // جلب الرقم التالي بالخلفية
     try {
         const res = await salesReturnApiGet('/operation/sales/returns/next-number');
         salesReturnSetValue('SalesReturnNo', res.next_number || '');
     } catch (e) {
+        console.error('[SalesReturn] next-number failed', e);
         salesReturnNotify('تعذّر جلب رقم المرتجع التالي', 'danger');
     }
-
-    salesReturnSetValue('SalesReturnDate', new Date().toISOString().split('T')[0]);
-
-    searchOriginalInvoice();
 }
 
+/** تفريغ كل حقول النموذج وإعادة الحالة */
 function clearSalesReturnForm() {
     [
-        'SalesReturnNo', 'SalesReturnDate',
-        'originalSalesInvoiceId', 'originalSalesInvoiceNo',
-        'SalesReturnPaymentMethod',
-        'salesReturnPaymentAccount', 'salesReturnPaymentAccountId',
-        'salesReturnCustomerID', 'salesReturnCustomerName',
-        'salesReturnCoinsID', 'salesReturnCurrencyName',
-        'SalesReturnExchangeRate',
-        'SalesReturnStatement', 'SalesReturnReference',
+        'SalesReturnNo', 'SalesReturnDate', 'originalSalesInvoiceNo',
+        'SalesReturnPaymentMethod', 'SalesReturnPaymentMethodValue',
+        'salesReturnPaymentAccount', 'salesReturnCustomerName',
+        'salesReturnCurrencyName', 'salesReturnWarehouseName',
+        'SalesReturnExchangeRate', 'SalesReturnStatement', 'SalesReturnReference',
+        'originalSalesInvoiceId', 'salesReturnCustomerID', 'salesReturnCoinsID',
+        'salesReturnWarehouseID', 'salesReturnPaymentAccountId',
     ].forEach(id => salesReturnSetValue(id, ''));
 
     setEmptySalesReturnMessage();
 
     const discEl = document.getElementById('totalSalesReturnDiscountDisplay');
     if (discEl) discEl.textContent = '0.00';
+
     const totalEl = document.getElementById('salesReturnTotalDisplay');
     if (totalEl) totalEl.textContent = '0.00';
 
@@ -343,55 +374,127 @@ function clearSalesReturnForm() {
     currentSalesReturnId = null;
     currentSalesReturnIsPosted = false;
 
-    setSalesReturnMode('view');
+    setSalesReturnMode(SALES_RETURN_MODES.VIEW);
 }
 
+/** يستنتج عدد الأعمدة من thead أو يستخدم قيمة افتراضية */
+function salesReturnDetailsColSpan() {
+    const thead = document.querySelector('#salesReturnDetailsTable thead tr');
+    if (thead) return thead.children.length || 12;
+    return 12;
+}
+
+/** رسالة "لا توجد أصناف" */
 function setEmptySalesReturnMessage() {
     const tbody = document.getElementById('salesReturnDetails');
     if (!tbody) return;
 
-    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+    tbody.replaceChildren();
 
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 12;
+    td.colSpan = salesReturnDetailsColSpan();
     td.className = 'text-center text-muted py-4';
     td.textContent = 'لا توجد أصناف. اضغط "مرتجع جديد" للبدء.';
     tr.appendChild(td);
     tbody.appendChild(tr);
 }
 
-/* =========================================================
-   Row Management
-   ========================================================= */
+/* =========================================================================
+   صفوف التفاصيل
+   ========================================================================= */
 
+/**
+ * تفعيل/تعطيل حقول الصف حسب الوضعية.
+ * @param {HTMLTableRowElement} row
+ */
 function enableSalesReturnRow(row) {
     if (!row) return;
+    const isView = salesReturnMode === SALES_RETURN_MODES.VIEW;
 
-    const measureEl  = row.querySelector('.row-measure');
-    const discountEl = row.querySelector('.row-discount');
-    const removeBtn  = row.querySelector('button.btn-outline-danger');
-
-    const isView = (salesReturnMode === 'view');
-
-    if (measureEl)  measureEl.disabled  = isView;
-    if (discountEl) discountEl.disabled = isView;
-    if (removeBtn)  removeBtn.disabled  = isView;
+    row.querySelectorAll('input, select, button').forEach(el => {
+        if (el.type === 'hidden') return;
+        if (SALES_RETURN_READONLY_ROW_CLASSES.some(c => el.classList.contains(c))) return;
+        el.disabled = isView;
+    });
 }
 
-function removeSalesReturnRow(btn) {
-    if (salesReturnMode === 'view') return;
+/**
+ * بناء صف تفاصيل موحّد (يُستخدم في التحميل من فاتورة أو من مرتجع محفوظ).
+ * @param {object} args
+ * @param {object} args.detail بيانات البند
+ * @param {number} args.availableQty الكمية المتاحة للإرجاع
+ * @param {number} args.index ترتيب الصف
+ * @param {'invoice'|'return'} args.source مصدر البيانات
+ * @returns {HTMLTableRowElement}
+ */
+function buildSalesReturnRow({ detail, availableQty, index, source }) {
+    const tpl = document.getElementById('salesReturnRowTemplate');
+    const row = tpl.content.firstElementChild.cloneNode(true);
 
-    const row = btn.closest('tr');
-    if (row) row.remove();
+    const setVal = (sel, v) => {
+        const el = row.querySelector(sel);
+        if (el) el.value = v ?? '';
+    };
 
-    renumberSalesReturnRows();
-    calculateSalesReturnTotals();
+    setVal('.row-detail-id', detail.sales_invoice_detail_id);
+    row.querySelector('.row-num').textContent = index + 1;
 
-    const tbody = document.getElementById('salesReturnDetails');
-    if (tbody && !tbody.querySelector('.return-detail-row')) {
-        setEmptySalesReturnMessage();
+    setVal('.row-item', detail.item_name);
+    setVal('.row-item-id', detail.item_id);
+    setVal('.row-type', detail.type_name);
+    setVal('.row-type-id', detail.type_id);
+    setVal('.row-code', detail.code);
+    setVal('.row-unit', detail.unit_name);
+    setVal('.row-unit-id', detail.unit_id);
+    setVal('.row-warehouse', detail.warehouse_name);
+    setVal('.row-warehouse-id', detail.warehouse_id);
+
+    const price = parseFloat(detail.price) || 0;
+    setVal('.row-price', price);
+    setVal('.row-cost-price', detail.cost_price ?? price);
+    setVal('.row-available', availableQty);
+
+    // ✅ الكميات الأصلية: من الفاتورة الأصلية أو من وسم واضح في بيانات المرتجع
+    const originalQty =
+        parseFloat(detail.original_quantity ?? detail.original_qty ?? detail.invoice_quantity) ||
+        (source === 'invoice' ? parseFloat(detail.quantity) || 0 : 0);
+
+    const originalDiscount =
+        parseFloat(detail.original_discount ?? detail.invoice_discount) ||
+        (source === 'invoice' ? parseFloat(detail.discount) || 0 : 0);
+
+    setVal('.row-original-qty', originalQty);
+    setVal('.row-original-discount', originalDiscount);
+
+    // الكمية الافتراضية
+    const defaultQty =
+        source === 'invoice'
+            ? availableQty
+            : (parseFloat(detail.quantity) || 0);
+
+    setVal('.row-measure', defaultQty);
+
+    // الخصم النسبي
+    let rowDiscount;
+    if (source === 'invoice') {
+        rowDiscount = originalQty > 0
+            ? (defaultQty / originalQty) * originalDiscount
+            : 0;
+    } else {
+        // مرتجع محفوظ: الخصم مخزَّن فعلاً
+        rowDiscount = parseFloat(detail.discount) || 0;
     }
+    setVal('.row-discount', rowDiscount.toFixed(2));
+
+    const rowTotal =
+        source === 'invoice'
+            ? Math.max(0, defaultQty * price - rowDiscount)
+            : (parseFloat(detail.total) || Math.max(0, defaultQty * price - rowDiscount));
+
+    setVal('.row-total', rowTotal.toFixed(2));
+
+    return row;
 }
 
 function renumberSalesReturnRows() {
@@ -402,42 +505,79 @@ function renumberSalesReturnRows() {
         });
 }
 
-/* =========================================================
-   Calculation
-   ========================================================= */
+/**
+ * حذف صف تفاصيل مع تأكيد.
+ * @param {HTMLButtonElement} btn
+ */
+async function removeSalesReturnRow(btn) {
+    if (salesReturnMode === SALES_RETURN_MODES.VIEW) return;
 
+    const row = btn.closest('tr');
+    if (!row) return;
+
+    const ok = await salesReturnConfirm('هل تريد حذف هذا الصنف من المرتجع؟', {
+        title: 'حذف صنف',
+        okText: 'حذف',
+        danger: true,
+    });
+    if (!ok) return;
+
+    row.remove();
+    renumberSalesReturnRows();
+    calculateSalesReturnTotals();
+
+    const tbody = document.getElementById('salesReturnDetails');
+    if (tbody && !tbody.querySelector('.return-detail-row')) {
+        setEmptySalesReturnMessage();
+    }
+}
+
+/* =========================================================================
+   الحسابات
+   ========================================================================= */
+
+/** إعادة حساب صف واحد بناءً على الكمية المُدخَلة */
 function calculateSalesReturnRow(input) {
     const row = input.closest('tr');
     if (!row) return;
 
-    const available = parseFloat(row.querySelector('.row-available')?.value) || 0;
-    let qty = parseFloat(row.querySelector('.row-measure')?.value) || 0;
-    const price = parseFloat(row.querySelector('.row-price')?.value) || 0;
-    let discount = parseFloat(row.querySelector('.row-discount')?.value) || 0;
+    const availableEl = row.querySelector('.row-available');
+    const measureEl   = row.querySelector('.row-measure');
+    const priceEl     = row.querySelector('.row-price');
+    const origQtyEl   = row.querySelector('.row-original-qty');
+    const origDiscEl  = row.querySelector('.row-original-discount');
+
+    const available = parseFloat(availableEl?.value) || 0;
+    let qty = parseFloat(measureEl?.value) || 0;
+    const price = parseFloat(priceEl?.value) || 0;
+    const originalQty = parseFloat(origQtyEl?.value) || 0;
+    const originalDiscount = parseFloat(origDiscEl?.value) || 0;
 
     if (qty < 0) qty = 0;
-    if (qty > available) {
+
+    if (available > 0 && qty > available) {
         salesReturnNotify(
             `الكمية المراد إرجاعها (${qty}) أكبر من الكمية المتاحة (${available})`,
             'warning'
         );
+        if (measureEl) measureEl.value = available;
         qty = available;
-        row.querySelector('.row-measure').value = available;
     }
 
-    const lineTotal = qty * price;
-    if (discount < 0) discount = 0;
-    if (discount > lineTotal) {
-        discount = lineTotal;
-        row.querySelector('.row-discount').value = discount.toFixed(2);
-    }
+    const discount = originalQty > 0
+        ? (qty / originalQty) * originalDiscount
+        : 0;
+
+    const discountEl = row.querySelector('.row-discount');
+    if (discountEl) discountEl.value = discount.toFixed(2);
 
     const totalEl = row.querySelector('.row-total');
-    if (totalEl) totalEl.value = Math.max(0, lineTotal - discount).toFixed(2);
+    if (totalEl) totalEl.value = Math.max(0, qty * price - discount).toFixed(2);
 
     calculateSalesReturnTotals();
 }
 
+/** إعادة حساب الإجماليات */
 function calculateSalesReturnTotals() {
     let itemsTotal = 0;
     let discountTotal = 0;
@@ -450,7 +590,10 @@ function calculateSalesReturnTotals() {
         discountTotal += d;
     });
 
-    const exchangeRate = parseFloat(document.getElementById('SalesReturnExchangeRate')?.value) || 1;
+    const rateEl = document.getElementById('SalesReturnExchangeRate');
+    let exchangeRate = parseFloat(rateEl?.value);
+    if (!Number.isFinite(exchangeRate) || exchangeRate <= 0) exchangeRate = 1;
+
     const net = Math.max(0, itemsTotal - discountTotal);
     const total = net * exchangeRate;
 
@@ -461,23 +604,23 @@ function calculateSalesReturnTotals() {
     if (totalEl) totalEl.textContent = total.toFixed(2);
 }
 
-/* =========================================================
-   Payment Method
-   ========================================================= */
+/* =========================================================================
+   طريقة الدفع
+   ========================================================================= */
 
 function salesReturnPaymentMethodChanged() {
-    const methodInt = salesReturnGetPaymentMethodInt();
+    const methodValue = parseInt(salesReturnGetValue('SalesReturnPaymentMethodValue'), 10) || 0;
+    const displayEl = document.getElementById('SalesReturnPaymentMethod');
     const container = document.getElementById('salesReturnPaymentAccountContainer');
     const label = document.getElementById('salesReturnPaymentAccountLabel');
 
+    if (displayEl) displayEl.value = SALES_RETURN_PAYMENT_LABELS[methodValue] || '';
+
     if (!container) return;
 
-    if (methodInt === 2 || methodInt === 3) {
+    if (methodValue === 2 || methodValue === 3) {
         container.classList.remove('d-none');
-
-        if (label) {
-            label.textContent = (methodInt === 3) ? 'الحساب البنكي' : 'الصندوق';
-        }
+        if (label) label.textContent = methodValue === 3 ? 'الحساب البنكي' : 'الصندوق';
     } else {
         container.classList.add('d-none');
         salesReturnSetValue('salesReturnPaymentAccount', '');
@@ -486,65 +629,85 @@ function salesReturnPaymentMethodChanged() {
 }
 
 function hideSalesReturnPaymentAccounts() {
-    const el = document.getElementById('salesReturnPaymentAccountContainer');
-    if (el) el.classList.add('d-none');
+    document.getElementById('salesReturnPaymentAccountContainer')?.classList.add('d-none');
 }
 
-/* =========================================================
-   Search Original Invoice (Modal)
-   ========================================================= */
+/* =========================================================================
+   البحث عن فاتورة البيع الأصلية
+   ========================================================================= */
 
-function searchOriginalInvoice() {
-    if (salesReturnMode === 'view') return;
+function onOriginalInvoiceFieldClick() {
+    if (salesReturnMode === SALES_RETURN_MODES.VIEW) return;
+    searchOriginalSalesInvoice();
+}
 
-    const modalEl = document.getElementById('originalInvoiceSearchModal');
-    if (!modalEl) return;
+function searchOriginalSalesInvoice() {
+    const modalEl = document.getElementById('originalSalesInvoiceSearchModal');
+    if (!modalEl) {
+        console.error('[SalesReturn] modal #originalSalesInvoiceSearchModal missing');
+        salesReturnNotify('لم يتم العثور على نافذة البحث عن الفاتورة', 'danger');
+        return;
+    }
 
-    const searchInput = document.getElementById('originalInvoiceSearchInput');
+    if (typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+        console.error('[SalesReturn] Bootstrap not loaded');
+        salesReturnNotify('مكتبة Bootstrap غير محمّلة', 'danger');
+        return;
+    }
+
+    const searchInput = document.getElementById('originalSalesInvoiceSearchInput');
     if (searchInput) searchInput.value = '';
 
-    const tbody = document.getElementById('originalInvoiceSearchResults');
-    if (tbody) {
-        tbody.replaceChildren();
+    const tb = document.getElementById('originalSalesInvoiceSearchResults');
+    if (tb) {
+        tb.replaceChildren();
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = 7;
         td.className = 'text-center text-muted py-4';
         td.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري التحميل...';
         tr.appendChild(td);
-        tbody.appendChild(tr);
+        tb.appendChild(tr);
     }
 
-    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    try {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    } catch (err) {
+        console.error('[SalesReturn] modal show failed', err);
+        salesReturnNotify('تعذّر فتح نافذة البحث', 'danger');
+        return;
+    }
 
     setTimeout(() => {
         searchInput?.focus();
-        performOriginalInvoiceSearch();
-    }, 250);
+        performOriginalSalesInvoiceSearch();
+    }, 300);
 }
 
-async function performOriginalInvoiceSearch() {
-    const search = salesReturnGetValue('originalInvoiceSearchInput').trim();
-    const tbody = document.getElementById('originalInvoiceSearchResults');
+function debouncedOriginalSalesInvoiceSearch() {
+    clearTimeout(originalInvoiceSearchTimer);
+    originalInvoiceSearchTimer = setTimeout(performOriginalSalesInvoiceSearch, 350);
+}
+
+function clearOriginalSalesInvoiceSearch() {
+    const searchInput = document.getElementById('originalSalesInvoiceSearchInput');
+    if (searchInput) searchInput.value = '';
+
+    performOriginalSalesInvoiceSearch();
+    setTimeout(() => searchInput?.focus(), 100);
+}
+
+async function performOriginalSalesInvoiceSearch() {
+    const search = salesReturnGetValue('originalSalesInvoiceSearchInput').trim();
+    const tbody = document.getElementById('originalSalesInvoiceSearchResults');
     if (!tbody) return;
-
     tbody.replaceChildren();
-
-    const loadingTr = document.createElement('tr');
-    const loadingTd = document.createElement('td');
-    loadingTd.colSpan = 7;
-    loadingTd.className = 'text-center text-muted py-4';
-    loadingTd.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري التحميل...';
-    loadingTr.appendChild(loadingTd);
-    tbody.appendChild(loadingTr);
 
     try {
         const raw = await salesReturnApiGet(
             `/operation/sales/invoices/list?search=${encodeURIComponent(search)}`
         );
-        const rows = Array.isArray(raw) ? raw : (raw.data || []);
-
-        tbody.replaceChildren();
+        const rows = salesReturnExtractArray(raw);
 
         if (rows.length === 0) {
             const tr = document.createElement('tr');
@@ -576,36 +739,27 @@ async function performOriginalInvoiceSearch() {
                 Number(inv.total).toFixed(2),
             ].forEach(v => {
                 const td = document.createElement('td');
-                td.textContent = v;
+                td.textContent = v ?? '';
                 tr.appendChild(td);
             });
 
-            const tdChoose = document.createElement('td');
-            const chooseBtn = document.createElement('button');
-            chooseBtn.type = 'button';
-            chooseBtn.className = 'btn btn-sm btn-primary';
-            chooseBtn.innerHTML = '<i class="bi bi-check2"></i> اختيار';
-            chooseBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                onSalesInvoiceRowClick(inv);
-            });
-            tdChoose.appendChild(chooseBtn);
-            tr.appendChild(tdChoose);
-
-            if (!inv.is_posted) tr.classList.add('opacity-75');
+            const tdStatus = document.createElement('td');
+            const badge = document.createElement('span');
+            if (inv.is_posted) {
+                badge.className = 'badge bg-success';
+                badge.textContent = 'مرحّلة';
+            } else {
+                badge.className = 'badge bg-secondary';
+                badge.textContent = 'مسودة';
+                tr.classList.add('opacity-75');
+            }
+            tdStatus.appendChild(badge);
+            tr.appendChild(tdStatus);
 
             tbody.appendChild(tr);
         });
     } catch (e) {
-        console.error(e);
-        tbody.replaceChildren();
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 7;
-        td.className = 'text-center text-danger py-4';
-        td.textContent = 'فشل البحث عن الفواتير';
-        tr.appendChild(td);
-        tbody.appendChild(tr);
+        console.error('[SalesReturn] invoice search failed', e);
         salesReturnNotify('فشل البحث عن الفواتير', 'danger');
     }
 }
@@ -621,6 +775,11 @@ function onSalesInvoiceRowClick(inv) {
     selectOriginalSalesInvoice(inv.sales_invoice_id);
 }
 
+/**
+ * تحميل فاتورة بيع أصلية وتعبئة تفاصيلها في المرتجع.
+ * يستخدم Promise.all لجلب الكميات المتاحة بالتوازي.
+ * @param {number} invoiceId
+ */
 async function selectOriginalSalesInvoice(invoiceId) {
     try {
         const res = await salesReturnApiGet(`/operation/sales/invoices/${invoiceId}`);
@@ -637,9 +796,11 @@ async function selectOriginalSalesInvoice(invoiceId) {
         salesReturnSetValue('salesReturnCustomerName', h.customer_name);
         salesReturnSetValue('salesReturnCoinsID', h.coin_id);
         salesReturnSetValue('salesReturnCurrencyName', h.coin_name);
+        salesReturnSetValue('salesReturnWarehouseID', h.warehouse_id || '');
+        salesReturnSetValue('salesReturnWarehouseName', h.warehouse_name || '');
         salesReturnSetValue('SalesReturnExchangeRate', h.exchange_rate);
 
-        salesReturnSetPaymentMethodInt(h.payment_method);
+        salesReturnSetValue('SalesReturnPaymentMethodValue', h.payment_method);
         salesReturnSetValue('salesReturnPaymentAccountId', h.payment_account_id || '');
         salesReturnSetValue('salesReturnPaymentAccount', h.payment_account_name || '');
 
@@ -648,63 +809,38 @@ async function selectOriginalSalesInvoice(invoiceId) {
         const tbody = document.getElementById('salesReturnDetails');
         tbody.replaceChildren();
 
-        const tpl = document.getElementById('salesReturnRowTemplate');
-        let hasAvailableItems = false;
+        // ✅ جلب الكميات المتاحة بالتوازي (بدل N طلبات متتالية)
+        const availabilities = await Promise.all(
+            details.map(d =>
+                salesReturnApiGet(
+                    `/operation/sales/returns/available-quantity?sales_invoice_detail_id=${d.sales_invoice_detail_id}`
+                )
+                    .then(r => parseFloat(r.available) || 0)
+                    .catch(err => {
+                        console.error('[SalesReturn] available-qty failed', d.sales_invoice_detail_id, err);
+                        return 0;
+                    })
+            )
+        );
 
+        let added = 0;
         for (let i = 0; i < details.length; i++) {
-            const d = details[i];
-
-            const availRes = await salesReturnApiGet(
-                `/operation/sales/returns/available-quantity?sales_invoice_detail_id=${d.sales_invoice_detail_id}`
-            );
-            const availableQty = parseFloat(availRes.available) || 0;
-
+            const availableQty = availabilities[i];
             if (availableQty <= 0) continue;
-            hasAvailableItems = true;
 
-            const row = tpl.content.firstElementChild.cloneNode(true);
-
-            setRowValue(row, '.row-detail-id', d.sales_invoice_detail_id);
-
-            const numEl = row.querySelector('.row-num');
-            if (numEl) numEl.textContent = tbody.children.length + 1;
-
-            setRowValue(row, '.row-item', d.item_name);
-            setRowValue(row, '.row-item-id', d.item_id);
-            setRowValue(row, '.row-type', d.type_name);
-            setRowValue(row, '.row-type-id', d.type_id);
-            setRowValue(row, '.row-code', d.code);
-            setRowValue(row, '.row-unit', d.unit_name);
-            setRowValue(row, '.row-unit-id', d.unit_id);
-            setRowValue(row, '.row-warehouse', d.warehouse_name);
-            setRowValue(row, '.row-warehouse-id', d.warehouse_id);
-
-            setRowValue(row, '.row-price', d.price);
-            setRowValue(row, '.row-cost-price', d.cost_price ?? d.price);
-            setRowValue(row, '.row-available', availableQty);
-
-            const originalQty = parseFloat(d.quantity) || 0;
-            const originalDiscount = parseFloat(d.discount) || 0;
-            setRowValue(row, '.row-original-qty', originalQty);
-            setRowValue(row, '.row-original-discount', originalDiscount);
-
-            setRowValue(row, '.row-measure', availableQty);
-
-            let proportionalDiscount = 0;
-            if (originalQty > 0) {
-                proportionalDiscount = (availableQty / originalQty) * originalDiscount;
-            }
-            setRowValue(row, '.row-discount', proportionalDiscount.toFixed(2));
-            setRowValue(
-                row, '.row-total',
-                Math.max(0, availableQty * d.price - proportionalDiscount).toFixed(2)
-            );
+            const row = buildSalesReturnRow({
+                detail: details[i],
+                availableQty,
+                index: added,
+                source: 'invoice',
+            });
 
             tbody.appendChild(row);
             enableSalesReturnRow(row);
+            added++;
         }
 
-        if (!hasAvailableItems) {
+        if (added === 0) {
             setEmptySalesReturnMessage();
             salesReturnNotify('جميع أصناف هذه الفاتورة تم إرجاعها مسبقاً', 'warning');
         } else {
@@ -712,22 +848,18 @@ async function selectOriginalSalesInvoice(invoiceId) {
             salesReturnNotify('تم تحميل تفاصيل الفاتورة بنجاح', 'success');
         }
 
-        const modalEl = document.getElementById('originalInvoiceSearchModal');
-        if (modalEl) {
-            const instance = bootstrap.Modal.getInstance(modalEl);
-            if (instance) instance.hide();
-        }
-
-        setTimeout(cleanupStuckModals, 300);
-
+        const modalEl = document.getElementById('originalSalesInvoiceSearchModal');
+        bootstrap.Modal.getInstance(modalEl)?.hide();
+        setTimeout(cleanupStuckModals, 400);
     } catch (e) {
+        console.error('[SalesReturn] load invoice failed', e);
         salesReturnNotify('فشل تحميل الفاتورة الأصلية: ' + e.message, 'danger');
     }
 }
 
-/* =========================================================
-   Search Sales Returns (Modal)
-   ========================================================= */
+/* =========================================================================
+   البحث عن مرتجع
+   ========================================================================= */
 
 function searchSalesReturn() {
     const modalEl = document.getElementById('salesReturnSearchModal');
@@ -736,17 +868,16 @@ function searchSalesReturn() {
     const searchInput = document.getElementById('salesReturnSearchInput');
     if (searchInput) searchInput.value = '';
 
-    const tbody = document.getElementById('salesReturnSearchResults');
-    if (tbody) {
-        tbody.replaceChildren();
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 7;
-        td.className = 'text-center text-muted py-4';
-        td.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري التحميل...';
-        tr.appendChild(td);
-        tbody.appendChild(tr);
-    }
+    const tb = document.getElementById('salesReturnSearchResults');
+    tb.replaceChildren();
+
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 8;
+    td.className = 'text-center text-muted py-4';
+    td.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري التحميل...';
+    tr.appendChild(td);
+    tb.appendChild(tr);
 
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
 
@@ -756,33 +887,35 @@ function searchSalesReturn() {
     }, 250);
 }
 
+function debouncedSalesReturnSearch() {
+    clearTimeout(salesReturnSearchTimer);
+    salesReturnSearchTimer = setTimeout(performSalesReturnSearch, 350);
+}
+
+function clearSalesReturnSearch() {
+    const searchInput = document.getElementById('salesReturnSearchInput');
+    if (searchInput) searchInput.value = '';
+
+    performSalesReturnSearch();
+    setTimeout(() => searchInput?.focus(), 100);
+}
+
 async function performSalesReturnSearch() {
     const search = salesReturnGetValue('salesReturnSearchInput').trim();
     const tbody = document.getElementById('salesReturnSearchResults');
     if (!tbody) return;
-
     tbody.replaceChildren();
-
-    const loadingTr = document.createElement('tr');
-    const loadingTd = document.createElement('td');
-    loadingTd.colSpan = 7;
-    loadingTd.className = 'text-center text-muted py-4';
-    loadingTd.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري التحميل...';
-    loadingTr.appendChild(loadingTd);
-    tbody.appendChild(loadingTr);
 
     try {
         const raw = await salesReturnApiGet(
             `/operation/sales/returns/list?search=${encodeURIComponent(search)}`
         );
-        const rows = Array.isArray(raw) ? raw : (raw.data || []);
-
-        tbody.replaceChildren();
+        const rows = salesReturnExtractArray(raw);
 
         if (rows.length === 0) {
             const tr = document.createElement('tr');
             const td = document.createElement('td');
-            td.colSpan = 7;
+            td.colSpan = 8;
             td.className = 'text-center text-muted py-4';
             td.textContent = 'لا توجد نتائج مطابقة';
             tr.appendChild(td);
@@ -809,38 +942,37 @@ async function performSalesReturnSearch() {
                 Number(ret.total).toFixed(2),
             ].forEach(v => {
                 const td = document.createElement('td');
-                td.textContent = v;
+                td.textContent = v ?? '';
                 tr.appendChild(td);
             });
 
+            const tdStatus = document.createElement('td');
+            const badge = document.createElement('span');
+            if (ret.is_posted) {
+                badge.className = 'badge bg-success';
+                badge.textContent = 'مرحّل';
+            } else {
+                badge.className = 'badge bg-secondary';
+                badge.textContent = 'مسودة';
+            }
+            tdStatus.appendChild(badge);
+            tr.appendChild(tdStatus);
+
             const tdActions = document.createElement('td');
             tdActions.className = 'text-nowrap';
-            tdActions.addEventListener('click', (e) => e.stopPropagation());
+            tdActions.addEventListener('click', e => e.stopPropagation());
 
             tdActions.appendChild(buildSalesReturnPostToggleBtn(ret));
             tdActions.appendChild(buildSalesReturnDeleteBtn(ret));
-
             tr.appendChild(tdActions);
 
             tbody.appendChild(tr);
         });
     } catch (e) {
-        console.error(e);
-        tbody.replaceChildren();
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 7;
-        td.className = 'text-center text-danger py-4';
-        td.textContent = 'فشل البحث عن المرتجعات';
-        tr.appendChild(td);
-        tbody.appendChild(tr);
-        salesReturnNotify('فشل البحث عن المرتجعات', 'danger');
+        console.error('[SalesReturn] search failed', e);
+        salesReturnNotify('فشل البحث عن مرتجعات المبيعات', 'danger');
     }
 }
-
-/* =========================================================
-   أزرار الإجراءات في نافذة البحث
-   ========================================================= */
 
 function buildSalesReturnPostToggleBtn(ret) {
     const btn = document.createElement('button');
@@ -850,8 +982,8 @@ function buildSalesReturnPostToggleBtn(ret) {
     if (ret.is_posted) {
         btn.classList.add('btn-outline-warning');
         btn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> إلغاء الترحيل';
-        btn.title = 'إلغاء ترحيل المرتجع (للتعديل)';
-        btn.addEventListener('click', (e) => {
+        btn.title = 'فتح المرتجع للتعديل';
+        btn.addEventListener('click', e => {
             e.stopPropagation();
             unpostSalesReturn(ret.sales_return_id);
         });
@@ -859,7 +991,7 @@ function buildSalesReturnPostToggleBtn(ret) {
         btn.classList.add('btn-outline-success');
         btn.innerHTML = '<i class="bi bi-check2-circle"></i> ترحيل';
         btn.title = 'ترحيل المرتجع وإنشاء القيود';
-        btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', e => {
             e.stopPropagation();
             postSalesReturn(ret.sales_return_id);
         });
@@ -874,26 +1006,26 @@ function buildSalesReturnDeleteBtn(ret) {
     btn.className = 'btn btn-sm btn-outline-danger';
     btn.innerHTML = '<i class="bi bi-trash"></i> حذف';
     btn.title = 'حذف المرتجع نهائيًا';
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', e => {
         e.stopPropagation();
         deleteSalesReturn(ret.sales_return_id, ret.return_number);
     });
     return btn;
 }
 
-/* =========================================================
-   Post / Unpost / Delete (من نافذة البحث)
-   ========================================================= */
+/* =========================================================================
+   الترحيل / إلغاء الترحيل / الحذف
+   ========================================================================= */
 
 async function postSalesReturn(id) {
-    if (!confirm('هل تريد ترحيل هذا المرتجع؟\nسيتم إنشاء القيود وحركة المخزون.')) return;
+    const ok = await salesReturnConfirm(
+        'هل تريد ترحيل هذا المرتجع؟ سيتم إنشاء القيود وحركة المخزون.',
+        { title: 'ترحيل المرتجع', okText: 'ترحيل' }
+    );
+    if (!ok) return;
 
     try {
-        const r = await salesReturnApiSend(
-            `/operation/sales/returns/${id}/post`,
-            'POST',
-            {}
-        );
+        const r = await salesReturnApiSend(`/operation/sales/returns/${id}/post`, 'POST', {});
         salesReturnNotify(r.message || 'تم ترحيل المرتجع بنجاح', 'success');
         performSalesReturnSearch();
     } catch (e) {
@@ -902,20 +1034,18 @@ async function postSalesReturn(id) {
 }
 
 async function unpostSalesReturn(id) {
-    if (!confirm('هل تريد إلغاء ترحيل هذا المرتجع؟\nسيتم حذف القيود وحركة المخزون.')) return;
+    const ok = await salesReturnConfirm(
+        'هل تريد إلغاء ترحيل هذا المرتجع؟ سيتم حذف القيود وحركة المخزون.',
+        { title: 'إلغاء الترحيل', okText: 'إلغاء الترحيل', danger: true }
+    );
+    if (!ok) return;
 
     try {
-        const r = await salesReturnApiSend(
-            `/operation/sales/returns/${id}/unpost`,
-            'POST',
-            {}
-        );
+        const r = await salesReturnApiSend(`/operation/sales/returns/${id}/unpost`, 'POST', {});
         salesReturnNotify(r.message || 'تم إلغاء ترحيل المرتجع بنجاح', 'success');
         performSalesReturnSearch();
 
-        if (currentSalesReturnId === id) {
-            await loadSalesReturn(id);
-        }
+        if (currentSalesReturnId === id) await loadSalesReturn(id);
     } catch (e) {
         salesReturnNotify(e.message, 'danger');
     }
@@ -923,29 +1053,77 @@ async function unpostSalesReturn(id) {
 
 async function deleteSalesReturn(id, number) {
     const label = number ? `رقم ${number}` : `#${id}`;
-    if (!confirm(`هل أنت متأكد من حذف المرتجع ${label}؟\nلا يمكن التراجع عن هذه العملية.`)) return;
+    const ok = await salesReturnConfirm(
+        `هل أنت متأكد من حذف المرتجع ${label}؟ لا يمكن التراجع عن هذه العملية.`,
+        { title: 'حذف مرتجع', okText: 'حذف نهائي', danger: true }
+    );
+    if (!ok) return;
 
     try {
-        const r = await salesReturnApiSend(
-            `/operation/sales/returns/${id}`,
-            'DELETE',
-            {}
-        );
+        const r = await salesReturnApiSend(`/operation/sales/returns/${id}`, 'DELETE', {});
         salesReturnNotify(r.message || 'تم حذف المرتجع بنجاح', 'success');
         performSalesReturnSearch();
 
-        if (currentSalesReturnId === id) {
-            clearSalesReturnForm();
-        }
+        if (currentSalesReturnId === id) clearSalesReturnForm();
     } catch (e) {
         salesReturnNotify(e.message, 'danger');
     }
 }
 
-/* =========================================================
-   Load Sales Return
-   ========================================================= */
+async function postCurrentSalesReturn() {
+    if (!currentSalesReturnId) {
+        salesReturnNotify('لا يوجد مرتجع للترحيل', 'warning');
+        return;
+    }
 
+    const ok = await salesReturnConfirm(
+        'هل تريد ترحيل هذا المرتجع؟ سيتم إنشاء القيود وحركة المخزون.',
+        { title: 'ترحيل المرتجع', okText: 'ترحيل' }
+    );
+    if (!ok) return;
+
+    try {
+        const r = await salesReturnApiSend(
+            `/operation/sales/returns/${currentSalesReturnId}/post`, 'POST', {}
+        );
+        salesReturnNotify(r.message || 'تم ترحيل المرتجع بنجاح', 'success');
+        await loadSalesReturn(currentSalesReturnId);
+    } catch (e) {
+        salesReturnNotify(e.message, 'danger');
+    }
+}
+
+async function unpostCurrentSalesReturn() {
+    if (!currentSalesReturnId) {
+        salesReturnNotify('لا يوجد مرتجع', 'warning');
+        return;
+    }
+
+    const ok = await salesReturnConfirm(
+        'هل تريد إلغاء ترحيل هذا المرتجع؟ سيتم حذف القيود وحركة المخزون.',
+        { title: 'إلغاء الترحيل', okText: 'إلغاء الترحيل', danger: true }
+    );
+    if (!ok) return;
+
+    try {
+        const r = await salesReturnApiSend(
+            `/operation/sales/returns/${currentSalesReturnId}/unpost`, 'POST', {}
+        );
+        salesReturnNotify(r.message || 'تم إلغاء ترحيل المرتجع بنجاح', 'success');
+        await loadSalesReturn(currentSalesReturnId);
+    } catch (e) {
+        salesReturnNotify(e.message, 'danger');
+    }
+}
+
+/* =========================================================================
+   تحميل مرتجع محفوظ
+   ========================================================================= */
+
+/**
+ * تحميل مرتجع محفوظ بالكامل.
+ * @param {number} id
+ */
 async function loadSalesReturn(id) {
     try {
         const res = await salesReturnApiGet(`/operation/sales/returns/${id}`);
@@ -961,9 +1139,11 @@ async function loadSalesReturn(id) {
         salesReturnSetValue('salesReturnCustomerName', h.customer_name ?? '');
         salesReturnSetValue('salesReturnCoinsID', h.coin_id ?? '');
         salesReturnSetValue('salesReturnCurrencyName', h.coin_name ?? '');
+        salesReturnSetValue('salesReturnWarehouseID', h.warehouse_id ?? '');
+        salesReturnSetValue('salesReturnWarehouseName', h.warehouse_name ?? '');
         salesReturnSetValue('SalesReturnExchangeRate', h.exchange_rate ?? 1);
 
-        salesReturnSetPaymentMethodInt(h.payment_method);
+        salesReturnSetValue('SalesReturnPaymentMethodValue', h.payment_method);
         salesReturnSetValue('salesReturnPaymentAccountId', h.payment_account_id ?? '');
         salesReturnSetValue('salesReturnPaymentAccount', h.payment_account_name ?? '');
 
@@ -972,39 +1152,13 @@ async function loadSalesReturn(id) {
         const tbody = document.getElementById('salesReturnDetails');
         tbody.replaceChildren();
 
-        const tpl = document.getElementById('salesReturnRowTemplate');
-
         details.forEach((d, i) => {
-            const row = tpl.content.firstElementChild.cloneNode(true);
-
-            setRowValue(row, '.row-detail-id', d.sales_invoice_detail_id);
-
-            const numEl = row.querySelector('.row-num');
-            if (numEl) numEl.textContent = i + 1;
-
-            setRowValue(row, '.row-item', d.item_name);
-            setRowValue(row, '.row-item-id', d.item_id);
-            setRowValue(row, '.row-type', d.type_name);
-            setRowValue(row, '.row-type-id', d.type_id);
-            setRowValue(row, '.row-code', d.code);
-            setRowValue(row, '.row-unit', d.unit_name);
-            setRowValue(row, '.row-unit-id', d.unit_id);
-            setRowValue(row, '.row-warehouse', d.warehouse_name);
-            setRowValue(row, '.row-warehouse-id', d.warehouse_id);
-
-            setRowValue(row, '.row-price', d.price);
-            setRowValue(row, '.row-cost-price', d.cost_price ?? d.price);
-            setRowValue(row, '.row-available', d.available_quantity ?? 0);
-            setRowValue(row, '.row-measure', d.quantity);
-
-            const originalQty = parseFloat(d.quantity) || 0;
-            const originalDiscount = parseFloat(d.discount) || 0;
-            setRowValue(row, '.row-original-qty', originalQty);
-            setRowValue(row, '.row-original-discount', originalDiscount);
-
-            setRowValue(row, '.row-discount', originalDiscount.toFixed(2));
-            setRowValue(row, '.row-total', Number(d.total).toFixed(2));
-
+            const row = buildSalesReturnRow({
+                detail: d,
+                availableQty: parseFloat(d.available_quantity) || 0,
+                index: i,
+                source: 'return',
+            });
             tbody.appendChild(row);
         });
 
@@ -1013,27 +1167,51 @@ async function loadSalesReturn(id) {
         calculateSalesReturnTotals();
 
         const modalEl = document.getElementById('salesReturnSearchModal');
-        if (modalEl) {
-            const instance = bootstrap.Modal.getInstance(modalEl);
-            if (instance) instance.hide();
-        }
-        setTimeout(cleanupStuckModals, 300);
+        bootstrap.Modal.getInstance(modalEl)?.hide();
+        setTimeout(cleanupStuckModals, 400);
 
         currentSalesReturnId = h.sales_return_id;
         currentSalesReturnIsPosted = !!h.is_posted;
 
-        setSalesReturnMode('view');
-
-        salesReturnNotify('تم تحميل مرتجع البيع بنجاح', 'success');
-
+        setSalesReturnMode(SALES_RETURN_MODES.VIEW);
+        salesReturnNotify('تم تحميل مرتجع المبيعات بنجاح', 'success');
     } catch (e) {
-        salesReturnNotify('فشل تحميل مرتجع البيع: ' + e.message, 'danger');
+        console.error('[SalesReturn] load failed', e);
+        salesReturnNotify('فشل تحميل مرتجع المبيعات: ' + e.message, 'danger');
     }
 }
 
-/* =========================================================
-   Save
-   ========================================================= */
+function hasSalesReturnData() {
+    const el = document.getElementById('SalesReturnNo');
+    return el ? el.value.trim() !== '' : false;
+}
+
+function editSalesReturn() {
+    if (!hasSalesReturnData() || !currentSalesReturnId) {
+        salesReturnNotify('لا يوجد مرتجع للتعديل', 'warning');
+        return;
+    }
+
+    setSalesReturnMode(SALES_RETURN_MODES.EDIT);
+    document.querySelectorAll('#salesReturnDetails .return-detail-row')
+        .forEach(r => enableSalesReturnRow(r));
+}
+
+async function cancelSalesReturn() {
+    const ok = await salesReturnConfirm('هل أنت متأكد من إلغاء العملية؟', {
+        title: 'إلغاء',
+        okText: 'نعم، إلغاء',
+        danger: true,
+    });
+    if (!ok) return;
+
+    clearSalesReturnForm();
+    salesReturnNotify('تم إلغاء العملية', 'info');
+}
+
+/* =========================================================================
+   الحفظ
+   ========================================================================= */
 
 async function saveSalesReturn() {
     if (isSavingSalesReturn) return;
@@ -1050,7 +1228,7 @@ async function saveSalesReturn() {
     const coinId = salesReturnGetValue('salesReturnCoinsID');
     if (!coinId) return salesReturnNotify('يجب اختيار العملة', 'warning');
 
-    const methodInt = salesReturnGetPaymentMethodInt();
+    const methodInt = parseInt(salesReturnGetValue('SalesReturnPaymentMethodValue'), 10) || 0;
     if (!methodInt) return salesReturnNotify('طريقة الدفع غير محددة', 'warning');
 
     if (methodInt !== 1 && !salesReturnGetValue('salesReturnPaymentAccountId')) {
@@ -1061,8 +1239,6 @@ async function saveSalesReturn() {
     if (!rows.length) return salesReturnNotify('أضف صنفًا واحدًا على الأقل للمرتجع', 'warning');
 
     const details = [];
-    let warehouseId = null;
-
     for (const row of rows) {
         const detailId = row.querySelector('.row-detail-id')?.value;
         if (!detailId) continue;
@@ -1073,20 +1249,21 @@ async function saveSalesReturn() {
         const price = parseFloat(row.querySelector('.row-price')?.value) || 0;
         const discount = parseFloat(row.querySelector('.row-discount')?.value) || 0;
 
-        if (!warehouseId) {
-            warehouseId = row.querySelector('.row-warehouse-id')?.value || null;
-        }
-
         details.push({
             sales_invoice_detail_id: Number(detailId),
             quantity: qty,
-            price: price,
-            discount: discount,
+            price,
+            discount,
         });
     }
 
     if (!details.length) {
         return salesReturnNotify('يجب إدخال كمية أكبر من صفر لصنف واحد على الأقل', 'warning');
+    }
+
+    const exchangeRate = salesReturnReadNumber('SalesReturnExchangeRate', 1, 0);
+    if (exchangeRate <= 0) {
+        return salesReturnNotify('سعر الصرف يجب أن يكون أكبر من صفر', 'warning');
     }
 
     const payload = {
@@ -1097,8 +1274,10 @@ async function saveSalesReturn() {
         payment_method: methodInt,
         payment_account_id: salesReturnGetValue('salesReturnPaymentAccountId') || null,
         coin_id: Number(coinId),
-        warehouse_id: warehouseId ? Number(warehouseId) : null,
-        exchange_rate: parseFloat(salesReturnGetValue('SalesReturnExchangeRate')) || 1,
+        warehouse_id: salesReturnGetValue('salesReturnWarehouseID')
+            ? Number(salesReturnGetValue('salesReturnWarehouseID'))
+            : null,
+        exchange_rate: exchangeRate,
         statement: salesReturnGetValue('SalesReturnStatement') || null,
         reference: salesReturnGetValue('SalesReturnReference') || null,
         details,
@@ -1112,11 +1291,9 @@ async function saveSalesReturn() {
 
     try {
         let r;
-        if (salesReturnMode === 'edit' && currentSalesReturnId) {
+        if (salesReturnMode === SALES_RETURN_MODES.EDIT && currentSalesReturnId) {
             r = await salesReturnApiSend(
-                `/operation/sales/returns/${currentSalesReturnId}`,
-                'PUT',
-                payload
+                `/operation/sales/returns/${currentSalesReturnId}`, 'PUT', payload
             );
             currentSalesReturnIsPosted = false;
         } else {
@@ -1127,15 +1304,14 @@ async function saveSalesReturn() {
         }
 
         salesReturnNotify(r.message || 'تم الحفظ بنجاح', 'success');
-        setSalesReturnMode('view');
-
+        setSalesReturnMode(SALES_RETURN_MODES.VIEW);
     } catch (e) {
         let m = e.message;
         if (e.errors) m += ' — ' + Object.values(e.errors).flat().join(' | ');
         salesReturnNotify(m, 'danger');
     } finally {
         isSavingSalesReturn = false;
-        if (salesReturnMode !== 'view') {
+        if (salesReturnMode !== SALES_RETURN_MODES.VIEW) {
             if (saveBtn) saveBtn.disabled = false;
             if (saveNewBtn) saveNewBtn.disabled = false;
         }
@@ -1144,80 +1320,8 @@ async function saveSalesReturn() {
 
 async function saveAndNewSalesReturn() {
     await saveSalesReturn();
-    if (salesReturnMode === 'view') await resetSalesReturn();
+    if (salesReturnMode === SALES_RETURN_MODES.VIEW) await resetSalesReturn();
 }
-
-/* =========================================================
-   Edit / Cancel
-   ========================================================= */
-
-function editSalesReturn() {
-    if (!hasSalesReturnData() || !currentSalesReturnId) {
-        salesReturnNotify('لا يوجد مرتجع للتعديل', 'warning');
-        return;
-    }
-
-    setSalesReturnMode('edit');
-
-    document.querySelectorAll('#salesReturnDetails .return-detail-row')
-        .forEach(r => enableSalesReturnRow(r));
-}
-
-function cancelSalesReturn() {
-    if (!confirm('هل أنت متأكد من إلغاء العملية؟')) return;
-    clearSalesReturnForm();
-    salesReturnNotify('تم إلغاء العملية', 'info');
-}
-
-/* =========================================================
-   Post / Unpost (من النموذج)
-   ========================================================= */
-
-async function postCurrentSalesReturn() {
-    if (!currentSalesReturnId) {
-        salesReturnNotify('لا يوجد مرتجع للترحيل', 'warning');
-        return;
-    }
-
-    if (!confirm('هل تريد ترحيل هذا المرتجع؟\nسيتم إنشاء القيود وحركة المخزون.')) return;
-
-    try {
-        const r = await salesReturnApiSend(
-            `/operation/sales/returns/${currentSalesReturnId}/post`,
-            'POST',
-            {}
-        );
-        salesReturnNotify(r.message || 'تم ترحيل المرتجع بنجاح', 'success');
-        await loadSalesReturn(currentSalesReturnId);
-    } catch (e) {
-        salesReturnNotify(e.message, 'danger');
-    }
-}
-
-async function unpostCurrentSalesReturn() {
-    if (!currentSalesReturnId) {
-        salesReturnNotify('لا يوجد مرتجع', 'warning');
-        return;
-    }
-
-    if (!confirm('هل تريد إلغاء ترحيل هذا المرتجع؟\nسيتم حذف القيود وحركة المخزون.')) return;
-
-    try {
-        const r = await salesReturnApiSend(
-            `/operation/sales/returns/${currentSalesReturnId}/unpost`,
-            'POST',
-            {}
-        );
-        salesReturnNotify(r.message || 'تم إلغاء ترحيل المرتجع بنجاح', 'success');
-        await loadSalesReturn(currentSalesReturnId);
-    } catch (e) {
-        salesReturnNotify(e.message, 'danger');
-    }
-}
-
-/* =========================================================
-   Print
-   ========================================================= */
 
 function printSalesReturn() {
     if (!hasSalesReturnData() || !currentSalesReturnId) {
@@ -1232,16 +1336,26 @@ function printSalesReturn() {
     );
 }
 
-/* =========================================================
-   تصدير للـ window
-   ========================================================= */
+/* =========================================================================
+   تصدير للـ Window
+   ========================================================================= */
 
 Object.assign(window, {
+    // ثوابت (للتوافق)
+    SALES_RETURN_PAYMENT_LABELS,
+    SALES_RETURN_PAYMENT_TO_INT,
+    SALES_RETURN_PAYMENT_TO_STR,
+
+    // Actions
     resetSalesReturn,
     searchSalesReturn,
-    performOriginalInvoiceSearch,
     performSalesReturnSearch,
-    searchOriginalInvoice,
+    debouncedSalesReturnSearch,
+    clearSalesReturnSearch,
+    searchOriginalSalesInvoice,
+    performOriginalSalesInvoiceSearch,
+    debouncedOriginalSalesInvoiceSearch,
+    clearOriginalSalesInvoiceSearch,
     onSalesInvoiceRowClick,
     selectOriginalSalesInvoice,
     calculateSalesReturnRow,
@@ -1253,14 +1367,14 @@ Object.assign(window, {
     editSalesReturn,
     printSalesReturn,
     loadSalesReturn,
-
     postSalesReturn,
     unpostSalesReturn,
     deleteSalesReturn,
-
     postCurrentSalesReturn,
     unpostCurrentSalesReturn,
     updateSalesReturnPostingButtons,
     updateSalesReturnSearchButton,
+    onOriginalInvoiceFieldClick,
     cleanupStuckModals,
+    salesReturnConfirm,
 });

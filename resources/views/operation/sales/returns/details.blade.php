@@ -95,7 +95,8 @@
                     id="SalesReturnStatement"
                     name="SalesReturnStatement"
                     rows="2"
-                    disabled
+                    readonly
+                    tabindex="-1"
                 ></textarea>
             </div>
 
@@ -107,7 +108,8 @@
                     id="SalesReturnReference"
                     name="SalesReturnReference"
                     placeholder="رقم مرجعي إن وجد"
-                    disabled
+                    readonly
+                    tabindex="-1"
                 >
             </div>
 
@@ -158,6 +160,28 @@
 
     <button
         type="button"
+        class="btn btn-success d-none"
+        id="btnPostSalesReturn"
+        onclick="postCurrentSalesReturn()"
+        disabled
+    >
+        <i class="bi bi-check2-circle"></i>
+        ترحيل
+    </button>
+
+    <button
+        type="button"
+        class="btn btn-warning d-none"
+        id="btnUnpostSalesReturn"
+        onclick="unpostCurrentSalesReturn()"
+        disabled
+    >
+        <i class="bi bi-arrow-counterclockwise"></i>
+        إلغاء الترحيل
+    </button>
+
+    <button
+        type="button"
         class="btn btn-warning"
         id="btnEditSalesReturn"
         onclick="editSalesReturn()"
@@ -191,117 +215,66 @@
 
         <input type="hidden" class="row-detail-id">
 
-        {{-- الصنف --}}
         <td>
             <input type="hidden" class="row-item-id">
-            <input
-                type="text"
-                class="form-control form-control-sm row-item"
-                readonly
-            >
+            <input type="text" class="form-control form-control-sm row-item" readonly tabindex="-1">
         </td>
 
-        {{-- النوع --}}
         <td>
             <input type="hidden" class="row-type-id">
-            <input
-                type="text"
-                class="form-control form-control-sm row-type"
-                readonly
-            >
+            <input type="text" class="form-control form-control-sm row-type" readonly tabindex="-1">
         </td>
 
-        {{-- الرمز --}}
         <td>
-            <input
-                type="text"
-                class="form-control form-control-sm row-code"
-                readonly
-            >
+            <input type="text" class="form-control form-control-sm row-code" readonly tabindex="-1">
         </td>
 
-        {{-- الوحدة --}}
         <td>
             <input type="hidden" class="row-unit-id">
-            <input
-                type="text"
-                class="form-control form-control-sm row-unit"
-                readonly
-            >
+            <input type="text" class="form-control form-control-sm row-unit" readonly tabindex="-1">
         </td>
 
-        {{-- المخزن --}}
         <td>
             <input type="hidden" class="row-warehouse-id">
-            <input
-                type="text"
-                class="form-control form-control-sm row-warehouse"
-                readonly
-            >
+            <input type="text" class="form-control form-control-sm row-warehouse" readonly tabindex="-1">
         </td>
 
-        {{-- سعر الوحدة --}}
         <td>
-            <input
-                type="number"
-                class="form-control form-control-sm row-price"
-                readonly
-                tabindex="-1"
-            >
+            <input type="number" class="form-control form-control-sm row-price" readonly tabindex="-1">
         </td>
 
-        {{-- الكمية المتاحة --}}
         <td>
-            <input
-                type="number"
-                class="form-control form-control-sm row-available bg-light text-primary fw-bold"
-                readonly
-                tabindex="-1"
-            >
+            <input type="number" class="form-control form-control-sm row-available bg-light text-primary fw-bold" readonly tabindex="-1">
         </td>
 
-        {{-- كمية المرتجع --}}
         <td>
             <input
                 type="number"
                 class="form-control form-control-sm row-measure border-primary fw-bold"
-                value="0"
-                min="0"
-                step="0.001"
+                value="0" min="0" step="0.001"
                 disabled
                 oninput="calculateSalesReturnRow(this)"
             >
         </td>
 
-        {{-- الخصم --}}
         <td>
             <input
                 type="number"
-                class="form-control form-control-sm row-discount"
-                value="0"
-                min="0"
-                step="0.01"
+                class="form-control form-control-sm row-discount border-success"
+                value="0" min="0" step="0.01"
                 disabled
                 oninput="calculateSalesReturnRow(this)"
             >
         </td>
 
-        {{-- الإجمالي --}}
         <td>
-            <input
-                type="number"
-                class="form-control form-control-sm row-total"
-                value="0.00"
-                readonly
-                tabindex="-1"
-            >
+            <input type="number" class="form-control form-control-sm row-total" value="0.00" readonly tabindex="-1">
         </td>
 
-        {{-- إجراء --}}
         <td>
             <button
                 type="button"
-                class="btn btn-sm btn-outline-danger"
+                class="btn btn-sm btn-outline-danger row-remove-btn"
                 onclick="removeSalesReturnRow(this)"
                 disabled
                 tabindex="-1"
@@ -311,6 +284,8 @@
         </td>
 
         <input type="hidden" class="row-cost-price" value="0">
+        <input type="hidden" class="row-original-qty" value="0">
+        <input type="hidden" class="row-original-discount" value="0">
 
     </tr>
 </template>

@@ -57,6 +57,7 @@ class SalesInvoice extends Model
     const PAYMENT_CREDIT = 1;  // أجل
     const PAYMENT_CASH   = 2;  // نقدي (صندوق)
     const PAYMENT_BANK   = 3;  // بنك
+    const PAYMENT_NETWORK = 4;
 
     // ============================================
     // ثوابت نوع المستند للقيود

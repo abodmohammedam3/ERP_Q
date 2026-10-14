@@ -43,7 +43,9 @@ return [
             'connection' => env('DB_CACHE_CONNECTION'),
             'table' => env('DB_CACHE_TABLE', 'cache'),
             'lock_connection' => env('DB_CACHE_LOCK_CONNECTION'),
-            'lock_table' => env('DB_CACHE_LOCK_TABLE'),
+            // افتراض صريح: بدونه تُخزَّن أقفال Cache::lock في جدول cache،
+            // فتتلفها Cache::flush() (يُستخدم في ImportBackupJob).
+            'lock_table' => env('DB_CACHE_LOCK_TABLE', 'cache_locks'),
         ],
 
         'file' => [

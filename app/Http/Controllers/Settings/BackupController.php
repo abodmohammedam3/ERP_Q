@@ -13,14 +13,19 @@ use App\Services\Backup\BackupService;
 use App\Services\Backup\BackupStatusService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 
 class BackupController extends Controller
 {
     private const LOCK_KEY = 'backup.operation.lock';
-    // ⚠️ مهلة قصيرة (5 دقائق) عمداً: إن تعطّل Worker بعد إرسال Job يبقى
-    // القفل محتراً ويمنع كل العمليات. إن استغرقت العملية أطول من ذلك فقد
-    // يُفتح القفل أثناء التنفيذ (acceptance محسوبة للخطر الأقل).
-    private const LOCK_TTL = 300;
+
+    // ⏱ مهلة القفل تغطي أطول مهلة تشغيل ممكنة (Import timeout = 3600s + هامش 400s)
+    // فلا حاجة لتجديد دوري: القفل يعيش أطول من أي مهمة ممكنة.
+    // التحرير بالملكية فقط (owner token) — لا forceRelease عامة.
+    private function lockSeconds(): int
+    {
+        return (int) config('backup.lock_timeout', 3600) + 400;
+    }
 
     public function __construct(
         private BackupStatusService $status,
@@ -85,7 +90,9 @@ class BackupController extends Controller
 
     public function export(ExportBackupRequest $request): JsonResponse
     {
-        if (!$this->acquireLock()) {
+        $lockToken = $this->acquireLock();
+
+        if ($lockToken === null) {
             return $this->fail('عملية أخرى قيد التنفيذ — حاول بعد قليل.', 423);
         }
 
@@ -93,7 +100,7 @@ class BackupController extends Controller
             $format = $request->input('format', 'sql');
             $op     = $this->status->create('export', $format);
 
-            ExportBackupJob::dispatch($op->operation_id)->onQueue('backups');
+            ExportBackupJob::dispatch($op->operation_id, $lockToken)->onQueue('backups');
 
             return $this->ok([
                 'operation_id' => $op->operation_id,
@@ -101,7 +108,7 @@ class BackupController extends Controller
             ], 202);
 
         } catch (\Throwable $e) {
-            $this->releaseLock();
+            $this->releaseLock($lockToken);
             return $this->fail('فشل بدء التصدير: ' . $e->getMessage());
         }
     }
@@ -112,7 +119,9 @@ class BackupController extends Controller
 
     public function import(ImportBackupRequest $request): JsonResponse
     {
-        if (!$this->acquireLock()) {
+        $lockToken = $this->acquireLock();
+
+        if ($lockToken === null) {
             return $this->fail('عملية أخرى قيد التنفيذ — حاول بعد قليل.', 423);
         }
 
@@ -122,7 +131,7 @@ class BackupController extends Controller
             $content = file_get_contents($file->getRealPath(), false, null, 0, 100_000);
 
             if (stripos($content, 'CREATE TABLE') === false) {
-                $this->releaseLock();
+                $this->releaseLock($lockToken);
                 return $this->fail('الملف ليس نسخة SQL صالحة');
             }
 
@@ -138,7 +147,7 @@ class BackupController extends Controller
             $path = $uploadDir . DIRECTORY_SEPARATOR . $filename;
 
             $op = $this->status->create('import', 'sql');
-            ImportBackupJob::dispatch($op->operation_id, $path)->onQueue('backups');
+            ImportBackupJob::dispatch($op->operation_id, $path, $lockToken)->onQueue('backups');
 
             return $this->ok([
                 'operation_id' => $op->operation_id,
@@ -146,7 +155,7 @@ class BackupController extends Controller
             ], 202);
 
         } catch (\Throwable $e) {
-            $this->releaseLock();
+            $this->releaseLock($lockToken);
             return $this->fail('فشل بدء الاستيراد: ' . $e->getMessage());
         }
     }
@@ -163,9 +172,8 @@ class BackupController extends Controller
             return $this->fail('العملية غير موجودة', 404);
         }
 
-        if ($op->isFinished()) {
-            $this->releaseLock();
-        }
+        // ⛔ لا تحرير القفل من هنا إطلاقاً: استطلاع المتصفح لعملية منتهية
+        // كان يحرّر forceRelease قفل عملية جديدة قائمة الآن (bug مُثبت).
 
         return $this->ok([
             'operation' => [
@@ -271,19 +279,24 @@ class BackupController extends Controller
     //  Lock Helpers
     // ═══════════════════════════════════════════════════════════════
 
-    private function acquireLock(): bool
+    private function acquireLock(): ?string
     {
-        return Cache::lock(self::LOCK_KEY, self::LOCK_TTL)->get();
+        $token = (string) Str::uuid();
+
+        $lock = Cache::lock(self::LOCK_KEY, $this->lockSeconds(), $token);
+
+        return $lock->get() ? $token : null;
     }
 
     /**
-     * تحرير القفل — يستخدم forceRelease() لأنه بعد dispatch الـ Job
-     * لا يكون Controller مالك القفل، بل الـ Worker.
+     * تحرير القفل — بالملكية فقط.
+     * لا يُستخدم من Controller بعد dispatch (الـ Job هو المالك الفعلي)،
+     * وإنما فقط في مسار الفشل قبل وصول المهمة إلى الطابور.
      */
-    private function releaseLock(): void
+    private function releaseLock(string $lockToken): void
     {
         try {
-            Cache::lock(self::LOCK_KEY)->forceRelease();
+            Cache::lock(self::LOCK_KEY, $this->lockSeconds(), $lockToken)->release();
         } catch (\Throwable $e) {
             // تجاهل — لا نريد أن يفشل الـ Request بسبب تحرير القفل
         }

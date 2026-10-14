@@ -29,6 +29,7 @@ class ImportBackupJob implements ShouldQueue
     public function __construct(
         public string $operationId,
         public string $uploadedFilePath,
+        public ?string $lockToken = null,
     ) {}
 
     public function handle(
@@ -240,12 +241,19 @@ class ImportBackupJob implements ShouldQueue
     }
 
     /**
-     * تحرير القفل بعد انتهاء العملية.
+     * تحرير القفل بعد انتهاء العملية — بالملكية فقط.
+     * إذا انتهت صلاحية القفل وأصبحت عملية جديدة مالكة له،
+     * فـ release() هنا لن تُحرر قفل العملية الجديدة (تحقق من owner).
      */
     private function releaseLock(): void
     {
+        if ($this->lockToken === null) {
+            return; // مهمة قديمة بلا رمز — القفل يُحرَّر بانتهاء صلاحيته
+        }
+
         try {
-            Cache::lock(self::LOCK_KEY)->forceRelease();
+            $ttl = (int) config('backup.lock_timeout', 3600) + 400;
+            Cache::lock(self::LOCK_KEY, $ttl, $this->lockToken)->release();
         } catch (\Throwable $ignore) {
             // تجاهل — لا نريد أن يفشل الـ Job بسبب تحرير القفل
         }

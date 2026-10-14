@@ -39,7 +39,10 @@ return [
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            // الافتراض الآمن يغطي timeout أطول مهمة (ImportBackupJob=3600s)
+            // فلا تُعاد مهمة قيد التنفيذ إلى الطابور قبل انتهائها فعليًا.
+            // (كان 90 — افتراض Laravel القياسي — فكانت مخاطرة تنفيذ مزدوج للاستيراد)
+            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 3900),
             'after_commit' => false,
         ],
 

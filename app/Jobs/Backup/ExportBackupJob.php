@@ -5,6 +5,7 @@ namespace App\Jobs\Backup;
 use App\Services\Backup\BackupBinaryDetector;
 use App\Services\Backup\BackupProcessRunner;
 use App\Services\Backup\BackupStatusService;
+use App\Services\Backup\BackupValidator;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -24,12 +25,14 @@ class ExportBackupJob implements ShouldQueue
 
     public function __construct(
         public string $operationId,
+        public ?string $lockToken = null,
     ) {}
 
     public function handle(
         BackupStatusService $status,
         BackupProcessRunner $runner,
         BackupBinaryDetector $detector,
+        BackupValidator $validator,
     ): void {
 
         $startedAt = microtime(true);
@@ -60,9 +63,9 @@ class ExportBackupJob implements ShouldQueue
 
             $status->update($this->operationId, 'running', 85, 'جاري التحقق...');
 
-            if (!file_exists($filePath) || filesize($filePath) === 0) {
-                throw new \RuntimeException('الملف الناتج فارغ');
-            }
+            // تحقق شامل: وجود الملف + حجم > 0 + محتوى يحتوي CREATE TABLE
+            // (كان الفحص قبل هذا مقتصرًا على الحجم — ملف ناقص كان يُعلَّم done)
+            $validator->validateBackupFile($filePath);
 
             $size = filesize($filePath);
 
@@ -129,12 +132,19 @@ class ExportBackupJob implements ShouldQueue
     }
 
     /**
-     * تحرير القفل بعد انتهاء العملية.
+     * تحرير القفل بعد انتهاء العملية — بالملكية فقط.
+     * إذا انتهت صلاحية القفل وأصبحت عملية جديدة مالكة له،
+     * فـ release() هنا لن تُحرر قفل العملية الجديدة (تحقق من owner).
      */
     private function releaseLock(): void
     {
+        if ($this->lockToken === null) {
+            return; // مهمة قديمة بلا رمز — القفل يُحرَّر بانتهاء صلاحيته
+        }
+
         try {
-            Cache::lock(self::LOCK_KEY)->forceRelease();
+            $ttl = (int) config('backup.lock_timeout', 3600) + 400;
+            Cache::lock(self::LOCK_KEY, $ttl, $this->lockToken)->release();
         } catch (\Throwable $ignore) {
             // تجاهل — لا نريد أن يفشل الـ Job بسبب تحرير القفل
         }

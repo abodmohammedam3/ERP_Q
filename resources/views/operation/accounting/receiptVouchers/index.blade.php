@@ -75,16 +75,7 @@
 
     <div class="d-flex justify-content-end gap-2 mt-3 flex-wrap">
 
-        <button
-            type="button"
-            class="btn btn-outline-secondary d-none"
-            id="btnCancelReceiptVoucher"
-        >
-            <i class="bi bi-x-lg"></i>
-            إلغاء
-        </button>
-
-
+        {{-- حفظ --}}
         <button
             type="button"
             class="btn btn-success"
@@ -95,7 +86,7 @@
             حفظ
         </button>
 
-
+        {{-- حفظ وإضافة جديد --}}
         <button
             type="button"
             class="btn btn-success"
@@ -106,7 +97,17 @@
             حفظ وإضافة جديد
         </button>
 
+        {{-- إلغاء --}}
+        <button
+            type="button"
+            class="btn btn-outline-secondary d-none"
+            id="btnCancelReceiptVoucher"
+        >
+            <i class="bi bi-x-lg"></i>
+            إلغاء
+        </button>
 
+        {{-- تعديل --}}
         <button
             type="button"
             class="btn btn-warning"
@@ -117,7 +118,27 @@
             تعديل
         </button>
 
+        {{-- ✅ ترحيل (btn-outline-success — مطابق للنظام) --}}
+        <button
+            type="button"
+            class="btn btn-outline-success d-none"
+            id="btnPostReceiptVoucher"
+        >
+            <i class="bi bi-check2-circle"></i>
+            ترحيل
+        </button>
 
+        {{-- إلغاء الترحيل --}}
+        <button
+            type="button"
+            class="btn btn-outline-warning d-none"
+            id="btnUnpostReceiptVoucher"
+        >
+            <i class="bi bi-arrow-counterclockwise"></i>
+            إلغاء الترحيل
+        </button>
+
+        {{-- طباعة --}}
         <button
             type="button"
             class="btn btn-dark"
@@ -142,6 +163,12 @@
 @include('operation.accounting.receiptVouchers.receiptSearch')
 
 @endsection
+
+
+{{-- ✅ المودال العام — يُحمَّل في هذه الصفحة فقط --}}
+@push('modals')
+    @include('shared.app-confirm-modal')
+@endpush
 
 
 @push('scripts')

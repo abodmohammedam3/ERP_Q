@@ -91,11 +91,11 @@
 
                             <tr class="text-center">
 
-                                <th style="width: 12%;">
+                                <th style="width: 10%;">
                                     رقم السند
                                 </th>
 
-                                <th style="width: 10%;">
+                                <th style="width: 8%;">
                                     التاريخ
                                 </th>
 
@@ -107,16 +107,24 @@
                                     الحساب المدين (الصندوق/البنك)
                                 </th>
 
-                                <th style="width: 12%;">
+                                <th style="width: 10%;">
                                     المبلغ
                                 </th>
 
-                                <th style="width: 8%;">
+                                <th style="width: 6%;">
                                     العملة
                                 </th>
 
-                                <th style="width: 10%;">
+                                <th style="width: 8%;">
                                     طريقة القبض
+                                </th>
+
+                                <th style="width: 8%;">
+                                    الحالة
+                                </th>
+
+                                <th style="min-width: 100px;">
+                                    إجراءات
                                 </th>
 
                             </tr>
@@ -129,7 +137,7 @@
                             <tr>
 
                                 <td
-                                    colspan="7"
+                                    colspan="9"
                                     class="text-center text-muted py-4"
                                 >
                                     ابحث عن سند قبض

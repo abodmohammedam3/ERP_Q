@@ -76,11 +76,13 @@
                             اختر طريقة القبض
                         </option>
 
-                        <option value="cash">
+                        <!-- ✅ 2 = نقدي -->
+                        <option value="2">
                             نقد
                         </option>
 
-                        <option value="bank">
+                        <!-- ✅ 3 = بنك -->
+                        <option value="3">
                             تحويل بنكي
                         </option>
 

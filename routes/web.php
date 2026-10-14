@@ -26,6 +26,7 @@ use App\Http\Controllers\Operation\Sales\SalesInvoiceApiController;
 use App\Http\Controllers\Operation\Purchases\PurchaseReturnApiController;
 use App\Http\Controllers\Operation\Purchases\PurchaseInvoiceApiController;
 use App\Http\Controllers\Operation\Sales\SalesReturnApiController;
+use App\Http\Controllers\Operation\ReceiptVoucher\ReceiptVoucherApiController;
 
 
 
@@ -521,55 +522,78 @@ Route::delete(
 // سندات القبض
 // =====================================================
 
+// -----------------------------------------------------
+// Web (Views)
+// -----------------------------------------------------
+
 Route::get(
     '/operation/accounting/receiptVouchers',
     [ReceiptVoucherController::class, 'index']
 )->name('receiptVouchers.index');
 
 Route::get(
-    '/operation/accounting/receiptVouchers/list',
-    [ReceiptVoucherController::class, 'list']
-)->name('receiptVouchers.list');
-
-Route::get(
-    '/operation/accounting/receiptVouchers/picker',
-    [ReceiptVoucherController::class, 'picker']
-)->name('receiptVouchers.picker');
-
-Route::get(
-    '/operation/accounting/receiptVouchers/currencies',
-    [ReceiptVoucherController::class, 'currencies']
-)->name('receiptVouchers.currencies');
-
-Route::get(
-    '/operation/accounting/receiptVouchers/next-number',
-    [ReceiptVoucherController::class, 'nextNumber']
-)->name('receiptVouchers.nextNumber');
-
-Route::get(
     '/operation/accounting/receiptVouchers/{id}/print',
     [ReceiptVoucherController::class, 'printView']
 )->name('receiptVouchers.print');
 
+// -----------------------------------------------------
+// API (JSON)
+// ⚠️ المسارات الثابتة قبل /{id}
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/accounting/receiptVouchers/next-number',
+    [ReceiptVoucherApiController::class, 'nextNumber']
+)->name('receiptVouchers.nextNumber');
+
+Route::get(
+    '/operation/accounting/receiptVouchers/currencies',
+    [ReceiptVoucherApiController::class, 'currencies']
+)->name('receiptVouchers.currencies');
+
+Route::get(
+    '/operation/accounting/receiptVouchers/picker',
+    [ReceiptVoucherApiController::class, 'picker']
+)->name('receiptVouchers.picker');
+
+Route::get(
+    '/operation/accounting/receiptVouchers/list',
+    [ReceiptVoucherApiController::class, 'list']
+)->name('receiptVouchers.list');
+
+// ─────────────────────────────────────────────────────
+// الترحيل / إلغاء الترحيل
+// ─────────────────────────────────────────────────────
+
+Route::post(
+    '/operation/accounting/receiptVouchers/{id}/post',
+    [ReceiptVoucherApiController::class, 'post']
+)->name('receiptVouchers.post');
+
+Route::post(
+    '/operation/accounting/receiptVouchers/{id}/unpost',
+    [ReceiptVoucherApiController::class, 'unpost']
+)->name('receiptVouchers.unpost');
+
 Route::get(
     '/operation/accounting/receiptVouchers/{id}',
-    [ReceiptVoucherController::class, 'show']
+    [ReceiptVoucherApiController::class, 'show']
 )->name('receiptVouchers.show');
 
 Route::post(
     '/operation/accounting/receiptVouchers',
-    [ReceiptVoucherController::class, 'store']
+    [ReceiptVoucherApiController::class, 'store']
 )->name('receiptVouchers.store');
 
 Route::put(
     '/operation/accounting/receiptVouchers/{id}',
-    [ReceiptVoucherController::class, 'update']
+    [ReceiptVoucherApiController::class, 'update']
 )->name('receiptVouchers.update');
 
 Route::delete(
     '/operation/accounting/receiptVouchers/{id}',
-    [ReceiptVoucherController::class, 'destroy']
-)->name('receiptVouchers.destroy');
+    [ReceiptVoucherApiController::class, 'destroy']
+)->name('receiptVouchers.destroy');;
 
 
 

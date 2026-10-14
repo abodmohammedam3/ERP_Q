@@ -130,13 +130,32 @@ return new class extends Migration
     /**
      * حذف عمود فقط إذا كان موجودًا
      */
-    private function dropColumnIfExists(Blueprint $table, string $tableName, string $column): void
+       private function dropColumnIfExists(Blueprint $table, string 	$tableName, string $column): void
     {
-        if (Schema::hasColumn($tableName, $column)) {
-            $table->dropColumn($column);
+        if (!Schema::hasColumn($tableName, $column)) {
+            return;
         }
-    }
 
+        // احذف الـ FK المرتبط بالعمود (إن وُجد) قبل حذف العمود
+        try {
+            $foreignKeys = \DB::select("
+                SELECT CONSTRAINT_NAME
+                FROM information_schema.KEY_COLUMN_USAGE
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = ?
+                  AND COLUMN_NAME = ?
+                  AND REFERENCED_TABLE_NAME IS NOT NULL
+            ", [$tableName, $column]);
+
+            foreach ($foreignKeys as $fk) {
+                \DB::statement("ALTER TABLE `{$tableName}` DROP FOREIGN KEY `{$fk->CONSTRAINT_NAME}`");
+            }
+        } catch (\Throwable $e) {
+            // تجاهل
+        }
+
+        $table->dropColumn($column);
+    }
     /**
      * حذف فهرس فقط إذا كان موجودًا
      */

@@ -14,7 +14,6 @@
 <body class="bg-light vh-100 overflow-hidden">
 
     <div class="d-flex flex-column vh-100">
-
         <header class="flex-shrink-0">
             <?php echo $__env->make('layouts.navbar', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
         </header>
@@ -26,7 +25,6 @@
                 <?php echo $__env->yieldContent('content'); ?>
             </main>
         </div>
-
     </div>
 
     
@@ -41,13 +39,13 @@
     </div>
 
     
+    <?php echo $__env->yieldPushContent('modals'); ?>
+
+    
     <?php echo app('Illuminate\Foundation\Vite')(['resources/js/app.js']); ?>
 
     
     <?php echo $__env->yieldPushContent('scripts'); ?>
-
-    
-    <?php echo $__env->yieldPushContent('modals'); ?>
 
 </body>
 </html><?php /**PATH C:\Laravel\qaatSystem\resources\views/layouts/app.blade.php ENDPATH**/ ?>

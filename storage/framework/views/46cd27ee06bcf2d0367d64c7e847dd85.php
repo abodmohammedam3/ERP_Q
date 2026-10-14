@@ -245,6 +245,9 @@
 
 <?php $__env->stopSection(); ?>
 
+<?php $__env->startPush('modals'); ?>
+    <?php echo $__env->make('shared.app-confirm-modal', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+<?php $__env->stopPush(); ?>
 <?php $__env->startPush('scripts'); ?>
     <?php echo app('Illuminate\Foundation\Vite')(['resources/js/pages/sales-return.js']); ?>
 <?php $__env->stopPush(); ?>

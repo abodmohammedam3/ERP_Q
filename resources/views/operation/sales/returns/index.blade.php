@@ -247,7 +247,10 @@
 </div>
 
 @endsection
-
+{{-- ✅ المودال العام — يُحمَّل في هذه الصفحة فقط --}}
+@push('modals')
+    @include('shared.app-confirm-modal')
+@endpush
 @push('scripts')
     @vite(['resources/js/pages/sales-return.js'])
 @endpush

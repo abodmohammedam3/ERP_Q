@@ -139,75 +139,21 @@ function salesReturnExtractPayload(res) {
     return { header: {}, details: [] };
 }
 
-/** تهريب HTML لتفادي XSS في رسائل المودال */
-function salesReturnEscapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = String(str ?? '');
-    return div.innerHTML;
-}
-
 /* =========================================================================
-   مودال تأكيد مخصص (بديل confirm)
+   غلاف مودال التأكيد العام
    ========================================================================= */
 
 /**
- * يعرض مودال تأكيد ويعيد Promise<boolean>.
+ * غلاف بسيط لـ window.appConfirm مع fallback آمن.
  * @param {string} message
  * @param {{title?:string, okText?:string, cancelText?:string, danger?:boolean}} [opts]
  * @returns {Promise<boolean>}
  */
 function salesReturnConfirm(message, opts = {}) {
-    if (typeof bootstrap === 'undefined' || !bootstrap.Modal) {
-        return Promise.resolve(window.confirm(message));
+    if (typeof window.appConfirm === 'function') {
+        return window.appConfirm(message, opts);
     }
-
-    return new Promise((resolve) => {
-        const id = `sr-confirm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-        const title = opts.title || 'تأكيد';
-        const okText = opts.okText || 'تأكيد';
-        const cancelText = opts.cancelText || 'إلغاء';
-        const okClass = opts.danger ? 'btn-danger' : 'btn-primary';
-        const safeMessage = salesReturnEscapeHtml(message).replace(/\n/g, '<br>');
-
-        const wrapper = document.createElement('div');
-        wrapper.innerHTML = `
-            <div class="modal fade" id="${id}" tabindex="-1" aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered modal-sm">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h6 class="modal-title">${salesReturnEscapeHtml(title)}</h6>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
-                        </div>
-                        <div class="modal-body">
-                            <p class="mb-0">${safeMessage}</p>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">${salesReturnEscapeHtml(cancelText)}</button>
-                            <button type="button" class="btn ${okClass} btn-sm" id="${id}-ok">${salesReturnEscapeHtml(okText)}</button>
-                        </div>
-                    </div>
-                </div>
-            </div>`;
-
-        const modalEl = wrapper.firstElementChild;
-        document.body.appendChild(modalEl);
-
-        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-        let result = false;
-
-        modalEl.querySelector(`#${id}-ok`).addEventListener('click', () => {
-            result = true;
-            modal.hide();
-        });
-
-        modalEl.addEventListener('hidden.bs.modal', () => {
-            resolve(result);
-            modalEl.remove();
-            cleanupStuckModals();
-        }, { once: true });
-
-        modal.show();
-    });
+    return Promise.resolve(window.confirm(message));
 }
 
 /* =========================================================================
@@ -455,7 +401,7 @@ function buildSalesReturnRow({ detail, availableQty, index, source }) {
     setVal('.row-cost-price', detail.cost_price ?? price);
     setVal('.row-available', availableQty);
 
-    // ✅ الكميات الأصلية: من الفاتورة الأصلية أو من وسم واضح في بيانات المرتجع
+    // الكميات الأصلية: من الفاتورة الأصلية أو من وسم واضح في بيانات المرتجع
     const originalQty =
         parseFloat(detail.original_quantity ?? detail.original_qty ?? detail.invoice_quantity) ||
         (source === 'invoice' ? parseFloat(detail.quantity) || 0 : 0);
@@ -482,7 +428,6 @@ function buildSalesReturnRow({ detail, availableQty, index, source }) {
             ? (defaultQty / originalQty) * originalDiscount
             : 0;
     } else {
-        // مرتجع محفوظ: الخصم مخزَّن فعلاً
         rowDiscount = parseFloat(detail.discount) || 0;
     }
     setVal('.row-discount', rowDiscount.toFixed(2));
@@ -590,9 +535,7 @@ function calculateSalesReturnTotals() {
         discountTotal += d;
     });
 
-    const rateEl = document.getElementById('SalesReturnExchangeRate');
-    let exchangeRate = parseFloat(rateEl?.value);
-    if (!Number.isFinite(exchangeRate) || exchangeRate <= 0) exchangeRate = 1;
+    const exchangeRate = salesReturnReadNumber('SalesReturnExchangeRate', 1, 0) || 1;
 
     const net = Math.max(0, itemsTotal - discountTotal);
     const total = net * exchangeRate;
@@ -809,7 +752,7 @@ async function selectOriginalSalesInvoice(invoiceId) {
         const tbody = document.getElementById('salesReturnDetails');
         tbody.replaceChildren();
 
-        // ✅ جلب الكميات المتاحة بالتوازي (بدل N طلبات متتالية)
+        // جلب الكميات المتاحة بالتوازي (بدل N طلبات متتالية)
         const availabilities = await Promise.all(
             details.map(d =>
                 salesReturnApiGet(

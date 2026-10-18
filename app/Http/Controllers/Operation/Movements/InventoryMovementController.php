@@ -35,7 +35,7 @@ class InventoryMovementController extends Controller
 
         $query = InventoryMovement::query()
             ->with('warehouse')
-            ->orderBy('movement_id', 'asc');
+            ->orderByDesc('movement_id');
 
         if ($search !== '') {
             $query->where(function ($q) use ($search) {

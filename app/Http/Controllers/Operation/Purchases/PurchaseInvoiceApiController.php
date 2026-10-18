@@ -34,7 +34,7 @@ class PurchaseInvoiceApiController extends Controller
 
         $query = PurchaseInvoice::query()
             ->with(['supplierAccount', 'coin'])
-            ->orderBy('purchase_invoice_id', 'asc');
+            ->orderByDesc('purchase_invoice_id');
 
         if ($search !== '') {
             $this->applySearch($query, $search);

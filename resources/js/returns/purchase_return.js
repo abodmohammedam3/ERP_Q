@@ -6,6 +6,17 @@ const PURCHASE_RETURN_PAYMENT_TO_INT = { credit: 1, cash: 2, bank: 3 };
 const PURCHASE_RETURN_PAYMENT_TO_STR = { 1: 'credit', 2: 'cash', 3: 'bank' };
 const PURCHASE_RETURN_PAYMENT_LABELS = { 1: 'أجل', 2: 'نقدي', 3: 'بنك' };
 
+/** تنسيق المبالغ بفواصل الآلاف (موحّد عبر Utils) */
+function purchaseReturnFormatMoney(v) {
+    if (window.Utils && typeof Utils.formatAmount === 'function') {
+        return Utils.formatAmount(v);
+    }
+    return Number(v || 0).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+}
+
 let purchaseReturnMode = 'view';
 let currentPurchaseReturnId = null;
 let currentPurchaseReturnIsPosted = false;
@@ -370,10 +381,10 @@ function calculatePurchaseReturnTotals() {
     const total = net * exchangeRate;
 
     const discEl = document.getElementById('totalPurchaseReturnDiscountDisplay');
-    if (discEl) discEl.textContent = discountTotal.toFixed(2);
+    if (discEl) discEl.textContent = purchaseReturnFormatMoney(discountTotal);
 
     const totalEl = document.getElementById('purchaseReturnTotalDisplay');
-    if (totalEl) totalEl.textContent = total.toFixed(2);
+    if (totalEl) totalEl.textContent = purchaseReturnFormatMoney(total);
 }
 
 function purchaseReturnPaymentMethodChanged() {
@@ -499,7 +510,7 @@ async function performOriginalPurchaseInvoiceSearch() {
                 inv.supplier_name,
                 inv.coin_name,
                 PURCHASE_RETURN_PAYMENT_LABELS[inv.payment_method] || '',
-                Number(inv.total).toFixed(2)
+                purchaseReturnFormatMoney(inv.total)
             ].forEach(v => {
                 const td = document.createElement('td');
                 td.textContent = v;
@@ -751,7 +762,7 @@ async function performPurchaseReturnSearch() {
                 ret.original_invoice_number,
                 ret.supplier_name,
                 PURCHASE_RETURN_PAYMENT_LABELS[ret.payment_method] || '',
-                Number(ret.total).toFixed(2)
+                purchaseReturnFormatMoney(ret.total)
             ].forEach(v => {
                 const td = document.createElement('td');
                 td.textContent = v;

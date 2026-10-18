@@ -16,6 +16,17 @@ const SALES_RETURN_PAYMENT_TO_STR = { 1: 'credit', 2: 'cash', 3: 'bank' };
 /** الوضعيات */
 const SALES_RETURN_MODES = Object.freeze({ VIEW: 'view', ADD: 'add', EDIT: 'edit' });
 
+/** تنسيق المبالغ بفواصل الآلاف (موحّد عبر Utils) */
+function salesReturnFormatMoney(v) {
+    if (window.Utils && typeof Utils.formatAmount === 'function') {
+        return Utils.formatAmount(v);
+    }
+    return Number(v || 0).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+}
+
 /** حقول الصف التي تبقى للقراءة فقط دائماً */
 const SALES_RETURN_READONLY_ROW_CLASSES = [
     'row-num', 'row-total', 'row-available', 'row-discount',
@@ -541,10 +552,10 @@ function calculateSalesReturnTotals() {
     const total = net * exchangeRate;
 
     const discEl = document.getElementById('totalSalesReturnDiscountDisplay');
-    if (discEl) discEl.textContent = discountTotal.toFixed(2);
+    if (discEl) discEl.textContent = salesReturnFormatMoney(discountTotal);
 
     const totalEl = document.getElementById('salesReturnTotalDisplay');
-    if (totalEl) totalEl.textContent = total.toFixed(2);
+    if (totalEl) totalEl.textContent = salesReturnFormatMoney(total);
 }
 
 /* =========================================================================
@@ -679,7 +690,7 @@ async function performOriginalSalesInvoiceSearch() {
                 inv.customer_name,
                 inv.coin_name,
                 SALES_RETURN_PAYMENT_LABELS[inv.payment_method] || '',
-                Number(inv.total).toFixed(2),
+                salesReturnFormatMoney(inv.total),
             ].forEach(v => {
                 const td = document.createElement('td');
                 td.textContent = v ?? '';
@@ -882,7 +893,7 @@ async function performSalesReturnSearch() {
                 ret.original_invoice_number,
                 ret.customer_name,
                 SALES_RETURN_PAYMENT_LABELS[ret.payment_method] || '',
-                Number(ret.total).toFixed(2),
+                salesReturnFormatMoney(ret.total),
             ].forEach(v => {
                 const td = document.createElement('td');
                 td.textContent = v ?? '';

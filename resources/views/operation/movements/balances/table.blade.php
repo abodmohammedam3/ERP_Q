@@ -33,6 +33,12 @@
         appearance: textfield;
     }
 
+    /* حقول التسعير للعرض فقط */
+    #balancesTable .price-input[readonly] {
+        background-color: #f8f9fa;
+        cursor: not-allowed;
+    }
+
     #balancesTable .btn-action {
         padding: 4px 8px;
         font-size: 0.8rem;

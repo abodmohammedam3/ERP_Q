@@ -88,10 +88,21 @@ function salesSetValue(id, value) {
 }
 
 function salesFormatMoney(v) {
+    if (window.Utils && typeof Utils.formatAmount === 'function') {
+        return Utils.formatAmount(v);
+    }
     return Number(v || 0).toLocaleString('en-US', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
     });
+}
+
+/* تنسيق سعر الصرف بدون أصفار زائدة */
+function salesFormatRate(v) {
+    if (window.Utils && typeof Utils.formatRate === 'function') {
+        return Utils.formatRate(v);
+    }
+    return String(parseFloat(Number(v || 0).toFixed(6)));
 }
 
 function findDefaultPieceUnit() {
@@ -187,7 +198,7 @@ function registerSalesLookupHooks() {
         const isSys = String(row.coinsID) === String(SALES_SYSTEM_CURRENCY_ID);
         const rate = isSys ? 1 : (parseFloat(row.coinsExchangeRate) || 1);
 
-        salesSetValue('SalesExchangeRate', rate.toFixed(6));
+        salesSetValue('SalesExchangeRate', salesFormatRate(rate));
 
         salesSetValue('salesPaymentAccount', '');
         salesSetValue('salesPaymentAccountId', '');
@@ -203,7 +214,7 @@ function registerSalesLookupHooks() {
 
             const isSys = String(row.coinsID) === String(SALES_SYSTEM_CURRENCY_ID);
             const rate = isSys ? 1 : (parseFloat(row.coinsExchangeRate) || 1);
-            salesSetValue('SalesExchangeRate', rate.toFixed(6));
+            salesSetValue('SalesExchangeRate', salesFormatRate(rate));
         }
 
         applySalesExchangeRateState();
@@ -217,7 +228,7 @@ function registerSalesLookupHooks() {
 
             const isSys = String(row.coinsID) === String(SALES_SYSTEM_CURRENCY_ID);
             const rate = isSys ? 1 : (parseFloat(row.coinsExchangeRate) || 1);
-            salesSetValue('SalesExchangeRate', rate.toFixed(6));
+            salesSetValue('SalesExchangeRate', salesFormatRate(rate));
         }
 
         applySalesExchangeRateState();
@@ -541,10 +552,10 @@ function calculateSalesTotals() {
     const total = net * exchangeRate;
 
     const discEl = document.getElementById('totalSalesDiscountDisplay');
-    if (discEl) discEl.textContent = discountTotal.toFixed(2);
+    if (discEl) discEl.textContent = salesFormatMoney(discountTotal);
 
     const totalEl = document.getElementById('salesInvoiceTotalDisplay');
-    if (totalEl) totalEl.textContent = total.toFixed(2);
+    if (totalEl) totalEl.textContent = salesFormatMoney(total);
 }
 
 function salesExchangeRateChanged() {
@@ -616,7 +627,7 @@ function searchSalesInvoice() {
 
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 8;
+    td.colSpan = 9;
     td.className = 'text-center text-muted py-4';
     td.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري التحميل...';
     tr.appendChild(td);
@@ -659,7 +670,7 @@ async function performSalesInvoiceSearch() {
         if (rows.length === 0) {
             const tr = document.createElement('tr');
             const td = document.createElement('td');
-            td.colSpan = 8;
+            td.colSpan = 9;
             td.className = 'text-center text-muted py-4';
             td.textContent = 'لا توجد نتائج مطابقة';
             tr.appendChild(td);
@@ -667,7 +678,7 @@ async function performSalesInvoiceSearch() {
             return;
         }
 
-        rows.forEach(inv => {
+        rows.forEach((inv, idx) => {
             const tr = document.createElement('tr');
             tr.className = 'text-center';
             tr.style.cursor = 'pointer';
@@ -682,13 +693,18 @@ async function performSalesInvoiceSearch() {
                 tr.classList.remove('table-primary');
             });
 
+            /* الرقم التسلسلي (الأحدث في الأعلى = 1) */
+            const tdSerial = document.createElement('td');
+            tdSerial.textContent = idx + 1;
+            tr.appendChild(tdSerial);
+
             [
                 inv.invoice_number,
                 inv.invoice_date,
                 inv.customer_name,
                 inv.coin_name,
                 SALES_PAYMENT_LABELS[inv.payment_method] || '',
-                Number(inv.total).toFixed(2)
+                salesFormatMoney(inv.total)
             ].forEach(v => {
                 const td = document.createElement('td');
                 td.textContent = v;

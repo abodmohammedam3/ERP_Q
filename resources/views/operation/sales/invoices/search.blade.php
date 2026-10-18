@@ -75,6 +75,7 @@
 
                             <tr class="text-center">
 
+                                <th style="width: 50px;">ت</th>
                                 <th>رقم الفاتورة</th>
                                 <th>التاريخ</th>
                                 <th>العميل</th>
@@ -93,7 +94,7 @@
                             <tr>
 
                                 <td
-                                    colspan="8"
+                                    colspan="9"
                                     class="text-center text-muted py-4"
                                 >
                                     <span class="spinner-border spinner-border-sm me-2"></span>

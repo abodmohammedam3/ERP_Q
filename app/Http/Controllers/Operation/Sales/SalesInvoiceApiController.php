@@ -35,7 +35,7 @@ class SalesInvoiceApiController extends Controller
 
         $query = SalesInvoice::query()
             ->with(['customerAccount', 'coin'])
-            ->orderBy('sales_invoice_id', 'asc');
+            ->orderByDesc('sales_invoice_id');
 
         if ($search !== '') {
             $query->where(function ($q) use ($search) {

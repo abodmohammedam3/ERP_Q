@@ -84,6 +84,39 @@ window.Utils = {
         return this.numberToWords(number, currencyName);
     },
 
+    // ── تنسيق الأرقام الموحّد (متوافق مع formatMoney في القيود اليومية) ──
+
+    /**
+     * تنسيق مبلغ/سعر بفواصل الآلاف ومنزلتين
+     * مثال: 1234.5 → "1,234.50"
+     */
+    formatAmount(v) {
+        const n = Number(v);
+        return (isNaN(n) ? 0 : n).toLocaleString('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+    },
+
+    /**
+     * تنسيق سعر صرف بدون أصفار زائدة (حتى 6 منازل)
+     * مثال: 1.000000 → "1" ، 1.250000 → "1.25" ، 1.2345678 → "1.234568"
+     */
+    formatRate(v) {
+        const n = Number(v);
+        if (isNaN(n)) return '0';
+        return String(parseFloat(n.toFixed(6)));
+    },
+
+    /**
+     * تحويل نص منسّق (بفواصل) إلى رقم خام — لحقول الإدخال عند الحفظ
+     */
+    parseAmount(v) {
+        if (v === null || v === undefined) return 0;
+        const n = parseFloat(String(v).replace(/,/g, ''));
+        return isNaN(n) ? 0 : n;
+    },
+
     // تنسيق الأرقام
     formatNumber(num, decimals = 2) {
         return parseFloat(num).toFixed(decimals);

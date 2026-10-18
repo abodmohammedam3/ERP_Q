@@ -203,6 +203,10 @@
 
                     <tr>
 
+                        <th style="width: 50px;">
+                            ت
+                        </th>
+
                         <th>
                             رقم الحركة
                         </th>

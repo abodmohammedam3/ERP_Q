@@ -79,10 +79,21 @@ function notify(message, type = 'info') {
 }
 
 function formatMoney(v) {
+    if (window.Utils && typeof Utils.formatAmount === 'function') {
+        return Utils.formatAmount(v);
+    }
     return Number(v || 0).toLocaleString('en-US', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
     });
+}
+
+/** تنسيق سعر الصرف بدون أصفار زائدة */
+function formatRate(v) {
+    if (window.Utils && typeof Utils.formatRate === 'function') {
+        return Utils.formatRate(v);
+    }
+    return String(parseFloat(Number(v || 0).toFixed(6)));
 }
 
 /**
@@ -160,7 +171,7 @@ function registerCurrencyLookupHook() {
         if (rateEl) {
             const isSys = String(row.coinsID) === String(SYSTEM_CURRENCY_ID);
             const rate = isSys ? 1 : (row.coinsExchangeRate ?? 1);
-            rateEl.value = Number(rate).toFixed(2);
+            rateEl.value = formatRate(rate);
         }
 
         applyExchangeRateState();
@@ -711,7 +722,7 @@ function searchInvoice() {
 
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 8;
+    td.colSpan = 9;
     td.className = 'text-center text-muted py-4';
     td.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري التحميل...';
     tr.appendChild(td);
@@ -753,7 +764,7 @@ async function performInvoiceSearch() {
         if (rows.length === 0) {
             const tr = document.createElement('tr');
             const td = document.createElement('td');
-            td.colSpan = 8;
+            td.colSpan = 9;
             td.className = 'text-center text-muted py-4';
             td.textContent = 'لا توجد نتائج مطابقة';
             tr.appendChild(td);
@@ -761,7 +772,7 @@ async function performInvoiceSearch() {
             return;
         }
 
-        rows.forEach(inv => {
+        rows.forEach((inv, idx) => {
             const tr = document.createElement('tr');
             tr.className = 'text-center';
             tr.style.cursor = 'pointer';
@@ -776,13 +787,18 @@ async function performInvoiceSearch() {
                 tr.classList.remove('table-primary');
             });
 
+            /* الرقم التسلسلي (الأحدث في الأعلى = 1) */
+            const tdSerial = document.createElement('td');
+            tdSerial.textContent = idx + 1;
+            tr.appendChild(tdSerial);
+
             [
                 inv.invoice_number,
                 inv.invoice_date,
                 inv.supplier_name,
                 inv.coin_name,
                 PAYMENT_METHOD_LABELS[inv.payment_method] || '',
-                Number(inv.total).toFixed(2),
+                formatMoney(inv.total),
             ].forEach(v => {
                 const td = document.createElement('td');
                 td.textContent = v;
@@ -987,7 +1003,7 @@ async function loadInvoice(id) {
         document.getElementById('currencyCode').value = h.coin_code ?? '';
 
         const rate = parseFloat(h.exchange_rate) || 1;
-        document.getElementById('PuInExchangeRate2').value = rate.toFixed(2);
+        document.getElementById('PuInExchangeRate2').value = formatRate(rate);
 
         document.getElementById('warehouseID').value = h.warehouse_id ?? '';
         document.getElementById('warehouseName').value = h.warehouse_name ?? '';

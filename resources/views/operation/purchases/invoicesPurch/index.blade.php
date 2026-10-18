@@ -108,6 +108,7 @@
                     <table class="table table-bordered table-hover align-middle mb-0">
                         <thead class="table-light sticky-top">
                             <tr class="text-center">
+                                <th style="width: 50px;">ت</th>
                                 <th>رقم الفاتورة</th>
                                 <th>التاريخ</th>
                                 <th>المورد</th>
@@ -120,7 +121,7 @@
                         </thead>
                         <tbody id="invoiceSearchResults">
                             <tr>
-                                <td colspan="8" class="text-center text-muted py-4">
+                                <td colspan="9" class="text-center text-muted py-4">
                                     <span class="spinner-border spinner-border-sm me-2"></span>
                                     جاري التحميل...
                                 </td>

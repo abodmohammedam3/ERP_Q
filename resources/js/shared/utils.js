@@ -134,9 +134,12 @@ window.Utils = {
         return total;
     },
 
-    // عرض رسالة تأكيد
+    // عرض رسالة تأكيد — موحّد عبر appConfirm مع fallback
     confirm(message) {
-        return confirm(message);
+        if (typeof window.appConfirm === 'function') {
+            return window.appConfirm(message);
+        }
+        return Promise.resolve(window.confirm(message));
     },
 
     // عرض رسالة خطأ

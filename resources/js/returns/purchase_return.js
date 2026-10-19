@@ -362,7 +362,35 @@ function removePurchaseReturnRow(btn) {
     calculatePurchaseReturnTotals();
 
     const tbody = document.getElementById('purchaseReturnDetails');
-    if (tbody && !tbody.querySelector('.return-detail-row')) setEmptyPurchaseReturnMessage();
+    if (tbody && !tbody.querySelector('.return-detail-row')) {
+        setEmptyPurchaseReturnMessage();
+
+        /* ✅ لم يبق أي سطر → العودة لحالة «مرتجع جديد»
+           (نفرّغ اختيار الفاتورة الأصلية فقط، بلا مساس برقم المرتجع/تاريخه) */
+        clearOriginalInvoiceSelection();
+        setPurchaseReturnMode('add');
+        updatePurchaseReturnSearchButton();
+    }
+}
+
+/**
+ * ✅ تفريغ اختيار الفاتورة الأصلية فقط:
+ * الحقول المخفية للمعرّفات + أسماء المورد/العملة/المخزن + سعر الصرف،
+ * ولا يلمس رقم المرتجع (PurchaseReturnNo) ولا تاريخه.
+ */
+function clearOriginalInvoiceSelection() {
+    ['originalPurchaseInvoiceId', 'purchaseReturnSupplierID', 'purchaseReturnCoinsID',
+     'purchaseReturnWarehouseID']
+        .forEach(id => purchaseReturnSetValue(id, ''));
+
+    ['originalPurchaseInvoiceNo', 'purchaseReturnSupplierName', 'purchaseReturnCurrencyName',
+     'purchaseReturnWarehouseName', 'PurchaseReturnExchangeRate']
+        .forEach(id => purchaseReturnSetValue(id, ''));
+
+    applyPurchaseReturnExchangeRateState();
+
+    const searchBtn = document.getElementById('btnSearchPurchaseReturn');
+    if (searchBtn) searchBtn.disabled = false;
 }
 
 function renumberPurchaseReturnRows() {
@@ -514,7 +542,8 @@ async function performOriginalPurchaseInvoiceSearch() {
     tbody.replaceChildren();
 
     try {
-        const raw = await purchaseReturnApiGet(`/operation/purchases/invoicesPurch/list?search=${encodeURIComponent(search)}`);
+        /* ✅ مسار مخصص: يُرجع فقط الفواتير التي ما زال بها رصيد قابل للإرجاع */
+        const raw = await purchaseReturnApiGet(`/operation/purchases/returns/invoice-picker?search=${encodeURIComponent(search)}`);
         const rows = Array.isArray(raw) ? raw : (raw.data || []);
 
         if (rows.length === 0) {
@@ -522,7 +551,7 @@ async function performOriginalPurchaseInvoiceSearch() {
             const td = document.createElement('td');
             td.colSpan = 7;
             td.className = 'text-center text-muted py-4';
-            td.textContent = 'لا توجد نتائج مطابقة';
+            td.textContent = 'لا توجد فواتير قابلة للإرجاع (ربما تم إرجاعها بالكامل)';
             tr.appendChild(td);
             tbody.appendChild(tr);
             return;
@@ -1244,6 +1273,7 @@ Object.assign(window, {
     selectOriginalPurchaseInvoice,
     calculatePurchaseReturnRow,
     removePurchaseReturnRow,
+    clearOriginalInvoiceSelection,
     purchaseReturnPaymentMethodChanged,
     cancelPurchaseReturn,
     savePurchaseReturn,

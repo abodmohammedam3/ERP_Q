@@ -497,10 +497,14 @@ class PurchaseReturnService
             throw new \RuntimeException('لا يمكن إنشاء حركة مخزون بدون مخزن');
         }
 
-        /* ✅ البيان: اسم المورد + رقم المرتجع */
+        /* ✅ البيان: أولوية لبيان المستخدم، وإلا البيان التلقائي،
+           ثم يُلحق اسم المورد دائمًا (سواء كان البيان يدويًا أو تلقائيًا). */
         $supplierName = trim((string) optional($purchaseReturn->supplierAccount)->accName);
 
-        $returnStatement = 'صرف تلقائي من مرتجع شراء رقم ' . $purchaseReturn->return_number;
+        $returnStatement = trim((string) ($purchaseReturn->statement ?? ''));
+        if ($returnStatement === '') {
+            $returnStatement = 'صرف تلقائي من مرتجع شراء رقم ' . $purchaseReturn->return_number;
+        }
         if ($supplierName !== '') {
             $returnStatement .= ' — المورد: ' . $supplierName;
         }

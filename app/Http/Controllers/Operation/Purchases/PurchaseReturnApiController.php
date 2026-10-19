@@ -67,6 +67,71 @@ class PurchaseReturnApiController extends Controller
     }
 
     /**
+     * ✅ اختيار الفاتورة الأصلية لمرتجع الشراء.
+     *
+     * يُرجع فقط الفواتير المرحّلة التي ما زال بها رصيد قابل للإرجاع
+     * (أي سطر لديه availableForReturn > 0) — لإخفاء المُرجَع بالكامل
+     * من نتائج البحث.
+     */
+    public function invoicePicker(Request $request)
+    {
+        Permissions::authorize(config('permissions.purchase_invoices.view'));
+
+        $search = trim($request->input('search', ''));
+
+        $query = PurchaseInvoice::query()
+            ->with(['supplierAccount', 'coin', 'details'])
+            ->where('is_posted', true)
+            ->orderByDesc('purchase_invoice_id');
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('invoice_number', 'like', "{$search}%")
+                  ->orWhere('reference', 'like', "{$search}%")
+                  ->orWhereHas('supplierAccount', function ($q2) use ($search) {
+                      $q2->where('accName', 'like', "%{$search}%")
+                         ->orWhere('accCode', 'like', "{$search}%");
+                  });
+            });
+        }
+
+        $invoices = $query->limit(100)->get()
+            ->map(function ($inv) {
+                $remaining = 0.0;
+
+                foreach ($inv->details as $detail) {
+                    $remaining += max(
+                        0,
+                        $this->service->availableForReturn(
+                            (int) $detail->purchase_invoice_detail_id
+                        )
+                    );
+                }
+
+                if ($remaining <= 0.000001) {
+                    return null;
+                }
+
+                return [
+                    'purchase_invoice_id' => $inv->purchase_invoice_id,
+                    'invoice_number'      => $inv->invoice_number,
+                    'invoice_date'        => optional($inv->invoice_date)->format('Y-m-d'),
+                    'supplier_name'       => $inv->supplierAccount->accName ?? '',
+                    'coin_name'           => $inv->coin->coinsName ?? '',
+                    'payment_method'      => $inv->payment_method,
+                    'total'               => $inv->total_in_invoice_currency,
+                    'is_posted'           => (bool) $inv->is_posted,
+                    'remaining_quantity'  => (float) $remaining,
+                    'is_fully_returned'   => false,
+                ];
+            })
+            ->filter()
+            ->values();
+
+        return response()->json(['data' => $invoices]);
+    }
+
+    /**
      * عرض مرتجع شراء واحد
      * ✅ مع حساب الكمية المتاحة بشكل صحيح
      */

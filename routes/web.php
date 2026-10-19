@@ -1012,6 +1012,12 @@ Route::get(
     [PurchaseReturnApiController::class, 'list']
 )->name('purchases.returns.list');
 
+/* ✅ اختيار الفاتورة الأصلية — يُخفي المُرجَعة بالكامل */
+Route::get(
+    '/operation/purchases/returns/invoice-picker',
+    [PurchaseReturnApiController::class, 'invoicePicker']
+)->name('purchases.returns.invoicePicker');
+
 Route::get(
     '/operation/purchases/returns/{id}',
     [PurchaseReturnApiController::class, 'show']

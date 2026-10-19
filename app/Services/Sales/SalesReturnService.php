@@ -439,10 +439,14 @@ class SalesReturnService
             throw new \RuntimeException('لا يمكن إنشاء حركة مخزون بدون مخزن');
         }
 
-        /* ✅ البيان: اسم العميل + رقم المرتجع */
+        /* ✅ البيان: أولوية لبيان المستخدم، وإلا البيان التلقائي،
+           ثم يُلحق اسم العميل دائمًا (سواء كان البيان يدويًا أو تلقائيًا). */
         $customerName = trim((string) optional($salesReturn->customerAccount)->accName);
 
-        $returnStatement = 'إدخال تلقائي من مرتجع بيع رقم ' . $salesReturn->return_number;
+        $returnStatement = trim((string) ($salesReturn->statement ?? ''));
+        if ($returnStatement === '') {
+            $returnStatement = 'إدخال تلقائي من مرتجع بيع رقم ' . $salesReturn->return_number;
+        }
         if ($customerName !== '') {
             $returnStatement .= ' — العميل: ' . $customerName;
         }

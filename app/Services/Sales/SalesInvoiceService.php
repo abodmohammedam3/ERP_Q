@@ -331,10 +331,14 @@ class SalesInvoiceService
             throw new \RuntimeException('لا يمكن إنشاء حركة مخزون بدون مخزن');
         }
 
-        /* ✅ البيان: اسم العميل + رقم الفاتورة (ثابت في الحركة، ونص البيان المحفوظ غير متأثر) */
+        /* ✅ البيان: أولوية لبيان المستخدم، وإلا البيان التلقائي،
+           ثم يُلحق اسم العميل دائمًا (سواء كان البيان يدويًا أو تلقائيًا). */
         $customerName = trim((string) optional($invoice->customerAccount)->accName);
 
-        $statement = 'صرف تلقائي من فاتورة البيع رقم ' . $invoice->invoice_number;
+        $statement = trim((string) ($invoice->statement ?? ''));
+        if ($statement === '') {
+            $statement = 'صرف تلقائي من فاتورة البيع رقم ' . $invoice->invoice_number;
+        }
         if ($customerName !== '') {
             $statement .= ' — العميل: ' . $customerName;
         }

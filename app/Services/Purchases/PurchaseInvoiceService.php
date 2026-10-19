@@ -283,10 +283,14 @@ public function delete(int $id): void
             ? ((int) $lastMovement->display_id + 1)
             : 1;
 
-        /* ✅ البيان: اسم المورد + رقم الفاتورة */
+        /* ✅ البيان: أولوية لبيان المستخدم، وإلا البيان التلقائي،
+           ثم يُلحق اسم المورد دائمًا (سواء كان البيان يدويًا أو تلقائيًا). */
         $supplierName = trim((string) optional($invoice->supplierAccount)->accName);
 
-        $purchaseStatement = 'توريد تلقائي من فاتورة الشراء رقم ' . $invoice->invoice_number;
+        $purchaseStatement = trim((string) ($invoice->statement ?? ''));
+        if ($purchaseStatement === '') {
+            $purchaseStatement = 'توريد تلقائي من فاتورة الشراء رقم ' . $invoice->invoice_number;
+        }
         if ($supplierName !== '') {
             $purchaseStatement .= ' — المورد: ' . $supplierName;
         }

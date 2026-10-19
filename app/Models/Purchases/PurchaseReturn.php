@@ -140,7 +140,8 @@ class PurchaseReturn extends Model
 
     public function getTotalInReturnCurrencyAttribute(): float
     {
-        return (float) $this->items_total - (float) $this->discount_total;
+        /* ✅ نفس صيغة الفواتير: max(0, net) لمنع إجمالي سالب */
+        return max(0, (float) $this->items_total - (float) $this->discount_total);
     }
 
     public function getTotalInLocalCurrencyAttribute(): float

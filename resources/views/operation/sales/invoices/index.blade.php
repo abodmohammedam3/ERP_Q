@@ -51,82 +51,10 @@
 
 @include('shared.lookup-modal')
 
-
-<!-- ===================================================== -->
-<!-- نافذة البحث عن فاتورة بيع -->
-<!-- ===================================================== -->
-
-<div class="modal fade" id="salesInvoiceSearchModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content">
-
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-search"></i>
-                    البحث عن فاتورة بيع
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-
-            <div class="modal-body">
-
-                <!-- ✅ حقل البحث مع زر التفريغ -->
-                <div class="row g-2 mb-3">
-                    <div class="col-md-12">
-                        <div class="input-group">
-                            <span class="input-group-text bg-white">
-                                <i class="bi bi-search text-muted"></i>
-                            </span>
-                            <input
-                                type="text"
-                                class="form-control"
-                                id="salesInvoiceSearchInput"
-                                placeholder="أدخل رقم الفاتورة أو اسم العميل..."
-                                oninput="debouncedSalesInvoiceSearch()"
-                                autocomplete="off"
-                            >
-                            <button
-                                type="button"
-                                class="btn btn-outline-secondary"
-                                id="btnClearSalesInvoiceSearch"
-                                onclick="clearSalesInvoiceSearch()"
-                                title="تفريغ البحث"
-                            >
-                                <i class="bi bi-x-lg"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="table-responsive" style="max-height: 450px;">
-                    <table class="table table-bordered table-hover align-middle mb-0">
-                        <thead class="table-light sticky-top">
-                            <tr class="text-center">
-                                <th>رقم الفاتورة</th>
-                                <th>التاريخ</th>
-                                <th>العميل</th>
-                                <th>العملة</th>
-                                <th>طريقة الدفع</th>
-                                <th>الإجمالي</th>
-                                <th>الحالة</th>
-                                <th style="min-width: 180px;">إجراءات</th>
-                            </tr>
-                        </thead>
-                        <tbody id="salesInvoiceSearchResults">
-                            <tr>
-                                <td colspan="8" class="text-center text-muted py-4">
-                                    <span class="spinner-border spinner-border-sm me-2"></span>
-                                    جاري التحميل...
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-            </div>
-        </div>
-    </div>
-</div>
+{{-- ✅ نافذة البحث عن فاتورة بيع — ملف واحد فقط (search.blade.php)
+     كان هناك نسخة مكررة هنا بنفس id بدون عمود «ت» (colspan=8)،
+     وقد حُذفت لتجنّب ازدواج عناصر DOM بنفس المعرّف. --}}
+@include('operation.sales.invoices.search')
 
 @endsection
 

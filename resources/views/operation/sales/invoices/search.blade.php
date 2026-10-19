@@ -46,21 +46,37 @@
                             class="form-control"
                             id="salesInvoiceSearchInput"
                             placeholder="أدخل رقم الفاتورة أو اسم العميل..."
+                            oninput="debouncedSalesInvoiceSearch()"
                             onkeydown="if(event.key==='Enter') performSalesInvoiceSearch()"
+                            autocomplete="off"
                         >
 
                     </div>
 
                     <div class="col-md-2">
 
-                        <button
-                            type="button"
-                            class="btn btn-primary w-100"
-                            onclick="performSalesInvoiceSearch()"
-                        >
-                            <i class="bi bi-search"></i>
-                            بحث
-                        </button>
+                        <div class="btn-group w-100">
+
+                            <button
+                                type="button"
+                                class="btn btn-primary"
+                                onclick="performSalesInvoiceSearch()"
+                            >
+                                <i class="bi bi-search"></i>
+                                بحث
+                            </button>
+
+                            <button
+                                type="button"
+                                class="btn btn-outline-secondary"
+                                id="btnClearSalesInvoiceSearch"
+                                onclick="clearSalesInvoiceSearch()"
+                                title="تفريغ البحث"
+                            >
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+
+                        </div>
 
                     </div>
 

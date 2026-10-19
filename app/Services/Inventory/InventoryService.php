@@ -309,7 +309,7 @@ class InventoryService
             // 8) OUT (الوحدة الأصلية)
             $outMovement = InventoryMovement::create([
                 'display_id'      => (string) $nextDisplayId,
-                'movement_type'   => InventoryMovement::TYPE_ISSUE,
+                'movement_type'   => InventoryMovement::TYPE_SORTING_OUT,
                 'direction'       => InventoryMovement::DIRECTION_OUT,
                 'movement_date'   => $movementDate,
                 'document_number' => $documentNumber,
@@ -340,7 +340,7 @@ class InventoryService
 
             $inMovement = InventoryMovement::create([
                 'display_id'      => (string) $nextDisplayId,
-                'movement_type'   => InventoryMovement::TYPE_SUPPLY,
+                'movement_type'   => InventoryMovement::TYPE_SORTING_IN,
                 'direction'       => InventoryMovement::DIRECTION_IN,
                 'movement_date'   => $movementDate,
                 'document_number' => $documentNumber,

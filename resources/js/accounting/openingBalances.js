@@ -50,10 +50,20 @@ const El = {};
 // ─────────────────────────────────────────────────────────────
 //  أدوات عامة
 // ─────────────────────────────────────────────────────────────
-const formatMoney = (v) => Number(v || 0).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-});
+/* ✅ تنسيق موحّد عبر AppFormat (shared/utils.js) — نفس صيغة القيود اليومية */
+const formatMoney = (v) =>
+    (window.AppFormat && typeof window.AppFormat.amount === 'function')
+        ? window.AppFormat.amount(v)
+        : Number(v || 0).toLocaleString('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+
+/* ✅ سعر الصرف بدون أصفار زائدة */
+const formatRate = (v) =>
+    (window.AppFormat && typeof window.AppFormat.rate === 'function')
+        ? window.AppFormat.rate(v)
+        : String(parseFloat(Number(v || 0).toFixed(6)));
 
 function toast(message, type = 'info') {
     if (typeof showSystemToast === 'function') {
@@ -330,7 +340,7 @@ function buildTableRow(row, index) {
     setText(tr, '.row-account-code', row.entity_code || row.account_code);
     setText(tr, '.row-account-name', row.entity_name || row.account_name);
     setText(tr, '.row-currency',     row.currency_code || '—');
-    setText(tr, '.row-rate',         row.currency_code ? formatMoney(row.exchange_rate) : '—');
+    setText(tr, '.row-rate',         row.currency_code ? formatRate(row.exchange_rate) : '—');
 
     renderAmountCell(tr.querySelector('.row-debit'),  row.debit,  row.local_debit,  row.currency_code);
     renderAmountCell(tr.querySelector('.row-credit'), row.credit, row.local_credit, row.currency_code);

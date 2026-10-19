@@ -1,6 +1,13 @@
-<!-- =========================================================
-     مودال اختيار العملة (عام)
-     ========================================================= -->
+{{-- =========================================================
+     ⚠️ DEPRECATED — مودال العملة القديم (لم يعد مستخدمًا)
+
+     اختيار العملة أصبح عبر النظام الموحّد:
+         @include('shared.lookup-modal')  +  data-lookup="currency"
+         أو  openLookup('currency', target)
+
+     هذا الملف لم يعد يُضمَّن في أي شاشة، وأي استدعاء قديم ينقله
+     إلى النافذة الموحّدة بدل عرض قائمة ثابتة لا تقرأ من قاعدة البيانات.
+     ========================================================= --}}
 
 <div
     class="modal fade"
@@ -37,6 +44,7 @@
                         id="CurrencySearchInput"
                         placeholder="ابحث عن العملة (اسم أو رمز)..."
                         oninput="Currency.search()"
+                        onfocus="typeof openLookup === 'function' &amp;&amp; (bootstrap.Modal.getInstance(this.closest('.modal'))?.hide(), openLookup('currency', this))"
                         autofocus
                     >
                 </div>

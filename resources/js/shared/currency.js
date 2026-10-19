@@ -1,5 +1,16 @@
+/* =========================================================================
+   ⚠️ DEPRECATED — متوافق فقط (Compatibility Shims)
+   النظام الموحّد الوحيد لاختيار العملة هو shared/lookup.js:
+       openLookup('currency', targetField)
+   أو أي حقل يحمل data-lookup="currency".
+   ملفات العملة القديمة (currency.js + operation/model/currency.blade.php)
+   لم تعد تُستخدم في أي شاشة؛ وتم تحويل كل الدوال أدناه إلى lookup.js
+   لتجنّب عرض قائمة عملات ثابتة مكتوبة يدويًا (140/530) لا تقرأ من DB.
+   ========================================================================= */
+
 /**
- * Currency Module - إدارة العملات (بحث، اختيار، مودال)
+ * Currency Module — شيم توافقي (DEPRECATED)
+ * كل البحث/الاختيار يتم من shared/lookup.js (بيانات من قاعدة البيانات).
  */
 
 window.Currency = {
@@ -20,71 +31,45 @@ window.Currency = {
         return this;
     },
 
+    /**
+     * فتح نافذة العملة الموحّدة (بيانات من قاعدة البيانات)
+     * تستخدم الحقل الهدف المسجّل عبر setTargets().
+     */
     openModal() {
-        const modalId = 'CurrencyModal';
-        const modal = Modals.get(modalId);
-        if (!modal) {
-            alert('مودال العملة غير متوفر');
+        const target = document.getElementById(this.targetFieldId);
+
+        if (!target || typeof window.openLookup !== 'function') {
+            alert('نظام اختيار العملة الموحّد (lookup) غير متوفر');
             return;
         }
 
-        const currentValue = document.getElementById(this.targetFieldId)?.value || '';
-        const searchInput = document.getElementById('CurrencySearchInput');
-        if (searchInput) searchInput.value = currentValue;
+        target.dataset.lookup = 'currency';
+        if (this.targetHiddenId) target.dataset.lookupTarget = this.targetHiddenId;
 
-        modal.show();
-
-        setTimeout(() => {
-            if (searchInput) searchInput.focus();
-            this.search();
-        }, 300);
+        return window.openLookup('currency', target);
     },
 
+    /**
+     * البحث يتم داخل النافذة الموحّدة — لا قائمة ثابتة هنا.
+     */
     search() {
-        const searchValue = document.getElementById('CurrencySearchInput')?.value.trim() || '';
-        const tbody = document.getElementById('CurrencyResults');
-        if (!tbody) return;
-
-        const currencies = [
-            { id: 1, name: 'ريال يمني', symbol: 'YER', rate: 1 },
-            { id: 2, name: 'ريال سعودي', symbol: 'SAR', rate: 140 },
-            { id: 3, name: 'دولار أمريكي', symbol: 'USD', rate: 530 }
-        ];
-
-        const results = currencies.filter(c =>
-            c.name.includes(searchValue) || c.symbol.toLowerCase().includes(searchValue.toLowerCase())
-        );
-
-        tbody.innerHTML = '';
-        if (results.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-3">لا توجد نتائج</td></tr>`;
-            return;
+        if (typeof window.lookupSearchInput === 'function') {
+            window.lookupSearchInput();
         }
-
-        results.forEach(c => {
-            tbody.innerHTML += `
-                <tr>
-                    <td>${c.id}</td>
-                    <td>${c.name}</td>
-                    <td>${c.symbol}</td>
-                    <td>${c.rate}</td>
-                    <td>
-                        <button type="button" class="btn btn-sm btn-success"
-                                onclick="Currency.select(${c.id}, '${c.name}', ${c.rate})">
-                            اختيار
-                        </button>
-                    </td>
-                </tr>
-            `;
-        });
     },
 
+    /**
+     * اختيار يدوي (نادر) — يبقى متاحًا للتوافق فقط.
+     * الاختيار الطبيعي يتم عبر lookup.js → LookupConfigs.currency.onSelect.
+     */
     select(id, name, rate) {
-        document.getElementById(this.targetHiddenId).value = id;
-        document.getElementById(this.targetFieldId).value = name;
-        document.getElementById(this.targetRateId).value = rate;
+        const hiddenEl = document.getElementById(this.targetHiddenId);
+        const fieldEl = document.getElementById(this.targetFieldId);
+        const rateEl = document.getElementById(this.targetRateId);
 
-        Modals.hide('CurrencyModal');
+        if (hiddenEl) hiddenEl.value = id ?? '';
+        if (fieldEl) fieldEl.value = name ?? '';
+        if (rateEl) rateEl.value = rate ?? 1;
 
         if (this.onSelect) this.onSelect(id, name, rate);
     },

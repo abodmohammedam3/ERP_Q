@@ -196,7 +196,7 @@
         <div class="table-responsive">
 
             <table
-                class="table table-bordered table-hover align-middle text-center mb-0"
+                class="table table-bordered table-hover align-middle text-center mb-0 app-table"
             >
 
                 <thead class="table-light">

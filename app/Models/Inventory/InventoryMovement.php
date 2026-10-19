@@ -39,9 +39,9 @@ class InventoryMovement extends Model
     const TYPE_PURCHASE_RETURN = 'purchase_return';
     const TYPE_SALE_RETURN     = 'sale_return';
 
-    /* ✅ جديد: أنواع الفرز */
-    const TYPE_SORTING_OUT     = 'sorting_out';   // فرز تحويل كيلو (خروج)
-    const TYPE_SORTING_IN      = 'sorting_in';    // فرز تحويل حبه (دخول)
+    /* ✅ جديد: أنواع الفرز/تحويل الوحدات (أي وحدتين — لا يقتصر على كيلو/حبة) */
+    const TYPE_SORTING_OUT     = 'sorting_out';   // فرز/تحويل وحدات (خروج)
+    const TYPE_SORTING_IN      = 'sorting_in';    // فرز/تحويل وحدات (دخول)
 
     // ============================================
     // ثوابت المصدر
@@ -83,8 +83,8 @@ class InventoryMovement extends Model
         self::TYPE_SALE            => 'صرف بيع',
         self::TYPE_PURCHASE_RETURN => 'مرتجع شراء',
         self::TYPE_SALE_RETURN     => 'مرتجع بيع',
-        self::TYPE_SORTING_OUT     => 'فرز تحويل كيلو',
-        self::TYPE_SORTING_IN      => 'فرز تحويل حبه',
+        self::TYPE_SORTING_OUT     => 'فرز/تحويل وحدات (خروج)',
+        self::TYPE_SORTING_IN      => 'فرز/تحويل وحدات (دخول)',
     ];
 
     // ============================================

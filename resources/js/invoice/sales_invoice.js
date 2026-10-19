@@ -437,7 +437,7 @@ function setEmptySalesMessage() {
 
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 11;
+    td.colSpan = 11; /* جدول أصناف الفاتورة (#salesInvoiceDetails) = 11 عمودًا */
     td.className = 'text-center text-muted py-4';
     td.textContent = 'لا توجد أصناف مضافة إلى الفاتورة';
     tr.appendChild(td);
@@ -454,8 +454,9 @@ function addSalesRow() {
     const tbody = document.getElementById('salesInvoiceDetails');
     if (!tbody) return;
 
-    const emptyTd = tbody.querySelector('td[colspan="11"]');
-    if (emptyTd) while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+    /* صف «لا توجد أصناف» يُحذف بأي colspan (11) — للحماية من تغيّر عدد الأعمدة */
+    const emptyRow = tbody.querySelector('tr:only-child > td[colspan]');
+    if (emptyRow) while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
 
     const tpl = document.getElementById('salesRowTemplate');
     if (!tpl) {

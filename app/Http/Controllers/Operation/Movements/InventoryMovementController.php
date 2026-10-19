@@ -779,8 +779,18 @@ class InventoryMovementController extends Controller
                 'sale_price'     => ($last && $last->sale_price !== null) ? (float) $last->sale_price : 0,
                 'min_price'      => ($last && $last->min_price !== null)  ? (float) $last->min_price  : 0,
                 'max_price'      => ($last && $last->max_price !== null)  ? (float) $last->max_price  : 0,
+                /* مفتاح ترتيب مؤقت: آخر حركة دخول لكل تركيبة */
+                '_order'         => $last ? (int) $last->movement_detail_id : 0,
             ];
         }
+
+        /* ✅ الأحدث دخولاً في الأعلى (حسب أكبر movement_detail_id لكل تركيبة) */
+        usort($rows, fn ($a, $b) => $b['_order'] <=> $a['_order']);
+
+        foreach ($rows as &$row) {
+            unset($row['_order']);
+        }
+        unset($row);
 
         return response()->json([
             'success' => true,

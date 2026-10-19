@@ -24,6 +24,40 @@ body {
    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
 }
 
+/* =========================================================
+   الأنماط المشتركة للجداول (توحيد النمط بين الشاشات)
+   القيود اليومية + الحركات + الأرصدة + ...
+   ========================================================= */
+.app-table {
+    font-size: 0.85rem;
+    vertical-align: middle;
+}
+
+.app-table thead th {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* خلايا المبالغ: خط ثابت + LTR + محاذاة منطقية للنهاية */
+.amount-cell {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    direction: ltr;
+    text-align: end;
+    white-space: nowrap;
+}
+
+/* خلايا أسعار الصرف: خط ثابت + توسيط */
+.rate-cell {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    direction: ltr;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.sticky-top {
+    z-index: 1020;
+}
+
 .sticky-top {
    z-index: 1020;
 }

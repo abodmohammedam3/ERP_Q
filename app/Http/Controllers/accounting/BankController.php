@@ -160,17 +160,31 @@ class BankController extends Controller
     // =====================================================
     // جلب البيانات
     // =====================================================
-    public function list()
+    /**
+     * قائمة البنوك (JSON)
+     *
+     * - مفاتيح مسطحة (coinsName, coinsExchangeRate, accountCode) للـ Lookup
+     * - العلاقات المدمجة (account, coin) محفوظة لشاشة إدارة البنوك
+     * - ?active_only=1 → البنوك النشطة فقط (نوافذ الاختيار)
+     */
+    public function list(Request $request)
     {
-        $banks = Bank::with([
-                'account',
-                'coin'
-            ])
-            ->orderBy(
-                'bankID',
-                'asc'
-            )
-            ->get();
+        $query = Bank::with(['account', 'coin']);
+
+        if ($request->boolean('active_only')) {
+            $query->where('is_active', 1);
+        }
+
+        $banks = $query
+            ->orderBy('bankID', 'asc')
+            ->get()
+            ->map(function ($b) {
+                return array_merge($b->toArray(), [
+                    'accountCode'       => $b->account->accCode ?? '',
+                    'coinsName'         => $b->coin->coinsName ?? '',
+                    'coinsExchangeRate' => $b->coin ? (float) $b->coin->coinsExchangeRate : 0,
+                ]);
+            });
 
         return response()->json([
             'success' => true,

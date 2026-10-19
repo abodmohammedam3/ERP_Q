@@ -144,3 +144,12 @@ window.Utils = {
         alert(message);
     }
 };
+
+/* ✅ واجهة التنسيق الموحّدة للتطبيق (تفهرس من أي ملف عبر window) */
+if (typeof window !== 'undefined') {
+    window.AppFormat = {
+        amount: (v) => window.Utils.formatAmount(v),
+        rate:   (v) => window.Utils.formatRate(v),
+        parse:  (v) => window.Utils.parseAmount(v),
+    };
+}

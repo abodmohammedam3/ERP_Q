@@ -6,6 +6,12 @@
    1) الإعدادات
    ========================================================================= */
 
+/* ✅ تنسيق سعر الصرف بدون أصفار زائدة (موحّد عبر Utils) */
+const lookupFormatRate = (v) =>
+    (window.Utils && typeof Utils.formatRate === 'function')
+        ? Utils.formatRate(v)
+        : String(parseFloat(Number(v || 0).toFixed(6)));
+
 const LookupConfigs = {
 
     supplier: {
@@ -45,7 +51,7 @@ const LookupConfigs = {
             { key: 'coinsID', label: 'الرقم', width: '70px', align: 'center' },
             { key: 'coinsName', label: 'العملة', align: 'start' },
             { key: 'coinsCode', label: 'الرمز', width: '90px', align: 'center' },
-            { key: 'coinsExchangeRate', label: 'سعر الصرف', width: '110px', align: 'center' },
+            { key: 'coinsExchangeRate', label: 'سعر الصرف', width: '110px', align: 'center', format: lookupFormatRate, cellClass: 'rate-cell' },
         ],
         cacheKey: 'coins',
         filter: (row, s) =>
@@ -60,10 +66,13 @@ const LookupConfigs = {
         columns: [
             { key: 'StockID', label: 'الرقم', width: '70px', align: 'center' },
             { key: 'StockName', label: 'اسم المخزن', align: 'start' },
+            { key: 'accountDisplay', label: 'الرقم المحاسبي', width: '130px', align: 'center' },
         ],
         cacheKey: 'warehouses',
         filter: (row, s) =>
-            !s || (row.StockName || '').includes(s),
+            !s ||
+            (row.StockName || '').includes(s) ||
+            String(row.accountDisplay ?? '').includes(s),
     },
 
     item: {
@@ -107,17 +116,18 @@ const LookupConfigs = {
         title: 'اختيار الصندوق',
         icon: 'bi-cash-stack',
         columns: [
-            { key: 'accountID', label: 'الرقم المحاسبي', width: '130px', align: 'center' },
+            { key: 'accountCode', label: 'الرقم المحاسبي', width: '130px', align: 'center' },
             { key: 'boxName', label: 'اسم الصندوق', align: 'start' },
             { key: 'coinsName', label: 'العملة', width: '110px', align: 'center' },
-            { key: 'coinsExchangeRate', label: 'سعر الصرف', width: '110px', align: 'center' },
+            { key: 'coinsExchangeRate', label: 'سعر الصرف', width: '110px', align: 'center', format: lookupFormatRate, cellClass: 'rate-cell' },
         ],
         cacheKey: 'boxes',
         filterByCoin: true,
         filter: (row, s) =>
             !s ||
             (row.boxName || '').includes(s) ||
-            (row.coinsName || '').includes(s),
+            (row.coinsName || '').includes(s) ||
+            String(row.accountCode ?? '').includes(s),
     },
 
     /* ✅ البنك — مع العملة وسعر الصرف + فلترة حسب العملة */
@@ -125,17 +135,18 @@ const LookupConfigs = {
         title: 'اختيار البنك',
         icon: 'bi-bank',
         columns: [
-            { key: 'accountID', label: 'الرقم المحاسبي', width: '130px', align: 'center' },
+            { key: 'accountCode', label: 'الرقم المحاسبي', width: '130px', align: 'center' },
             { key: 'bankName', label: 'اسم البنك', align: 'start' },
             { key: 'coinsName', label: 'العملة', width: '110px', align: 'center' },
-            { key: 'coinsExchangeRate', label: 'سعر الصرف', width: '110px', align: 'center' },
+            { key: 'coinsExchangeRate', label: 'سعر الصرف', width: '110px', align: 'center', format: lookupFormatRate, cellClass: 'rate-cell' },
         ],
         cacheKey: 'banks',
         filterByCoin: true,
         filter: (row, s) =>
             !s ||
             (row.bankName || '').includes(s) ||
-            (row.coinsName || '').includes(s),
+            (row.coinsName || '').includes(s) ||
+            String(row.accountCode ?? '').includes(s),
     },
 };
 
@@ -151,8 +162,8 @@ const lookupEndpointMap = {
     item:         '/setting/inventory/items/search',
     type:         '/setting/inventory/types/list',
     unit:         '/setting/inventory/units/list',
-    box:          '/setting/accounting/boxes/list',
-    bank:         '/setting/accounting/banks/list',
+    box:          '/setting/accounting/boxes/list?active_only=1',
+    bank:         '/setting/accounting/banks/list?active_only=1',
 };
 
 /* =========================================================================
@@ -497,11 +508,19 @@ function lookupRenderRows(rows, config) {
 
         config.columns.forEach(col => {
             const td = document.createElement('td');
-            td.textContent = row[col.key] ?? '';
+            const raw = row[col.key] ?? '';
+
+            /* ✅ تنسيق خاص بالعمود (مثال: سعر الصرف بدون أصفار زائدة) */
+            td.textContent = (typeof col.format === 'function')
+                ? col.format(raw, row)
+                : raw;
 
             td.className = col.align === 'center' ? 'text-center'
                 : col.align === 'end' ? 'text-end'
                     : 'text-start';
+
+            /* ✅ صنف إضافي اختياري للخلية (مثال: rate-cell) */
+            if (col.cellClass) td.classList.add(col.cellClass);
 
             tr.appendChild(td);
         });

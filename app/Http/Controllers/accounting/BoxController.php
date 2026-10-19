@@ -137,14 +137,31 @@ class BoxController extends Controller
     // =====================================================
     // جلب البيانات
     // =====================================================
-    public function list()
+    /**
+     * قائمة الصناديق (JSON)
+     *
+     * - مفاتيح مسطحة (coinsName, coinsExchangeRate, accountCode) للـ Lookup
+     * - العلاقات المدمجة (account, coin) محفوظة لشاشة إدارة الصناديق
+     * - ?active_only=1 → الصناديق النشطة فقط (نوافذ الاختيار)
+     */
+    public function list(Request $request)
     {
-        $boxes = Box::with([
-                'account',
-                'coin'
-            ])
+        $query = Box::with(['account', 'coin']);
+
+        if ($request->boolean('active_only')) {
+            $query->where('is_active', 1);
+        }
+
+        $boxes = $query
             ->orderBy('boxID', 'asc')
-            ->get();
+            ->get()
+            ->map(function ($b) {
+                return array_merge($b->toArray(), [
+                    'accountCode'       => $b->account->accCode ?? '',
+                    'coinsName'         => $b->coin->coinsName ?? '',
+                    'coinsExchangeRate' => $b->coin ? (float) $b->coin->coinsExchangeRate : 0,
+                ]);
+            });
 
         return response()->json([
             'success' => true,

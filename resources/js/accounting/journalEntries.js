@@ -38,12 +38,15 @@ const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
 const El = {};
 
 // ─────────────────────────────────────────────────────────────
-//  أدوات
+//  أدوات — تنسيق موحّد عبر AppFormat (shared/utils.js)
 // ─────────────────────────────────────────────────────────────
-const formatMoney = (v) => Number(v || 0).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-});
+const formatMoney = (v) =>
+    (window.AppFormat && typeof window.AppFormat.amount === 'function')
+        ? window.AppFormat.amount(v)
+        : Number(v || 0).toLocaleString('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
 
 function toast(message, type = 'info') {
     if (typeof showSystemToast === 'function') {

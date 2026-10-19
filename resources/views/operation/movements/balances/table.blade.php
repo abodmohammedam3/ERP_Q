@@ -3,17 +3,11 @@
      ═══════════════════════════════════════════════════════════ --}}
 
 <style>
+    /* يرث الخط الثابت من .amount-cell (app.css) — اللون والوزن فقط هنا */
     .balance-qty {
         font-weight: 700;
         color: #198754;
         font-size: 1rem;
-        direction: ltr;
-        font-family: 'Consolas', monospace;
-    }
-
-    .balance-cost {
-        font-family: 'Consolas', monospace;
-        direction: ltr;
     }
 
     #balancesTable .price-input {
@@ -89,9 +83,8 @@
 
         {{-- الجدول --}}
         <div class="table-responsive" style="max-height: 620px;">
-            <table class="table table-hover table-bordered align-middle mb-0"
-                   id="balancesTable"
-                   style="font-size: 0.85rem;">
+            <table class="table table-hover table-bordered align-middle mb-0 app-table"
+                   id="balancesTable">
                 <thead class="table-light sticky-top">
                     <tr class="text-center">
                         <th>الصنف</th>

@@ -1243,14 +1243,14 @@ function renderStockBalances(rows) {
 
         // الكمية
         const tdQty = document.createElement('td');
-        tdQty.className = 'balance-qty';
+        tdQty.className = 'balance-qty amount-cell';
         const qty = Number(row.quantity) || 0;
         tdQty.textContent = Number.isInteger(qty) ? qty : qty.toFixed(2);
         tr.appendChild(tdQty);
 
         // التكلفة
         const tdCost = document.createElement('td');
-        tdCost.className = 'balance-cost';
+        tdCost.className = 'amount-cell';
         tdCost.textContent = formatMoney(row.unit_cost);
         tr.appendChild(tdCost);
 

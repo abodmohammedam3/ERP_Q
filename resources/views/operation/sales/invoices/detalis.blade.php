@@ -63,9 +63,20 @@
 
                                 <div class="vr"></div>
 
+                                {{-- ✅ الإجمالي بعملة الفاتورة (qty × price − discount) --}}
                                 <div class="d-flex align-items-center gap-2">
-                                    <span class="text-success small fw-bold">إجمالي الفاتورة</span>
+                                    <span class="text-success small fw-bold">
+                                        إجمالي الفاتورة (<span id="salesInvoiceTotalCurrencyLabel">بعملة الفاتورة</span>)
+                                    </span>
                                     <strong class="text-success fs-5" id="salesInvoiceTotalDisplay">0.00</strong>
+                                </div>
+
+                                <div class="vr"></div>
+
+                                {{-- ✅ نفس الإجمالي محوّلًا للعملة الأساسية — يوضح فرق «الإجمالي» عن تكلفة الحركة --}}
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="text-primary small fw-bold">الإجمالي بالعملة الأساسية</span>
+                                    <strong class="text-primary" id="salesInvoiceTotalBaseDisplay">0.00</strong>
                                 </div>
 
                             </div>

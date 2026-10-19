@@ -148,7 +148,8 @@
             <th style="width: 10%;">الوحدة</th>
             <th style="width: 13%;">الكمية</th>
             <th style="width: 15%;">تكلفة الوحدة</th>
-            <th style="width: 15%;">الإجمالي</th>
+            {{-- ✅ قيمة التكلفة (الكمية × تكلفة الوحدة) — وليست إجمالي إيراد الفاتورة --}}
+            <th style="width: 15%;">إجمالي التكلفة</th>
         </tr>
     </thead>
     <tbody>
@@ -180,7 +181,7 @@
         <td class="value">{{ $movement->details->count() }}</td>
     </tr>
     <tr>
-        <td class="label">إجمالي الحركة</td>
+        <td class="label">إجمالي التكلفة</td>
         <td class="value">{{ number_format((float) $movement->total, 2) }}</td>
     </tr>
 </table>

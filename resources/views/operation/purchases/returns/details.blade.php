@@ -45,9 +45,17 @@
                         <div class="d-flex justify-content-end">
                             <div class="d-flex align-items-center gap-3 border rounded-3 bg-white p-2 px-3">
 
-                                <div class="d-flex align-items-center gap-2">
+                                <div class="d-flex align-items-center gap-2"
+                                     title="الخصم النسبي المسترد = (الكمية المرتجعة ÷ الكمية الأصلية) × خصم الفاتورة">
                                     <span class="text-danger small fw-bold">إجمالي الخصم</span>
                                     <strong class="text-danger" id="totalPurchaseReturnDiscountDisplay">0.00</strong>
+                                </div>
+
+                                <div class="vr"></div>
+
+                                <div class="text-muted small">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    الخصم النسبي يُسترد تلقائيًا من خصم الفاتورة الأصلية
                                 </div>
 
                                 <div class="vr"></div>

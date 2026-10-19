@@ -361,6 +361,16 @@ class SalesInvoiceService
             $unitCost  = (float) $detail->cost_price;
             $lineTotal = $quantity * $unitCost;
 
+            /* ✅ آخر تسعير معروف للوحدة (سعر البيع/الحد الأدنى/الأعلى) بالعملة الأساسية.
+               حركة البيع اتجاهها out ولا يقرأها allStockBalances للتسعير
+               (يقرأ آخر حركة in فقط) → نسخها هنا للتوثيق فقط ولا يغيّر أي رصيد.
+               كانت تُحفظ null فتظهر فارغة/صفر في شاشة حركات المخزون. */
+            $lastPricing = $this->inventoryService->lastPricing(
+                (int) $detail->item_id,
+                (int) $detail->warehouse_id,
+                $detail->unit_id !== null ? (int) $detail->unit_id : null
+            );
+
             InventoryMovementDetail::create([
                 'movement_id'  => $movement->movement_id,
                 'item_id'      => $detail->item_id,
@@ -370,8 +380,8 @@ class SalesInvoiceService
                 'warehouse_id' => $detail->warehouse_id,
                 'quantity'     => $quantity,
                 'unit_cost'    => $unitCost,
-                'min_price'    => null,
-                'max_price'    => null,
+                'min_price'    => $lastPricing['min_price'] > 0 ? $lastPricing['min_price'] : null,
+                'max_price'    => $lastPricing['max_price'] > 0 ? $lastPricing['max_price'] : null,
                 'sale_price'   => $detail->price,
                 'total'        => $lineTotal,
             ]);

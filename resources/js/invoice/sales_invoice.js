@@ -436,6 +436,12 @@ function clearSalesForm() {
     const totalEl = document.getElementById('salesInvoiceTotalDisplay');
     if (totalEl) totalEl.textContent = '0.00';
 
+    const baseResetEl = document.getElementById('salesInvoiceTotalBaseDisplay');
+    if (baseResetEl) baseResetEl.textContent = '0.00';
+
+    const exchangeRateResetEl = document.getElementById('SalesExchangeRate');
+    if (exchangeRateResetEl) exchangeRateResetEl.value = '1.000000';
+
     hideSalesPaymentAccounts();
 
     currentSalesInvoiceId = null;
@@ -543,6 +549,12 @@ function calculateSalesRow(input) {
     const row = input.closest('tr');
     if (!row) return;
 
+    /* ✅ أي تعديل يدوي على سعر الوحدة/الخصم في الصف يمنع إعادة التحويل التلقائي عند تغيير العملة */
+    const target = input || null;
+    if (target && target.classList.contains('row-price')) {
+        target.dataset.manualPrice = '1';
+    }
+
     const qty = parseFloat(row.querySelector('.row-measure')?.value) || 0;
     const price = parseFloat(row.querySelector('.row-price')?.value) || 0;
     const disc = parseFloat(row.querySelector('.row-discount')?.value) || 0;
@@ -559,13 +571,13 @@ function calculateSalesTotals() {
 
     document.querySelectorAll('#salesInvoiceDetails .sales-detail-row').forEach(row => {
         const q = parseFloat(row.querySelector('.row-measure')?.value) || 0;
-        const p = parseFloat(row.querySelector('.row-price')?.value) || 0;
-        const d = parseFloat(row.querySelector('.row-discount')?.value) || 0;
+        const p = parseFloat(String(row.querySelector('.row-price')?.value).replace(/,/g, '')) || 0;
+        const d = parseFloat(String(row.querySelector('.row-discount')?.value).replace(/,/g, '')) || 0;
         itemsTotal += q * p;
         discountTotal += d;
     });
 
-    const exchangeRate = parseFloat(document.getElementById('SalesExchangeRate')?.value) || 1;
+    const exchangeRate = parseFloat(String(document.getElementById('SalesExchangeRate')?.value).replace(/,/g, '')) || 1;
 
     const net = Math.max(0, itemsTotal - discountTotal);
     const total = net * exchangeRate;
@@ -575,6 +587,19 @@ function calculateSalesTotals() {
 
     const totalEl = document.getElementById('salesInvoiceTotalDisplay');
     if (totalEl) totalEl.textContent = salesFormatMoney(total);
+
+    /* ✅ تسمية عملة الإجمالي — تمنع الخلط بين إجمالي الإيراد وإجمالي التكلفة */
+    const currencyLabelEl = document.getElementById('salesInvoiceTotalCurrencyLabel');
+    if (currencyLabelEl) {
+        const coinName = (document.getElementById('salesCurrencyName')?.value || '').trim();
+        currencyLabelEl.textContent = coinName || 'بعملة الفاتورة';
+    }
+
+    /* ✅ الإجمالي بالعملة الأساسية = الإجمالي × سعر الصرف */
+    const baseEl = document.getElementById('salesInvoiceTotalBaseDisplay');
+    if (baseEl) baseEl.textContent = salesFormatMoney(total);
+
+    /* ملاحظة: total أعلاه = net × exchangeRate، لذا فهو نفسه بالعملة الأساسية */
 }
 
 function salesExchangeRateChanged() {
@@ -1403,11 +1428,31 @@ function selectStockBalance(row) {
     activeStockBalanceRow.querySelector('.row-warehouse-id').value = row.warehouse_id ?? '';
     activeStockBalanceRow.querySelector('.row-warehouse').value = row.warehouse_name ?? '';
 
-    activeStockBalanceRow.querySelector('.row-price').value = row.sale_price || 0;
+    /* ✅ التحويل للعرض فقط: الأرصدة محفوظة بالعملة الأساسية، وإدخال الفاتورة بعملتها.
+       price (المحفوظ في السطر) يجب أن يكون بعملة الفاتورة → sale_price ÷ rate.
+       cost_price يبقى بالعملة الأساسية (يستخدمه الخادم لحساب التكلفة). */
+    const rate = parseFloat(document.getElementById('SalesExchangeRate')?.value) || 1;
+    const safeRate = rate > 0 ? rate : 1;
+
+    const priceInInvoiceCurrency = (Number(row.sale_price) || 0) / safeRate;
+
+    const priceEl = activeStockBalanceRow.querySelector('.row-price');
+    priceEl.value = window.AppFormat.amount(priceInInvoiceCurrency);
+    priceEl.dataset.rawValue = String(priceInInvoiceCurrency);
+
+    /* ✅ وسم «معدّل يدويًا» يُلغى لأن السعر جاء من الأرصدة لا من المستخدم */
+    delete priceEl.dataset.manualPrice;
+
     activeStockBalanceRow.querySelector('.row-cost-price').value = row.unit_cost || 0;
     activeStockBalanceRow.querySelector('.row-measure').value = 1;
 
     calculateSalesRow(activeStockBalanceRow.querySelector('.row-measure'));
+
+    /* ✅ الإجمالي بالعملة الأساسية: net × سعر الصرف (المحفوظ بالعملة الأساسية) */
+    const net = (Number(priceInInvoiceCurrency) || 0) * 1;
+    const baseTotal = net * safeRate;
+    const baseEl = document.getElementById('salesInvoiceTotalBaseDisplay');
+    if (baseEl) baseEl.textContent = window.AppFormat.amount(baseTotal);
 
     stockBalancesModalInstance?.hide();
 

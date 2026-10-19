@@ -48,6 +48,12 @@ const formatMoney = (v) =>
             maximumFractionDigits: 2,
         });
 
+/* ✅ سعر الصرف بدون أصفار زائدة: 1.000000 → 1 ، 1.250000 → 1.25 */
+const formatRate = (v) =>
+    (window.AppFormat && typeof window.AppFormat.rate === 'function')
+        ? window.AppFormat.rate(v)
+        : String(parseFloat(Number(v || 0).toFixed(6)));
+
 function toast(message, type = 'info') {
     if (typeof showSystemToast === 'function') {
         showSystemToast(message, type);
@@ -307,7 +313,8 @@ function renderDetails(entry) {
         tr.querySelector('.je-line-code').textContent         = line.accountCode;
         tr.querySelector('.je-line-name').textContent         = line.accountName;
         tr.querySelector('.je-line-currency').textContent     = line.currencyCode || '—';
-        tr.querySelector('.je-line-rate').textContent         = line.exchangRate;
+        /* ✅ سعر الصرف بتنسيق موحّد (1.000000 → 1) */
+        tr.querySelector('.je-line-rate').textContent         = formatRate(line.exchangRate);
         tr.querySelector('.je-line-debit').textContent        = formatMoney(line.debit);
         tr.querySelector('.je-line-credit').textContent       = formatMoney(line.credit);
         tr.querySelector('.je-line-local-debit').textContent  = formatMoney(line.localDebit);

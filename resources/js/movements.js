@@ -46,6 +46,18 @@ let isSavingMovement = false;
 let activeTab = 'movements';
 let stockBalancesCache = [];
 let balancesLoaded = false;
+
+/* ✅ لا يحتاج فتح تاب الأرصدة: نُحمّلها مسبقًا إن أمكن (لـ fallback التسعير) */
+async function ensureStockBalancesCache() {
+    if (balancesLoaded || stockBalancesCache.length) return;
+    try {
+        const res = await apiGet('/operation/movements/helpers/stock-balances');
+        stockBalancesCache = Array.isArray(res.data) ? res.data : [];
+        balancesLoaded = true;
+    } catch (e) {
+        stockBalancesCache = [];
+    }
+}
 let activeSortingBalance = null;
 let sortingFromBalanceModalInstance = null;
 
@@ -869,11 +881,44 @@ function displayMovementSearchResults(results) {
    تحميل حركة
    ============================================================ */
 
+/**
+ * ✅ آخر تسعير معروف لكل تركيبة (صنف+نوع+مخزن+وحدة) من كاش الأرصدة
+ *    يُستخدم كـ fallback عند عرض حركة لا تحمل min/max محفوظين.
+ * @returns {{min_price: number|null, max_price: number|null}}
+ */
+function stockBalancesPricingLookup(itemId, typeId, warehouseId, unitId) {
+    const none = { min_price: null, max_price: null };
+    if (!Array.isArray(stockBalancesCache) || !stockBalancesCache.length) return none;
+
+    const key = (id, type, wh, unit) => [
+        id ?? '', type ?? '', wh ?? '', unit ?? ''
+    ].join('|');
+
+    const target = key(itemId, typeId, warehouseId, unitId);
+    const row = stockBalancesCache.find(
+        r => key(r.item_id, r.type_id, r.warehouse_id, r.unit_id) === target
+    );
+
+    if (!row) return none;
+
+    const toNum = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
+    const min = toNum(row.min_price);
+    const max = toNum(row.max_price);
+
+    return {
+        min_price: (min !== null && min > 0) ? min : null,
+        max_price: (max !== null && max > 0) ? max : null,
+    };
+}
+
 async function loadMovement(movementId) {
     try {
         const res = await apiGet(`/operation/movements/${movementId}`);
         const h = res.header;
         const details = res.details || [];
+
+        /* ✅ غير حاجز: تُضبط قبل رسم الصفوف ليعمل fallback التسعير */
+        await ensureStockBalancesCache();
 
         clearMovementForm();
 
@@ -909,11 +954,36 @@ async function loadMovement(movementId) {
             row.querySelector('.movement-quantity').value = d.quantity ?? 0;
             row.querySelector('.movement-unit-cost').value = toFixed2(d.unit_cost);
 
-            row.querySelector('.movement-min-price').value =
-                (d.min_price !== null && d.min_price !== undefined) ? toFixed2(d.min_price) : '';
+            /* ✅ إن لم يحمل سطر الحركة تسعيرًا (حركات قديمة/بيع غير مُسعّر)
+               نعرض آخر تسعير معروف من الأرصدة مع وسم توضيحي بدل فراغ مضلّل */
+            const knownPricing = stockBalancesPricingLookup(
+                d.item_id, d.type_id, d.warehouse_id, d.unit_id
+            );
 
-            row.querySelector('.movement-max-price').value =
-                (d.max_price !== null && d.max_price !== undefined) ? toFixed2(d.max_price) : '';
+            const minPrice = (d.min_price !== null && d.min_price !== undefined)
+                ? d.min_price
+                : knownPricing.min_price;
+
+            const maxPrice = (d.max_price !== null && d.max_price !== undefined)
+                ? d.max_price
+                : knownPricing.max_price;
+
+            const minEl = row.querySelector('.movement-min-price');
+            const maxEl = row.querySelector('.movement-max-price');
+
+            minEl.value = minPrice !== null ? toFixed2(minPrice) : '';
+            maxEl.value = maxPrice !== null ? toFixed2(maxPrice) : '';
+
+            const isFallback = (d.min_price === null || d.min_price === undefined)
+                && (d.max_price === null || d.max_price === undefined)
+                && (knownPricing.min_price !== null || knownPricing.max_price !== null);
+
+            if (isFallback) {
+                minEl.title = 'آخر تسعير معروف (غير محفوظ في هذه الحركة)';
+                maxEl.title = 'آخر تسعير معروف (غير محفوظ في هذه الحركة)';
+                minEl.classList.add('text-muted', 'fst-italic');
+                maxEl.classList.add('text-muted', 'fst-italic');
+            }
 
             row.querySelector('.movement-sale-price').value =
                 (d.sale_price !== null && d.sale_price !== undefined) ? toFixed2(d.sale_price) : '0.00';

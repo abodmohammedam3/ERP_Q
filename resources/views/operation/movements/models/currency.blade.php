@@ -1,4 +1,6 @@
-{{-- نافذة اختيار العملة --}}
+{{-- ⚠️ DEPRECATED — مودال اختيار العملة القديم (لم يعد مستخدمًا)
+     اختيار العملة أصبح عبر shared/lookup-modal.blade.php + data-lookup="currency"
+     هذا الملف لم يعد يُضمَّن في أي شاشة. --}}
 <div class="modal fade" id="currencyModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
@@ -16,8 +18,8 @@
                     <div class="col-md-10">
                         <input type="text" class="form-control" id="currencySearchInput"
                                placeholder="اسم العملة أو رمزها"
-                               oninput="currencyInput(event)"
-                               onkeydown="if(event.key==='Enter') searchCurrencies()">
+                               onfocus="typeof openLookup === 'function' &amp;&amp; (bootstrap.Modal.getInstance(this.closest('.modal'))?.hide(), openLookup('currency', this))"
+                               readonly>
                     </div>
                     <div class="col-md-2">
                         <button type="button" class="btn btn-primary w-100"

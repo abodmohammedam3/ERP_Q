@@ -36,6 +36,9 @@
                     >
                 </div>
 
+                {{-- ✅ مؤشر فلترة العملة (يظهر فقط لصناديق/بنوك عند تحديد عملة) --}}
+                <div class="small text-muted mb-2 d-none" id="unifiedLookupCoinNote"></div>
+
                 <div class="table-responsive" style="max-height: 400px;">
                     <table class="table table-hover align-middle mb-0 lookup-table">
                         <colgroup id="unifiedLookupColgroup"></colgroup>

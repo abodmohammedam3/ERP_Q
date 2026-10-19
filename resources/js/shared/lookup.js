@@ -599,14 +599,27 @@ function lookupFilterAndRender() {
     const search = (document.getElementById('unifiedLookupSearch')?.value || '').trim();
     let source = lookupCache[config.cacheKey] || [];
 
-    // ✅ فلترة حسب العملة النشطة
-    if (config.filterByCoin && typeof window.lookupGetActiveCoinId === 'function') {
-        const activeCoinId = window.lookupGetActiveCoinId();
+    // ✅ فلترة حسب العملة النشطة — فقط عند وجود عملة فعلية
+    let coinFilterNote = '';
 
-        if (activeCoinId) {
-            source = source.filter(row =>
-                String(row.coinsID) === String(activeCoinId)
-            );
+    if (config.filterByCoin && typeof window.lookupGetActiveCoinId === 'function') {
+        const activeCoinId = String(window.lookupGetActiveCoinId() ?? '').trim();
+
+        if (activeCoinId !== '') {
+            const matches = source.filter(row => String(row.coinsID) === activeCoinId);
+            const coinName = (lookupCache.coins || [])
+                .find(c => String(c.coinsID) === activeCoinId)?.coinsName || '';
+
+            /* ✅ إن لم يوجد أي مطابق (فراغ/تعارض) لا نُفرّغ القائمة تمامًا —
+               نُظهر كل الصناديق/البنوك مع تمييز غير المطابق */
+            if (matches.length > 0) {
+                source = matches;
+                coinFilterNote = coinName
+                    ? `مفلترة حسب عملة: ${coinName}`
+                    : '';
+            } else {
+                coinFilterNote = 'لا توجد عناصر بعملة الفاتورة — تُعرض كل العملات';
+            }
         }
     }
 
@@ -614,7 +627,17 @@ function lookupFilterAndRender() {
         ? source
         : source.filter(row => config.filter(row, search));
 
+    lookupRenderCoinNote(coinFilterNote);
     lookupRenderRows(filtered, config);
+}
+
+/** ✅ مؤشر صغير تحت عنوان المودال يوضح فلترة العملة */
+function lookupRenderCoinNote(note) {
+    const el = document.getElementById('unifiedLookupCoinNote');
+    if (!el) return;
+
+    el.textContent = note || '';
+    el.classList.toggle('d-none', !note);
 }
 
 /* =========================================================================

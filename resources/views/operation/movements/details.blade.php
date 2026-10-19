@@ -39,7 +39,8 @@
                         <th style="min-width: 100px;">الحد الأدنى</th>
                         <th style="min-width: 100px;">الحد الأعلى</th>
                         <th style="min-width: 110px;">سعر البيع للحبة</th>
-                        <th style="min-width: 120px;">الإجمالي</th>
+                        {{-- ✅ «الإجمالي» = قيمة التكلفة (qty × unit_cost)، وليس إجمالي إيراد الفاتورة --}}
+                        <th style="min-width: 120px;" title="الكمية × سعر تكلفة الوحدة">إجمالي التكلفة</th>
                     </tr>
                 </thead>
 
@@ -50,7 +51,7 @@
                         <td colspan="12" class="p-3 bg-light">
                             <div class="d-flex justify-content-end">
                                 <div class="d-flex align-items-center gap-2 border rounded-3 bg-white p-2 px-3">
-                                    <span class="text-success small fw-bold">إجمالي الحركة</span>
+                                    <span class="text-success small fw-bold" title="مجموع (الكمية × سعر تكلفة الوحدة)">إجمالي التكلفة</span>
                                     <input
                                         type="text"
                                         id="movementTotal"

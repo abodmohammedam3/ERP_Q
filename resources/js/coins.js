@@ -240,6 +240,30 @@ function filterCoins() {
    فتح المودال (إضافة)
 ========================================================= */
 
+/**
+ * ✅ تلميح سعر الصرف: عملة النظام سعرها 1 دائمًا.
+ * يُستدعى عند فتح مودال الإضافة/التعديل وعند تغيير علم «عملة النظام».
+ */
+function syncCoinSystemRateHint() {
+    const systemEl  = document.getElementById('coinsSystem');
+    const rateEl    = document.getElementById('coinsExchangeRate');
+    const hintEl    = document.getElementById('coinSystemRateHint');
+    if (!systemEl || !rateEl) return;
+
+    const isSystem = systemEl.value === '1';
+
+    rateEl.min = '0.000001';
+    rateEl.title = isSystem ? 'عملة النظام — سعر الصرف ثابت = 1' : '';
+
+    if (isSystem) {
+        rateEl.value = '1';
+    }
+
+    if (hintEl) {
+        hintEl.classList.toggle('d-none', !isSystem);
+    }
+}
+
 function openCoinModal() {
 
     editingCoinId = null;
@@ -254,6 +278,9 @@ function openCoinModal() {
     document.getElementById('coinsSystem').value = '0';
 
     document.getElementById('isActive').value = '1';
+
+    /* ✅ حالة السعر الافتراضية (غير عملة نظام → الحقل حر) */
+    syncCoinSystemRateHint();
 
     const modalEl =
         document.getElementById('coinModal');
@@ -292,6 +319,9 @@ function editCoin(btn) {
     document.getElementById('coinsExchangeRate').value = row.dataset.rate;
     document.getElementById('coinsSystem').value = row.dataset.system;
     document.getElementById('isActive').value = row.dataset.active;
+
+    /* ✅ تحذير مرئي عند تعديل عملة النظام */
+    syncCoinSystemRateHint();
 
     const modalEl =
         document.getElementById('coinModal');
@@ -337,6 +367,19 @@ async function saveCoin() {
     const coinsSystem =
         document.getElementById('coinsSystem')
             .value === '1';
+
+    /* ✅ عملة النظام هي مرجع التحويل — سعرها 1 دائمًا (رفض صريح بدل فرض صامت) */
+    if (coinsSystem && Number(coinsExchangeRate) !== 1) {
+        showSystemToast(
+            'عملة النظام سعر صرفها يجب أن يكون 1 (هي مرجع التحويل).',
+            'danger'
+        );
+
+        const rateInput = document.getElementById('coinsExchangeRate');
+        if (rateInput) rateInput.focus();
+
+        return;
+    }
 
     const isActive =
         document.getElementById('isActive')

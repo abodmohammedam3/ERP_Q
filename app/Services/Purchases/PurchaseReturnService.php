@@ -476,6 +476,9 @@ class PurchaseReturnService
     // =========================================================
     public function syncInventoryMovement(PurchaseReturn $purchaseReturn): void
     {
+        /* ✅ علاقة المورد مطلوبة للبيان */
+        $purchaseReturn->loadMissing('supplierAccount');
+
         $this->deleteInventoryMovement($purchaseReturn);
 
         $lastMovement = InventoryMovement::lockForUpdate()
@@ -494,6 +497,14 @@ class PurchaseReturnService
             throw new \RuntimeException('لا يمكن إنشاء حركة مخزون بدون مخزن');
         }
 
+        /* ✅ البيان: اسم المورد + رقم المرتجع */
+        $supplierName = trim((string) optional($purchaseReturn->supplierAccount)->accName);
+
+        $returnStatement = 'صرف تلقائي من مرتجع شراء رقم ' . $purchaseReturn->return_number;
+        if ($supplierName !== '') {
+            $returnStatement .= ' — المورد: ' . $supplierName;
+        }
+
         $movement = InventoryMovement::create([
             'display_id'      => (string) $nextNumber,
             'movement_type'   => InventoryMovement::TYPE_PURCHASE_RETURN,
@@ -503,8 +514,7 @@ class PurchaseReturnService
             'movement_date'   => $purchaseReturn->return_date,
             'document_number' => $purchaseReturn->return_number,
             'warehouse_id'    => $headerWarehouse,
-            'statement'       => 'صرف تلقائي من مرتجع شراء رقم '
-                                    . $purchaseReturn->return_number,
+            'statement'       => $returnStatement,
             'source_type'     => InventoryMovement::SOURCE_PURCHASE_RETURN,
             'source_id'       => $purchaseReturn->purchase_return_id,
             'total'           => 0,

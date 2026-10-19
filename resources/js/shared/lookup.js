@@ -319,6 +319,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 /* =========================================================================
    9) Event Delegation — blur
+
+   ✅ القاعدة: لا يُفتح المودال إلا بـ Enter / Tab / دبل كلك (انظر 9.b و9.c)،
+   ولا يُعاد فتحه قهراً عند مجرّد مغادرة الحقل بأي طريقة أخرى.
+   حالة النقل القسري: قيمة مكتوبة يدوياً لم تُختَر من المودال
+   (data-lookup-selected غائب) → العودة للحقل + فتح المودال فقط
+   إذا كان الانتقال إلى حقل نصي عادي (لا حقل lookup آخر، لا زر، لا أيقونة).
    ========================================================================= */
 
 document.addEventListener('blur', (e) => {
@@ -328,12 +334,21 @@ document.addEventListener('blur', (e) => {
     const value = (target.value || '').trim();
     if (value === '') return;
 
+    /* ✅ القيمة اختيرت من المودال بالفعل → لا شيء */
+    if (target.dataset.lookupSelected === '1') return;
+
+    /* ✅ حركة لوحة المفاتيح/الفتح المبرمج عولجت في 9.b — لا تكرار */
     if (lookupKeyDownHandled) return;
     if (lookupJustOpened) return;
     if (document.querySelector('.modal.show')) return;
     if (Date.now() - lookupLastClosedAt < 400) return;
 
     const next = e.relatedTarget;
+
+    /* ✅ الانتقال إلى حقل lookup آخر = انتقال طبيعي بين الحقول → اسمح */
+    if (next && next.dataset && next.dataset.lookup) return;
+
+    /* ✅ لا relatedTarget (نقر خارج الصفحة / انتقال غير معروف) → اسمح */
     if (!next) return;
 
     const tag = next.tagName;
@@ -351,31 +366,60 @@ document.addEventListener('blur', (e) => {
 
     if (isButtonLike) return;
 
+    /* ✅ قيمة يدوية غير مختارة + انتقال لحقل نصي → أعِد التركيز وافتح المودال */
     setTimeout(() => {
         if (document.querySelector('.modal.show')) return;
+        if (document.activeElement && document.activeElement !== target) {
+            try { target.focus(); } catch (_) { /* ignore */ }
+        }
         openLookup(target.dataset.lookup, target);
     }, 150);
 }, true);
 
 /* =========================================================================
-   9.b) ✅ النقر على حقل data-lookup يفتح النافذة
+   9.b) ✅ لوحة المفاتيح: Enter أو Tab على حقل data-lookup يفتح المودال
    ========================================================================= */
 
-document.addEventListener('click', (e) => {
+document.addEventListener('keydown', (e) => {
+    const target = e.target;
+    if (!target || !target.dataset || !target.dataset.lookup) return;
+    if (target.disabled) return;
+
+    if (e.key !== 'Enter' && e.key !== 'Tab') return;
+
+    e.preventDefault();
+    lookupKeyDownHandled = true;
+
+    openLookup(target.dataset.lookup, target).finally(() => {
+        /* يُرفع بعد دورة الحدث كي لا يعالجه blur بنفس السبب */
+        setTimeout(() => { lookupKeyDownHandled = false; }, 0);
+    });
+}, true);
+
+/* =========================================================================
+   9.c) ✅ دبل كلك على حقل data-lookup يفتح المودال (لا نقر واحد)
+   ========================================================================= */
+
+document.addEventListener('dblclick', (e) => {
+    const target = e.target;
+    if (!target || !target.dataset || !target.dataset.lookup) return;
+    if (target.disabled) return;
+
+    if (document.querySelector('.modal.show')) return;
+    if (Date.now() - lookupLastClosedAt < 300) return;
+
+    openLookup(target.dataset.lookup, target);
+}, true);
+
+/* =========================================================================
+   9.d) ✅ أي كتابة يدوية تُبطل علامة «مختار من المودال»
+   ========================================================================= */
+
+document.addEventListener('input', (e) => {
     const target = e.target;
     if (!target || !target.dataset || !target.dataset.lookup) return;
 
-    // لا تفتح إذا كان الحقل معطّلًا (disabled)
-    if (target.disabled) return;
-
-    // لا تفتح إذا كان هناك modal مفتوح
-    if (document.querySelector('.modal.show')) return;
-
-    // لا تفتح إذا كان النقر حديثًا بعد إغلاق النافذة
-    if (Date.now() - lookupLastClosedAt < 300) return;
-
-    // ✅ افتح النافذة بالنقر
-    openLookup(target.dataset.lookup, target);
+    delete target.dataset.lookupSelected;
 }, true);
 
 /* =========================================================================
@@ -399,6 +443,10 @@ async function openLookup(key, target) {
     activeLookupKey = key;
     activeLookupTarget = target;
     lookupRowSelected = false;
+
+    /* ✅ انتقال البرمجي/أي فتح = مبرَّر — لا يعالجه blur */
+    lookupJustOpened = true;
+    setTimeout(() => { lookupJustOpened = false; }, 0);
 
     const titleEl = document.getElementById('unifiedLookupTitle');
     if (titleEl) {
@@ -601,6 +649,9 @@ function lookupSelectRow(row) {
     const target = activeLookupTarget;
     const config = LookupConfigs[activeLookupKey];
 
+    /* ✅ تعليم الحقل بالاكتيار: يمنع إعادة الفتح القسرية عند blur */
+    target.dataset.lookupSelected = '1';
+
     const idField = target.dataset.lookupIdField;
     const targetId = target.dataset.lookupTarget;
     const display = target.dataset.lookupDisplayField;
@@ -640,7 +691,11 @@ function lookupSetupFocusTrap(modalEl) {
     if (!modalEl) return;
 
     modalEl.addEventListener('keydown', (e) => {
-        if (e.key !== 'Tab') return;
+        /* ✅ Tab داخل حقل data-lookup (قبل الفتح) يجب أن يفتح المودال — لا يُدخل في trap
+       (يلتقطه المستمع 9.b على document في مرحلة capture قبل هذا المستمع) */
+    if (e.target && e.target.dataset && e.target.dataset.lookup) return;
+
+    if (e.key !== 'Tab') return;
         if (!modalEl.classList.contains('show')) return;
 
         const searchInput = document.getElementById('unifiedLookupSearch');

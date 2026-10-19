@@ -311,6 +311,9 @@ class SalesInvoiceService
     // =========================================================
     public function syncInventoryMovement(SalesInvoice $invoice): void
     {
+        /* ✅ علاقة العميل مطلوبة للبيان */
+        $invoice->loadMissing('customerAccount');
+
         $this->deleteInventoryMovement($invoice);
 
         $lastMovement = InventoryMovement::lockForUpdate()
@@ -328,6 +331,14 @@ class SalesInvoiceService
             throw new \RuntimeException('لا يمكن إنشاء حركة مخزون بدون مخزن');
         }
 
+        /* ✅ البيان: اسم العميل + رقم الفاتورة (ثابت في الحركة، ونص البيان المحفوظ غير متأثر) */
+        $customerName = trim((string) optional($invoice->customerAccount)->accName);
+
+        $statement = 'صرف تلقائي من فاتورة البيع رقم ' . $invoice->invoice_number;
+        if ($customerName !== '') {
+            $statement .= ' — العميل: ' . $customerName;
+        }
+
         $movement = InventoryMovement::create([
             'display_id'      => (string) $nextNumber,
             'movement_type'   => InventoryMovement::TYPE_SALE,
@@ -337,8 +348,7 @@ class SalesInvoiceService
             'movement_date'   => $invoice->invoice_date,
             'document_number' => $invoice->invoice_number,
             'warehouse_id'    => $headerWarehouse,
-            'statement'       => 'صرف تلقائي من فاتورة البيع رقم '
-                                    . $invoice->invoice_number,
+            'statement'       => $statement,
             'source_type'     => InventoryMovement::SOURCE_SALES_INVOICE,
             'source_id'       => $invoice->sales_invoice_id,
             'total'           => 0,

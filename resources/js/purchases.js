@@ -110,36 +110,35 @@ function extractPayload(res) {
 }
 
 /* =========================================================
-   ✅ حماية حقل سعر الصرف من أي إدخال
+   ✅ سعر الصرف خاص بالفاتورة:
+      - عملة النظام → readonly = 1
+      - عملة أجنبية → قابل للتعديل (إلا في وضع العرض)
    ========================================================= */
 function protectExchangeRateInput() {
     const rateEl = document.getElementById('PuInExchangeRate2');
     if (!rateEl) return;
 
-    // ✅ جعله readonly دائمًا
-    rateEl.readOnly = true;
-    rateEl.disabled = false;
-    rateEl.classList.add('bg-light');
+    const isSys = isInvoiceInSystemCurrency();
+    const isView = invoiceMode === 'view';
 
-    // ✅ منع أي إدخال (احتياط قوي)
-    rateEl.addEventListener('keydown', (e) => e.preventDefault());
-    rateEl.addEventListener('keypress', (e) => e.preventDefault());
-    rateEl.addEventListener('paste', (e) => e.preventDefault());
-    rateEl.addEventListener('cut', (e) => e.preventDefault());
-    rateEl.addEventListener('drop', (e) => e.preventDefault());
+    if (isSys || isView) {
+        rateEl.readOnly = true;
+        rateEl.tabIndex = -1;
+        rateEl.classList.add('bg-light');
+        rateEl.title = isSys
+            ? 'سعر صرف عملة النظام ثابت = 1'
+            : 'وضع العرض — لا يمكن التعديل';
+    } else {
+        rateEl.readOnly = false;
+        rateEl.tabIndex = 0;
+        rateEl.classList.remove('bg-light');
+        rateEl.title = 'سعر صرف هذه الفاتورة (يمكن تجاوزه عن السعر اليومي)';
+    }
 }
 
-/* =========================================================
-   ✅ سعر الصرف — readonly دائماً
-   ========================================================= */
 function applyExchangeRateState() {
     const rateEl = document.getElementById('PuInExchangeRate2');
     if (!rateEl) return;
-
-    // ✅ سعر الصرف دائماً readonly — لا يمكن الكتابة فيه
-    rateEl.readOnly = true;
-    rateEl.disabled = false;
-    rateEl.classList.add('bg-light');
 
     const coinId = document.getElementById('coinsID')?.value || '';
 
@@ -149,13 +148,11 @@ function applyExchangeRateState() {
         return;
     }
 
-    const isSys = isInvoiceInSystemCurrency();
-
-    if (isSys) {
-        rateEl.value = '1.00';
+    if (isInvoiceInSystemCurrency()) {
+        rateEl.value = '1';
     }
 
-    // ✅ أعد الحماية بعد أي تعديل
+    /* ✅ إعادة ضبط readonly حسب العملة/الوضع */
     protectExchangeRateInput();
 }
 
@@ -639,7 +636,15 @@ function updateAmountWords(total) {
     }
 }
 
-function exchangeRateChanged() { calculateTotals(); }
+function exchangeRateChanged() {
+    /* ✅ إعادة احتساب الإجمالي بالعملة المحلية عند تغيير سعر الصرف */
+    const rateEl = document.getElementById('PuInExchangeRate2');
+    if (rateEl) {
+        const rate = parseFloat(rateEl.value);
+        if (!isNaN(rate) && rate <= 0) rateEl.value = '1';
+    }
+    calculateTotals();
+}
 
 function paymentMethodChanged(clearPrevious = false) {
     if (clearPrevious) {
@@ -880,8 +885,20 @@ function buildDeleteBtn(inv) {
    POST / UNPOST / DELETE (من نافذة البحث)
    ========================================================= */
 
+/** ✅ تأكيد موحّد عبر appConfirm (shared/app-confirm.js) */
+function purchaseConfirm(message, opts = {}) {
+    if (typeof window.appConfirm === 'function') {
+        return window.appConfirm(message, opts);
+    }
+    return Promise.resolve(window.confirm(message));
+}
+
 async function postInvoice(id) {
-    if (!confirm('هل تريد ترحيل هذه الفاتورة؟\nسيتم إنشاء القيود وحركة المخزون.')) return;
+    const ok = await purchaseConfirm('هل تريد ترحيل هذه الفاتورة؟\nسيتم إنشاء القيود وحركة المخزون.', {
+        title: 'ترحيل فاتورة الشراء',
+        okText: 'ترحيل',
+    });
+    if (!ok) return;
 
     try {
         const r = await apiSend(
@@ -897,7 +914,12 @@ async function postInvoice(id) {
 }
 
 async function unpostInvoice(id) {
-    if (!confirm('هل تريد إلغاء ترحيل هذه الفاتورة؟\nسيتم حذف القيود وحركة المخزون.')) return;
+    const ok = await purchaseConfirm('هل تريد إلغاء ترحيل هذه الفاتورة؟\nسيتم حذف القيود وحركة المخزون.', {
+        title: 'إلغاء ترحيل فاتورة الشراء',
+        okText: 'إلغاء الترحيل',
+        danger: true,
+    });
+    if (!ok) return;
 
     try {
         const r = await apiSend(
@@ -918,7 +940,12 @@ async function unpostInvoice(id) {
 
 async function deleteInvoice(id, number) {
     const label = number ? `رقم ${number}` : `#${id}`;
-    if (!confirm(`هل أنت متأكد من حذف الفاتورة ${label}؟\nلا يمكن التراجع عن هذه العملية.`)) return;
+    const ok = await purchaseConfirm(`هل أنت متأكد من حذف الفاتورة ${label}؟\nلا يمكن التراجع عن هذه العملية.`, {
+        title: 'حذف فاتورة الشراء',
+        okText: 'حذف',
+        danger: true,
+    });
+    if (!ok) return;
 
     try {
         const r = await apiSend(
@@ -947,7 +974,11 @@ async function postCurrentInvoice() {
         return;
     }
 
-    if (!confirm('هل تريد ترحيل هذه الفاتورة؟\nسيتم إنشاء القيود وحركة المخزون.')) return;
+    const ok = await purchaseConfirm('هل تريد ترحيل هذه الفاتورة؟\nسيتم إنشاء القيود وحركة المخزون.', {
+        title: 'ترحيل فاتورة الشراء',
+        okText: 'ترحيل',
+    });
+    if (!ok) return;
 
     try {
         const r = await apiSend(
@@ -968,7 +999,12 @@ async function unpostCurrentInvoice() {
         return;
     }
 
-    if (!confirm('هل تريد إلغاء ترحيل هذه الفاتورة؟\nسيتم حذف القيود وحركة المخزون.')) return;
+    const ok = await purchaseConfirm('هل تريد إلغاء ترحيل هذه الفاتورة؟\nسيتم حذف القيود وحركة المخزون.', {
+        title: 'إلغاء ترحيل فاتورة الشراء',
+        okText: 'إلغاء الترحيل',
+        danger: true,
+    });
+    if (!ok) return;
 
     try {
         const r = await apiSend(
@@ -1185,7 +1221,12 @@ function editInvoice() {
 }
 
 async function cancelInvoice() {
-    if (!confirm('هل أنت متأكد من إلغاء العملية؟')) return;
+    const ok = await purchaseConfirm('هل أنت متأكد من إلغاء العملية؟', {
+        title: 'إلغاء العملية',
+        okText: 'تأكيد الإلغاء',
+        danger: true,
+    });
+    if (!ok) return;
 
     if (invoiceMode === 'edit' && currentInvoiceId) {
         await loadInvoice(currentInvoiceId);

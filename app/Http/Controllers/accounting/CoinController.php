@@ -33,7 +33,7 @@ class CoinController extends Controller
         $validator = Validator::make($request->all(), [
             'coinsName'         => 'required|string|max:100|unique:coins,coinsName',
             'coinsCode'         => 'required|string|max:10|unique:coins,coinsCode',
-            'coinsExchangeRate' => 'required|numeric|min:0',
+            'coinsExchangeRate' => 'required|numeric|gt:0',
             'coinsSystem'       => 'nullable|boolean',
             'is_active'         => 'nullable|boolean',
         ], [
@@ -43,7 +43,18 @@ class CoinController extends Controller
             'coinsCode.unique'           => 'رمز العملة موجود بالفعل',
             'coinsExchangeRate.required' => 'سعر الصرف مطلوب',
             'coinsExchangeRate.numeric'  => 'سعر الصرف يجب أن يكون رقماً',
+            'coinsExchangeRate.gt'       => 'سعر الصرف يجب أن يكون أكبر من صفر',
         ]);
+
+        $validator->after(function ($v) use ($request) {
+            /* ✅ عملة النظام هي مرجع التحويل — سعرها 1 دائماً (رفض صريح وليس فرضاً صامتاً) */
+            if ($request->boolean('coinsSystem') && (float) $request->input('coinsExchangeRate') !== 1.0) {
+                $v->errors()->add(
+                    'coinsExchangeRate',
+                    'سعر صرف عملة النظام يجب أن يكون 1 (هي مرجع التحويل).'
+                );
+            }
+        });
 
         if ($validator->fails()) {
             return response()->json([
@@ -89,7 +100,7 @@ class CoinController extends Controller
                 'required', 'string', 'max:10',
                 Rule::unique('coins', 'coinsCode')->ignore($coin->coinsID, 'coinsID'),
             ],
-            'coinsExchangeRate' => 'required|numeric|min:0',
+            'coinsExchangeRate' => 'required|numeric|gt:0',
             'coinsSystem'       => 'nullable|boolean',
             'is_active'         => 'nullable|boolean',
         ], [
@@ -97,7 +108,18 @@ class CoinController extends Controller
             'coinsName.unique'   => 'اسم العملة موجود بالفعل',
             'coinsCode.required' => 'رمز العملة مطلوب',
             'coinsCode.unique'   => 'رمز العملة موجود بالفعل',
+            'coinsExchangeRate.gt' => 'سعر الصرف يجب أن يكون أكبر من صفر',
         ]);
+
+        $validator->after(function ($v) use ($request) {
+            /* ✅ عملة النظام هي مرجع التحويل — سعرها 1 دائماً */
+            if ($request->boolean('coinsSystem') && (float) $request->input('coinsExchangeRate') !== 1.0) {
+                $v->errors()->add(
+                    'coinsExchangeRate',
+                    'سعر صرف عملة النظام يجب أن يكون 1 (هي مرجع التحويل).'
+                );
+            }
+        });
 
         if ($validator->fails()) {
             return response()->json([

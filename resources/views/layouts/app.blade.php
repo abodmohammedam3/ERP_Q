@@ -38,6 +38,9 @@
         </div>
     </div>
 
+    {{-- ✅ مودال التأكيد العام — متاح في كل الصفحات (shared/app-confirm.js) --}}
+    @include('shared.app-confirm-modal')
+
     {{-- المودالات الإضافية --}}
     @stack('modals')
 

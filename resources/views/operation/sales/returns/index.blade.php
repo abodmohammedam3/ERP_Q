@@ -247,10 +247,11 @@
 </div>
 
 @endsection
-{{-- ✅ المودال العام — يُحمَّل في هذه الصفحة فقط --}}
-@push('modals')
-    @include('shared.app-confirm-modal')
-@endpush
+{{-- appConfirmModal (#appConfirmModal) يُضمَّن الآن في layouts/app.blade.php لكل الصفحات --}}
 @push('scripts')
+<script>
+    window.SALES_SYSTEM_CURRENCY_ID   = @json($systemCurrencyId ?? null);
+    window.SALES_SYSTEM_CURRENCY_CODE = @json($systemCurrencyCode ?? '');
+</script>
     @vite(['resources/js/pages/sales-return.js'])
 @endpush

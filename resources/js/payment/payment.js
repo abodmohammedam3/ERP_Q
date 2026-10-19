@@ -1684,21 +1684,25 @@ function initPaymentVoucherPage() {
     // ══════════════════════════════════════════════════════════
 
     window.cancelVoucher =
-        function () {
+    async function () {
 
-            if (saveInProgress) {
-                return;
-            }
+        if (saveInProgress) {
+            return;
+        }
 
-            if (
-                !confirm(
-                    'هل أنت متأكد من إلغاء العملية؟'
+        const ok =
+            (typeof window.appConfirm === 'function')
+                ? await window.appConfirm(
+                    'هل أنت متأكد من إلغاء العملية؟',
+                    { title: 'إلغاء العملية', okText: 'تأكيد الإلغاء', danger: true }
                 )
-            ) {
-                return;
-            }
+                : confirm('هل أنت متأكد من إلغاء العملية؟');
 
-            clearForm();
+        if (!ok) {
+            return;
+        }
+
+        clearForm();
 
             loadNextVoucherNumber();
 

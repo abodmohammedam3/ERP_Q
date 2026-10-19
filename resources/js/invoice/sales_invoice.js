@@ -140,11 +140,25 @@ function applySalesExchangeRateState() {
     const rateEl = document.getElementById('SalesExchangeRate');
     if (!rateEl) return;
 
-    rateEl.readOnly = true;
-    rateEl.classList.add('bg-light');
-
+    /* ✅ سعر الصرف خاص بالفاتورة:
+       - عملة النظام → readonly بقيمة 1 (مرجع التحويل)
+       - عملة أجنبية → قابل للتعديل (القيمة الافتراضية من العملة، وتُحفظ مع الفاتورة) */
     if (isSalesInSystemCurrency()) {
+        rateEl.readOnly = true;
+        rateEl.tabIndex = -1;
+        rateEl.classList.add('bg-light');
         rateEl.value = '1.000000';
+        rateEl.title = 'سعر صرف عملة النظام ثابت = 1';
+    } else {
+        rateEl.readOnly = false;
+        rateEl.tabIndex = 0;
+        rateEl.classList.remove('bg-light');
+        rateEl.title = 'سعر صرف هذه الفاتورة (يمكن تجاوز السعر اليومي)';
+    }
+
+    /* في وضع العرض فقط تكون كل الحقول مقروءة */
+    if (typeof salesMode !== 'undefined' && salesMode === 'view') {
+        rateEl.readOnly = true;
     }
 
     const currencyInput = document.getElementById('salesCurrencyName');
@@ -401,11 +415,15 @@ function clearSalesForm() {
     document.querySelectorAll(
         '#SalesInvoiceNo, #SalesInvoiceDate, #SalesPaymentMethod, ' +
         '#salesPaymentAccount, #customerName, #salesCurrencyName, ' +
-        '#SalesExchangeRate, #SalesStatement, #SalesReference'
+        '#SalesStatement, #SalesReference'
     ).forEach(el => {
         if (el.tagName === 'SELECT') el.selectedIndex = 0;
         else el.value = '';
     });
+
+    /* ✅ سعر الصرف تُعيد حالته دالة applySalesExchangeRateState (قابل للتعديل/مقروء حسب العملة) */
+    const rateEl = document.getElementById('SalesExchangeRate');
+    if (rateEl) rateEl.value = '';
 
     ['customerID', 'salesCoinsID', 'salesPaymentAccountId']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
@@ -560,7 +578,15 @@ function calculateSalesTotals() {
 }
 
 function salesExchangeRateChanged() {
-    // سعر الصرف readonly — لا شيء
+    /* ✅ إعادة احتساب الإجمالي بالعملة المحلية عند تغيير سعر الصرف */
+    const rateEl = document.getElementById('SalesExchangeRate');
+    if (rateEl) {
+        const rate = parseFloat(rateEl.value);
+        if (!isNaN(rate) && rate <= 0) {
+            rateEl.value = '1.000000';
+        }
+    }
+    calculateSalesTotals();
 }
 
 /* =========================================================
@@ -787,8 +813,20 @@ function buildSalesDeleteBtn(inv) {
    POST / UNPOST / DELETE (من نافذة البحث)
    ========================================================= */
 
+/** ✅ تأكيد موحّد عبر appConfirm (shared/app-confirm.js) */
+function salesConfirm(message, opts = {}) {
+    if (typeof window.appConfirm === 'function') {
+        return window.appConfirm(message, opts);
+    }
+    return Promise.resolve(window.confirm(message));
+}
+
 async function postSalesInvoice(id) {
-    if (!confirm('هل تريد ترحيل هذه الفاتورة؟\nسيتم إنشاء القيود وحركة المخزون.')) return;
+    const ok = await salesConfirm('هل تريد ترحيل هذه الفاتورة؟\nسيتم إنشاء القيود وحركة المخزون.', {
+        title: 'ترحيل فاتورة البيع',
+        okText: 'ترحيل',
+    });
+    if (!ok) return;
 
     try {
         const r = await salesApiSend(`/operation/sales/invoices/${id}/post`, 'POST', {});
@@ -800,7 +838,12 @@ async function postSalesInvoice(id) {
 }
 
 async function unpostSalesInvoice(id) {
-    if (!confirm('هل تريد إلغاء ترحيل هذه الفاتورة؟\nسيتم حذف القيود وحركة المخزون.')) return;
+    const ok = await salesConfirm('هل تريد إلغاء ترحيل هذه الفاتورة؟\nسيتم حذف القيود وحركة المخزون.', {
+        title: 'إلغاء ترحيل فاتورة البيع',
+        okText: 'إلغاء الترحيل',
+        danger: true,
+    });
+    if (!ok) return;
 
     try {
         const r = await salesApiSend(`/operation/sales/invoices/${id}/unpost`, 'POST', {});
@@ -817,7 +860,12 @@ async function unpostSalesInvoice(id) {
 
 async function deleteSalesInvoice(id, number) {
     const label = number ? `رقم ${number}` : `#${id}`;
-    if (!confirm(`هل أنت متأكد من حذف الفاتورة ${label}؟\nلا يمكن التراجع عن هذه العملية.`)) return;
+    const ok = await salesConfirm(`هل أنت متأكد من حذف الفاتورة ${label}؟\nلا يمكن التراجع عن هذه العملية.`, {
+        title: 'حذف فاتورة البيع',
+        okText: 'حذف',
+        danger: true,
+    });
+    if (!ok) return;
 
     try {
         const r = await salesApiSend(`/operation/sales/invoices/${id}`, 'DELETE', {});
@@ -842,7 +890,11 @@ async function postCurrentSalesInvoice() {
         return;
     }
 
-    if (!confirm('هل تريد ترحيل هذه الفاتورة؟\nسيتم إنشاء القيود وحركة المخزون.')) return;
+    const ok = await salesConfirm('هل تريد ترحيل هذه الفاتورة؟\nسيتم إنشاء القيود وحركة المخزون.', {
+        title: 'ترحيل فاتورة البيع',
+        okText: 'ترحيل',
+    });
+    if (!ok) return;
 
     try {
         const r = await salesApiSend(`/operation/sales/invoices/${currentSalesInvoiceId}/post`, 'POST', {});
@@ -859,7 +911,12 @@ async function unpostCurrentSalesInvoice() {
         return;
     }
 
-    if (!confirm('هل تريد إلغاء ترحيل هذه الفاتورة؟\nسيتم حذف القيود وحركة المخزون.')) return;
+    const ok = await salesConfirm('هل تريد إلغاء ترحيل هذه الفاتورة؟\nسيتم حذف القيود وحركة المخزون.', {
+        title: 'إلغاء ترحيل فاتورة البيع',
+        okText: 'إلغاء الترحيل',
+        danger: true,
+    });
+    if (!ok) return;
 
     try {
         const r = await salesApiSend(`/operation/sales/invoices/${currentSalesInvoiceId}/unpost`, 'POST', {});
@@ -1021,8 +1078,13 @@ function editSalesInvoice() {
     salesEditSnapshot = takeSalesSnapshot();
 }
 
-function cancelSalesInvoice() {
-    if (!confirm('هل أنت متأكد من إلغاء العملية؟')) return;
+async function cancelSalesInvoice() {
+    const ok = await salesConfirm('هل أنت متأكد من إلغاء العملية؟', {
+        title: 'إلغاء العملية',
+        okText: 'تأكيد الإلغاء',
+        danger: true,
+    });
+    if (!ok) return;
     clearSalesForm();
     salesNotify('تم إلغاء العملية', 'info');
 }
@@ -1247,11 +1309,26 @@ function renderStockBalances(rows) {
         return;
     }
 
-    const usedItemIds = new Set();
+    /* ✅ مفتاح مركّب: الصنف + النوع + المخزن + الوحدة
+       (لا يُعطَّل كل صنف بنفس item_id — فقط الدفعة المختارة تحديداً) */
+    const balanceKey = (r) => [
+        r.item_id ?? '',
+        r.type_id ?? '',
+        r.warehouse_id ?? '',
+        r.unit_id ?? '',
+    ].join('|');
+
+    const usedKeys = new Set();
     document.querySelectorAll('#salesInvoiceDetails .sales-detail-row').forEach(r => {
         if (r === activeStockBalanceRow) return;
         const id = r.querySelector('.row-item-id')?.value;
-        if (id) usedItemIds.add(String(id));
+        if (!id) return;
+        usedKeys.add([
+            id,
+            r.querySelector('.row-type-id')?.value ?? '',
+            r.querySelector('.row-warehouse-id')?.value ?? '',
+            r.querySelector('.row-unit-id')?.value ?? '',
+        ].join('|'));
     });
 
     const fragment = document.createDocumentFragment();
@@ -1260,7 +1337,7 @@ function renderStockBalances(rows) {
         const tr = document.createElement('tr');
         tr.className = 'text-center';
 
-        const isUsed = usedItemIds.has(String(row.item_id));
+        const isUsed = usedKeys.has(balanceKey(row));
 
         if (isUsed) {
             tr.classList.add('opacity-50', 'bg-light');
@@ -1295,7 +1372,7 @@ function renderStockBalances(rows) {
         if (isUsed) {
             btnSelect.disabled = true;
             btnSelect.classList.add('disabled');
-            btnSelect.title = 'هذا الصنف مضاف بالفعل في صف آخر';
+            btnSelect.title = 'هذه الدفعة (الصنف/النوع/المخزن/الوحدة) مضافة بالفعل في صف آخر';
         } else {
             btnSelect.addEventListener('click', () => selectStockBalance(row));
         }

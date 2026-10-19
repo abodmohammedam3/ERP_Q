@@ -137,6 +137,14 @@ function notify(message, type = 'info') {
     }
 }
 
+/** ✅ تأكيد موحّد عبر appConfirm (shared/app-confirm.js) */
+function movementConfirm(message, opts = {}) {
+    if (typeof window.appConfirm === 'function') {
+        return window.appConfirm(message, opts);
+    }
+    return Promise.resolve(window.confirm(message));
+}
+
 function formatMoney(v) {
     if (window.Utils && typeof Utils.formatAmount === 'function') {
         return Utils.formatAmount(v);
@@ -1070,9 +1078,15 @@ function validateMovement() {
    إلغاء / طباعة
    ============================================================ */
 
-function cancelMovement() {
+async function cancelMovement() {
     if (movementMode !== 'add') return;
-    if (!confirm('هل تريد إلغاء الحركة الحالية؟')) return;
+
+    const ok = await movementConfirm('هل تريد إلغاء الحركة الحالية؟', {
+        title: 'إلغاء الحركة',
+        okText: 'تأكيد الإلغاء',
+        danger: true,
+    });
+    if (!ok) return;
 
     clearMovementForm();
     notify('تم إلغاء العملية', 'info');
@@ -1681,8 +1695,9 @@ async function saveSortingFromBalance() {
 
     if (salePrice > 0 && unitCost > 0 && salePrice < unitCost) {
         const deficit = ((unitCost - salePrice) / unitCost * 100).toFixed(1);
-        const confirmed = confirm(
-            `⚠️ تحذير: سعر البيع (${formatMoney(salePrice)}) أقل من تكلفة الوحدة الناتجة (${formatMoney(unitCost)}) بنسبة ${deficit}%.\n\nهل تريد المتابعة؟`
+        const confirmed = await movementConfirm(
+            `⚠️ تحذير: سعر البيع (${formatMoney(salePrice)}) أقل من تكلفة الوحدة الناتجة (${formatMoney(unitCost)}) بنسبة ${deficit}%.\n\nهل تريد المتابعة؟`,
+            { title: 'تحذير تسعير', okText: 'متابعة', danger: true }
         );
         if (!confirmed) return;
     }

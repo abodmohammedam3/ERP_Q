@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Operation\Purchases;
 
 use App\Http\Controllers\Controller;
+use App\Models\Accounting\Coin;
 use App\Models\Purchases\PurchaseReturn;
 use App\Support\Permissions;
 
@@ -15,7 +16,13 @@ class PurchaseReturnController extends Controller
     {
         Permissions::authorize(config('permissions.purchase_returns.view'));
 
-        return view('operation.purchases.returns.index');
+        /* ✅ يحتاجها purchase_return.js لتحديد عملة النظام (سعر صرف مقروء = 1) */
+        $systemCurrency = Coin::where('coinsSystem', 1)->first();
+
+        return view('operation.purchases.returns.index', [
+            'systemCurrencyId'   => $systemCurrency->coinsID ?? null,
+            'systemCurrencyCode' => $systemCurrency->coinsCode ?? '',
+        ]);
     }
 
     /**

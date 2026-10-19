@@ -270,6 +270,9 @@ public function delete(int $id): void
     // =========================================================
     public function syncInventoryMovement(PurchaseInvoice $invoice): void
     {
+        /* ✅ علاقة المورد مطلوبة للبيان */
+        $invoice->loadMissing('supplierAccount');
+
         $this->deleteInventoryMovement($invoice);
 
         $lastMovement = InventoryMovement::lockForUpdate()
@@ -280,6 +283,14 @@ public function delete(int $id): void
             ? ((int) $lastMovement->display_id + 1)
             : 1;
 
+        /* ✅ البيان: اسم المورد + رقم الفاتورة */
+        $supplierName = trim((string) optional($invoice->supplierAccount)->accName);
+
+        $purchaseStatement = 'توريد تلقائي من فاتورة الشراء رقم ' . $invoice->invoice_number;
+        if ($supplierName !== '') {
+            $purchaseStatement .= ' — المورد: ' . $supplierName;
+        }
+
         $movement = InventoryMovement::create([
             'display_id'      => (string) $nextNumber,
             'movement_type'   => InventoryMovement::TYPE_PURCHASE,
@@ -289,8 +300,7 @@ public function delete(int $id): void
             'movement_date'   => $invoice->invoice_date,
             'document_number' => $invoice->invoice_number,
             'warehouse_id'    => $invoice->warehouse_id,
-            'statement'       => 'توريد تلقائي من فاتورة الشراء رقم '
-                                    . $invoice->invoice_number,
+            'statement'       => $purchaseStatement,
             'source_type'     => InventoryMovement::SOURCE_PURCHASE_INVOICE,
             'source_id'       => $invoice->purchase_invoice_id,
             'total'           => 0,

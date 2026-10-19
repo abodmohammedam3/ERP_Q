@@ -41,17 +41,24 @@
                                 سعر الصرف <span class="text-danger">*</span>
                             </label>
                             <input type="number" class="form-control" id="coinsExchangeRate"
-                                   step="0.000001" min="0" required placeholder="1.000000">
+                                   step="0.000001" min="0.000001" required placeholder="1.000000">
                         </div>
 
                         {{-- عملة النظام --}}
                         <div class="col-md-6">
                             <label for="coinsSystem" class="form-label">عملة النظام الأساسية</label>
-                            <select class="form-select" id="coinsSystem">
+                            <select class="form-select" id="coinsSystem" onchange="syncCoinSystemRateHint()">
                                 <option value="0">لا</option>
                                 <option value="1">نعم</option>
                             </select>
                             <div class="form-text">عملة واحدة فقط يمكن أن تكون الأساسية.</div>
+
+                            {{-- ✅ تحذير سعر عملة النظام --}}
+                            <div class="alert alert-warning py-2 px-3 mt-2 mb-0 small d-none" id="coinSystemRateHint">
+                                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                عملة النظام هي <strong>مرجع التحويل</strong> وسعرها <strong>1 دائماً</strong>.
+                                تغييره غير مسموح من هذه الشاشة؛ الأسعار الأجنبية تُعبّر عنه.
+                            </div>
                         </div>
 
                         {{-- الحالة --}}

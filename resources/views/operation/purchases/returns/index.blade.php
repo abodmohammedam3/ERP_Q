@@ -205,5 +205,9 @@
 @endsection
 
 @push('scripts')
+<script>
+    window.PURCHASE_SYSTEM_CURRENCY_ID   = @json($systemCurrencyId ?? null);
+    window.PURCHASE_SYSTEM_CURRENCY_CODE = @json($systemCurrencyCode ?? '');
+</script>
     @vite(['resources/js/pages/purchase-return.js'])
 @endpush

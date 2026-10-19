@@ -182,23 +182,20 @@
                 >
             </div>
 
-            {{-- سعر الصرف: للعرض فقط --}}
+            {{-- سعر الصرف: قابل للتعديل للعملة الأجنبية (خاص بالمرتجع)، ومقروء = 1 لعملة النظام --}}
             <div class="col-md-2">
                 <label for="SalesReturnExchangeRate" class="form-label">
                     سعر الصرف
                 </label>
 
                 <input
-                    type="text"
-                    inputmode="none"
-                    class="form-control bg-light"
+                    type="number"
+                    step="0.000001"
+                    min="0.000001"
+                    class="form-control"
                     id="SalesReturnExchangeRate"
-                    readonly
-                    tabindex="-1"
-                    onkeydown="return false"
-                    onpaste="return false"
-                    oncut="return false"
-                    ondrop="return false"
+                    title="سعر صرف هذا المرتجع"
+                    oninput="calculateSalesReturnTotals()"
                 >
             </div>
 

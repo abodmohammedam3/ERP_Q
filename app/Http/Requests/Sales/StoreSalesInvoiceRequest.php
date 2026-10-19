@@ -26,7 +26,8 @@ class StoreSalesInvoiceRequest extends FormRequest
             'account_id'         => ['required', 'exists:characcount,accountID'],
             'payment_method'     => ['required', 'integer', 'in:1,2,3'],
             'coin_id'            => ['required', 'exists:coins,coinsID'],
-            'exchange_rate'      => ['nullable', 'numeric', 'min:0'],
+            /* ✅ سعر الصرف خاص بالفاتورة — يجب أن يكون موجبًا (الخدمة تستخدم ?? 1 احتياطًا) */
+            'exchange_rate'      => ['nullable', 'numeric', 'gt:0'],
             'payment_account_id' => ['nullable', 'exists:characcount,accountID'],
             'statement'          => ['nullable', 'string'],
             'reference'          => ['nullable', 'string'],
@@ -54,6 +55,8 @@ class StoreSalesInvoiceRequest extends FormRequest
             'payment_method.required' => 'طريقة الدفع مطلوبة',
             'coin_id.required'        => 'يجب اختيار العملة',
             'coin_id.exists'          => 'العملة المحددة غير موجودة',
+            'exchange_rate.numeric'   => 'سعر الصرف يجب أن يكون رقمًا',
+            'exchange_rate.gt'        => 'سعر الصرف يجب أن يكون أكبر من صفر',
 
             'details.required' => 'يجب إضافة صنف واحد على الأقل',
             'details.min'      => 'يجب إضافة صنف واحد على الأقل',

@@ -165,10 +165,7 @@
 @endsection
 
 
-{{-- ✅ المودال العام — يُحمَّل في هذه الصفحة فقط --}}
-@push('modals')
-    @include('shared.app-confirm-modal')
-@endpush
+{{-- appConfirmModal (#appConfirmModal) يُضمَّن الآن في layouts/app.blade.php — لا تُعده هنا --}}
 
 
 @push('scripts')

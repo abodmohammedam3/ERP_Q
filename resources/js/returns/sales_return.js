@@ -238,6 +238,38 @@ function setSalesReturnMode(mode) {
 
     updateSalesReturnSearchButton();
     updateSalesReturnPostingButtons();
+    applySalesReturnExchangeRateState();
+}
+
+/**
+ * ✅ سعر صرف المرتجع الخاص به — مثل فاتورة البيع:
+ *   - عملة النظام → readonly = 1
+ *   - عملة أجنبية → قابل للتعديل (إلا في وضع العرض)
+ */
+function applySalesReturnExchangeRateState() {
+    const rateEl = document.getElementById('SalesReturnExchangeRate');
+    if (!rateEl) return;
+
+    const sysId = window.SALES_SYSTEM_CURRENCY_ID ?? null;
+    const coinId = salesReturnGetValue('salesReturnCoinsID');
+    const isSys = sysId !== null && coinId !== '' && String(coinId) === String(sysId);
+    const isView = salesReturnMode === SALES_RETURN_MODES.VIEW;
+
+    if (isSys) {
+        rateEl.value = '1';
+    }
+
+    if (isSys || isView) {
+        rateEl.readOnly = true;
+        rateEl.tabIndex = -1;
+        rateEl.classList.add('bg-light');
+        rateEl.title = isSys ? 'سعر صرف عملة النظام ثابت = 1' : 'وضع العرض — لا يمكن التعديل';
+    } else {
+        rateEl.readOnly = false;
+        rateEl.tabIndex = 0;
+        rateEl.classList.remove('bg-light');
+        rateEl.title = 'سعر صرف هذا المرتجع (يمكن تجاوزه عن السعر اليومي)';
+    }
 }
 
 function updateSalesReturnSearchButton() {

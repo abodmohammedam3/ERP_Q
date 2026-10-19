@@ -418,6 +418,9 @@ class SalesReturnService
 
     public function syncInventoryMovement(SalesReturn $salesReturn): void
     {
+        /* ✅ علاقة العميل مطلوبة للبيان */
+        $salesReturn->loadMissing('customerAccount');
+
         $this->deleteInventoryMovement($salesReturn);
 
         $lastMovement = InventoryMovement::lockForUpdate()
@@ -436,6 +439,14 @@ class SalesReturnService
             throw new \RuntimeException('لا يمكن إنشاء حركة مخزون بدون مخزن');
         }
 
+        /* ✅ البيان: اسم العميل + رقم المرتجع */
+        $customerName = trim((string) optional($salesReturn->customerAccount)->accName);
+
+        $returnStatement = 'إدخال تلقائي من مرتجع بيع رقم ' . $salesReturn->return_number;
+        if ($customerName !== '') {
+            $returnStatement .= ' — العميل: ' . $customerName;
+        }
+
         $movement = InventoryMovement::create([
             'display_id'      => (string) $nextNumber,
             'movement_type'   => InventoryMovement::TYPE_SALE_RETURN,
@@ -445,7 +456,7 @@ class SalesReturnService
             'movement_date'   => $salesReturn->return_date,
             'document_number' => $salesReturn->return_number,
             'warehouse_id'    => $headerWarehouse,
-            'statement'       => 'إدخال تلقائي من مرتجع بيع رقم ' . $salesReturn->return_number,
+            'statement'       => $returnStatement,
             'source_type'     => InventoryMovement::SOURCE_SALES_RETURN,
             'source_id'       => $salesReturn->sales_return_id,
             'total'           => 0,

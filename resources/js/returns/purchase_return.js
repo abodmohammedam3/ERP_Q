@@ -17,6 +17,14 @@ function purchaseReturnFormatMoney(v) {
     });
 }
 
+/** ✅ تأكيد موحّد عبر appConfirm (shared/app-confirm.js) — مثل sales_return.js */
+function purchaseReturnConfirm(message, opts = {}) {
+    if (typeof window.appConfirm === 'function') {
+        return window.appConfirm(message, opts);
+    }
+    return Promise.resolve(window.confirm(message));
+}
+
 let purchaseReturnMode = 'view';
 let currentPurchaseReturnId = null;
 let currentPurchaseReturnIsPosted = false;
@@ -179,6 +187,38 @@ function setPurchaseReturnMode(mode) {
 
     updatePurchaseReturnSearchButton();
     updatePurchaseReturnPostingButtons();
+    applyPurchaseReturnExchangeRateState();
+}
+
+/**
+ * ✅ سعر صرف المرتجع الخاص به — مثل فاتورة الشراء:
+ *   - عملة النظام → readonly = 1
+ *   - عملة أجنبية → قابل للتعديل (إلا في وضع العرض)
+ */
+function applyPurchaseReturnExchangeRateState() {
+    const rateEl = document.getElementById('PurchaseReturnExchangeRate');
+    if (!rateEl) return;
+
+    const sysId = window.PURCHASE_SYSTEM_CURRENCY_ID ?? null;
+    const coinId = purchaseReturnGetValue('purchaseReturnCoinsID');
+    const isSys = sysId !== null && coinId !== '' && String(coinId) === String(sysId);
+    const isView = purchaseReturnMode === 'view';
+
+    if (isSys) {
+        rateEl.value = '1';
+    }
+
+    if (isSys || isView) {
+        rateEl.readOnly = true;
+        rateEl.tabIndex = -1;
+        rateEl.classList.add('bg-light');
+        rateEl.title = isSys ? 'سعر صرف عملة النظام ثابت = 1' : 'وضع العرض — لا يمكن التعديل';
+    } else {
+        rateEl.readOnly = false;
+        rateEl.tabIndex = 0;
+        rateEl.classList.remove('bg-light');
+        rateEl.title = 'سعر صرف هذا المرتجع (يمكن تجاوزه عن السعر اليومي)';
+    }
 }
 
 /* =========================================================
@@ -837,7 +877,11 @@ function buildPurchaseReturnDeleteBtn(ret) {
 }
 
 async function postPurchaseReturn(id) {
-    if (!confirm('هل تريد ترحيل هذا المرتجع؟\nسيتم إنشاء القيود وحركة المخزون.')) return;
+    const ok = await purchaseReturnConfirm('هل تريد ترحيل هذا المرتجع؟\nسيتم إنشاء القيود وحركة المخزون.', {
+        title: 'ترحيل مرتجع الشراء',
+        okText: 'ترحيل',
+    });
+    if (!ok) return;
 
     try {
         const r = await purchaseReturnApiSend(
@@ -853,7 +897,12 @@ async function postPurchaseReturn(id) {
 }
 
 async function unpostPurchaseReturn(id) {
-    if (!confirm('هل تريد إلغاء ترحيل هذا المرتجع؟\nسيتم حذف القيود وحركة المخزون.')) return;
+    const ok = await purchaseReturnConfirm('هل تريد إلغاء ترحيل هذا المرتجع؟\nسيتم حذف القيود وحركة المخزون.', {
+        title: 'إلغاء ترحيل مرتجع الشراء',
+        okText: 'إلغاء الترحيل',
+        danger: true,
+    });
+    if (!ok) return;
 
     try {
         const r = await purchaseReturnApiSend(
@@ -874,7 +923,12 @@ async function unpostPurchaseReturn(id) {
 
 async function deletePurchaseReturn(id, number) {
     const label = number ? `رقم ${number}` : `#${id}`;
-    if (!confirm(`هل أنت متأكد من حذف المرتجع ${label}؟\nلا يمكن التراجع عن هذه العملية.`)) return;
+    const ok = await purchaseReturnConfirm(`هل أنت متأكد من حذف المرتجع ${label}؟\nلا يمكن التراجع عن هذه العملية.`, {
+        title: 'حذف مرتجع الشراء',
+        okText: 'حذف',
+        danger: true,
+    });
+    if (!ok) return;
 
     try {
         const r = await purchaseReturnApiSend(
@@ -899,7 +953,11 @@ async function postCurrentPurchaseReturn() {
         return;
     }
 
-    if (!confirm('هل تريد ترحيل هذا المرتجع؟\nسيتم إنشاء القيود وحركة المخزون.')) return;
+    const ok = await purchaseReturnConfirm('هل تريد ترحيل هذا المرتجع؟\nسيتم إنشاء القيود وحركة المخزون.', {
+        title: 'ترحيل مرتجع الشراء',
+        okText: 'ترحيل',
+    });
+    if (!ok) return;
 
     try {
         const r = await purchaseReturnApiSend(
@@ -920,7 +978,12 @@ async function unpostCurrentPurchaseReturn() {
         return;
     }
 
-    if (!confirm('هل تريد إلغاء ترحيل هذا المرتجع؟\nسيتم حذف القيود وحركة المخزون.')) return;
+    const ok = await purchaseReturnConfirm('هل تريد إلغاء ترحيل هذا المرتجع؟\nسيتم حذف القيود وحركة المخزون.', {
+        title: 'إلغاء ترحيل مرتجع الشراء',
+        okText: 'إلغاء الترحيل',
+        danger: true,
+    });
+    if (!ok) return;
 
     try {
         const r = await purchaseReturnApiSend(
@@ -1037,8 +1100,13 @@ function editPurchaseReturn() {
         .forEach(r => enablePurchaseReturnRow(r));
 }
 
-function cancelPurchaseReturn() {
-    if (!confirm('هل أنت متأكد من إلغاء العملية؟')) return;
+async function cancelPurchaseReturn() {
+    const ok = await purchaseReturnConfirm('هل أنت متأكد من إلغاء العملية؟', {
+        title: 'إلغاء العملية',
+        okText: 'تأكيد الإلغاء',
+        danger: true,
+    });
+    if (!ok) return;
     clearPurchaseReturnForm();
     purchaseReturnNotify('تم إلغاء العملية', 'info');
 }

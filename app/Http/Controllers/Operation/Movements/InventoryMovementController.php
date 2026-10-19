@@ -176,6 +176,11 @@ class InventoryMovementController extends Controller
             $type      = $request->input('movement_type');
             $direction = InventoryMovement::directionForType($type);
 
+            /* ✅ البيان التلقائي: يُبنى دائمًا من الحقول الأساسية (وثوقية)
+               ولا يطمس أي بيان يدخله المستخدم — البيانات موجودة في statement/reference/document_number
+               إن كان المستخدم أدخل بيانًا نصيًا حرًا يُحفظ كما هو. */
+            $statement = $this->buildMovementStatement($request, $nextNumber);
+
             $movement = InventoryMovement::create([
                 'display_id'      => (string) $nextNumber,
                 'movement_type'   => $type,
@@ -183,7 +188,7 @@ class InventoryMovementController extends Controller
                 'movement_date'   => $request->input('movement_date'),
                 'document_number' => $request->input('document_number'),
                 'warehouse_id'    => $request->input('warehouse_id'),
-                'statement'       => $request->input('statement'),
+                'statement'       => $statement,
                 'source_type'     => $request->input('source_type'),
                 'source_id'       => $request->input('source_id'),
                 'total'           => 0,
@@ -212,6 +217,42 @@ class InventoryMovementController extends Controller
     // =====================================================
     // الفرز / التجهيز
     // =====================================================
+
+    /**
+     * ✅ البيان التلقائي لحركة المخزون
+     * - نوع الحركة + رقم المستند + المخزن
+     * - إن كان المستخدم كتب بيانًا حرًا (statement) يُضاف بعده بدل طمسه
+     */
+    private function buildMovementStatement(Request $request, $displayId): string
+    {
+        $type      = (string) $request->input('movement_type');
+        $typeLabel = InventoryMovement::labelForType($type);
+
+        $parts = ['حركة ' . $typeLabel];
+
+        $docNo = trim((string) $request->input('document_number'));
+        if ($docNo !== '') {
+            $parts[] = 'مستند رقم ' . $docNo;
+        } else {
+            $parts[] = 'رقم ' . $displayId;
+        }
+
+        $warehouseId = $request->input('warehouse_id');
+        if ($warehouseId) {
+            $warehouseName = \App\Models\Inventory\Stock::where('StockID', $warehouseId)
+                ->value('StockName');
+            if ($warehouseName) {
+                $parts[] = 'المخزن: ' . $warehouseName;
+            }
+        }
+
+        $userStatement = trim((string) $request->input('statement'));
+        if ($userStatement !== '') {
+            $parts[] = 'البيان: ' . $userStatement;
+        }
+
+        return implode(' — ', $parts);
+    }
 
     public function sort(Request $request)
     {

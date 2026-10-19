@@ -117,17 +117,19 @@
                 >
             </div>
 
-            <!-- سعر الصرف — readonly دائماً -->
+            <!-- سعر الصرف — قابل للتعديل للعملة الأجنبية (خاص بالفاتورة)، ومقروء = 1 لعملة النظام -->
             <div class="col-md-2">
                 <label for="SalesExchangeRate" class="form-label">سعر الصرف</label>
                 <input
                     type="number"
                     step="0.000001"
-                    class="form-control bg-light"
+                    min="0.000001"
+                    class="form-control"
                     id="SalesExchangeRate"
                     name="SalesExchangeRate"
-                    readonly
-                    tabindex="-1"
+                    title="سعر صرف هذه الفاتورة"
+                    oninput="salesExchangeRateChanged()"
+                    disabled
                 >
             </div>
 

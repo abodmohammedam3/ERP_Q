@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Operation\Sales;
 
 use App\Http\Controllers\Controller;
+use App\Models\Accounting\Coin;
 use App\Models\Sales\SalesReturn;
 use App\Support\Permissions;
 
@@ -15,7 +16,13 @@ class SalesReturnController extends Controller
     {
         Permissions::authorize(config('permissions.sales_returns.view'));
 
-        return view('operation.sales.returns.index');
+        /* ✅ يحتاجها sales_return.js لتحديد عملة النظام (سعر صرف مقروء = 1) */
+        $systemCurrency = Coin::where('coinsSystem', 1)->first();
+
+        return view('operation.sales.returns.index', [
+            'systemCurrencyId'   => $systemCurrency->coinsID ?? null,
+            'systemCurrencyCode' => $systemCurrency->coinsCode ?? '',
+        ]);
     }
 
     /**

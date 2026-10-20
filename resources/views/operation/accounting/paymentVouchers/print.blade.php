@@ -40,6 +40,37 @@
             background: #fff;
         }
 
+        /* ═══ شريط الأوامر (لا يُطبع) ═══ */
+
+        .toolbar {
+            text-align: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+
+        .toolbar button {
+            padding: 8px 20px;
+            font-size: 14px;
+            margin: 0 5px;
+            cursor: pointer;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            background: #fff;
+            font-family: inherit;
+        }
+
+        .toolbar button.btn-print {
+            background: #dc3545;
+            color: #fff;
+            border-color: #dc3545;
+        }
+
+        .toolbar button:hover {
+            opacity: 0.9;
+        }
+
         /* ═══ الترويسة ═══ */
 
         .header {
@@ -115,6 +146,7 @@
 
         .voucher-info .info-item {
             text-align: center;
+            flex: 1;
         }
 
         .voucher-info .info-item .label {
@@ -198,7 +230,13 @@
             color: #dc3545;
         }
 
-        /* ⭐ صفوف الأرصدة */
+        .details-table .section-header {
+            background: #e9ecef;
+            color: #495057;
+            font-weight: bold;
+            text-align: right;
+            padding-right: 15px;
+        }
 
         .details-table .balance-row {
             background: #f8f9fa;
@@ -310,6 +348,10 @@
                 padding: 15px;
                 box-shadow: none;
             }
+
+            .toolbar {
+                display: none !important;
+            }
         }
 
     </style>
@@ -317,6 +359,18 @@
 </head>
 
 <body>
+
+    <!-- ═══ شريط الأوامر (لا يُطبع) ═══ -->
+
+    <div class="toolbar no-print">
+        <button type="button" class="btn-print" onclick="window.print()">
+            🖨️ طباعة
+        </button>
+        <button type="button" onclick="window.close()">
+            ✖️ إغلاق
+        </button>
+    </div>
+
 
     <div class="voucher-container">
 
@@ -331,29 +385,19 @@
                 </div>
 
                 <div>
-
                     <div class="company-name">
                         {{ $companyName }}
                     </div>
-
                     <div class="company-subtitle">
-                        نظام إدارة الموارد
+                        {{ $companySubtitle }}
                     </div>
-
                 </div>
 
             </div>
 
             <div class="voucher-title">
-
-                <h1>
-                    سند صرف
-                </h1>
-
-                <div class="subtitle">
-                    Payment Voucher
-                </div>
-
+                <h1>سند صرف</h1>
+                <div class="subtitle">Payment Voucher</div>
             </div>
 
         </div>
@@ -364,39 +408,18 @@
         <div class="voucher-info">
 
             <div class="info-item">
-
-                <span class="label">
-                    رقم السند
-                </span>
-
-                <span class="value">
-                    {{ $voucher->voucherNumber }}
-                </span>
-
+                <span class="label">رقم السند</span>
+                <span class="value">{{ $voucher->voucherNumber }}</span>
             </div>
 
             <div class="info-item">
-
-                <span class="label">
-                    التاريخ
-                </span>
-
-                <span class="value">
-                    {{ $formattedDate }}
-                </span>
-
+                <span class="label">التاريخ</span>
+                <span class="value">{{ $formattedDate }}</span>
             </div>
 
             <div class="info-item">
-
-                <span class="label">
-                    طريقة الدفع
-                </span>
-
-                <span class="value">
-                    {{ $paymentMethodText }}
-                </span>
-
+                <span class="label">طريقة الدفع</span>
+                <span class="value">{{ $paymentMethodText }}</span>
             </div>
 
         </div>
@@ -407,39 +430,25 @@
         <div class="parties">
 
             <div class="party-box">
-
-                <span class="party-label">
-                    الحساب المستفيد
-                </span>
-
+                <span class="party-label">الحساب المستفيد (مدين)</span>
                 <span class="party-value">
-
-                    {{ $voucher->beneficiaryAccount->accCode ?? '' }}
-
-                    -
-
-                    {{ $voucher->beneficiaryAccount->accName ?? '' }}
-
+                    {{ $voucher->beneficiaryAccount?->accCode ?? '' }}
+                    @if($voucher->beneficiaryAccount?->accCode && $voucher->beneficiaryAccount?->accName)
+                        -
+                    @endif
+                    {{ $voucher->beneficiaryAccount?->accName ?? '' }}
                 </span>
-
             </div>
 
             <div class="party-box">
-
-                <span class="party-label">
-                    حساب الدفع
-                </span>
-
+                <span class="party-label">حساب الدفع (دائن)</span>
                 <span class="party-value">
-
-                    {{ $voucher->paymentAccount->accCode ?? '' }}
-
-                    -
-
-                    {{ $voucher->paymentAccount->accName ?? '' }}
-
+                    {{ $voucher->paymentAccount?->accCode ?? '' }}
+                    @if($voucher->paymentAccount?->accCode && $voucher->paymentAccount?->accName)
+                        -
+                    @endif
+                    {{ $voucher->paymentAccount?->accName ?? '' }}
                 </span>
-
             </div>
 
         </div>
@@ -450,106 +459,55 @@
         <table class="details-table">
 
             <thead>
-
                 <tr>
-
-                    <th style="width: 50%;">
-                        البيان
-                    </th>
-
-                    <th style="width: 25%;">
-                        المبلغ
-                    </th>
-
-                    <th style="width: 25%;">
-                        العملة
-                    </th>
-
+                    <th style="width: 50%;">البيان</th>
+                    <th style="width: 25%;">المبلغ</th>
+                    <th style="width: 25%;">العملة</th>
                 </tr>
-
             </thead>
 
             <tbody>
 
+                <!-- مبلغ الصرف -->
                 <tr>
-
                     <td>
                         مبلغ مصروف إلى
-                        {{ $voucher->beneficiaryAccount->accName ?? '' }}
+                        {{ $voucher->beneficiaryAccount?->accName ?? '—' }}
                     </td>
-
                     <td class="amount-cell">
-                        {{ number_format($voucher->amount, 2) }}
+                        {{ number_format((float) $voucher->amount, 2) }}
                     </td>
-
                     <td class="currency-cell">
-
-                        {{ $voucher->currency->coinsCode ?? '' }}
-
-                        -
-
-                        {{ $voucher->currency->coinsName ?? '' }}
-
+                        {{ $currencyCode }}
+                        @if($currencyCode !== '—' && $currencyName !== '—')
+                            -
+                        @endif
+                        {{ $currencyName }}
                     </td>
-
                 </tr>
 
 
-                {{-- ⭐ الرصيد قبل العملية --}}
-
+                {{-- رصيد المستفيد (مدين) --}}
                 <tr class="balance-row">
-
                     <td>
-
-                        الرصيد قبل العملية
-
-                        (
-                        {{ $voucher->beneficiaryAccount->accName ?? '' }}
-                        )
-
+                        <strong>رصيد المستفيد قبل العملية</strong>
+                        ({{ $voucher->beneficiaryAccount?->accName ?? '—' }})
                     </td>
-
                     <td class="amount-cell">
-
-                        {{ number_format($balanceBefore, 2) }}
-
+                        {{ number_format($beneficiaryBalanceBefore, 2) }}
                     </td>
-
-                    <td class="currency-cell">
-
-                        {{ $systemCurrencyCode ?? '—' }}
-
-                    </td>
-
+                    <td class="currency-cell">{{ $systemCurrencyCode ?: '—' }}</td>
                 </tr>
-
-
-                {{-- ⭐ الرصيد بعد العملية --}}
 
                 <tr class="balance-row highlight">
-
                     <td>
-
-                        الرصيد بعد العملية
-
-                        (
-                        {{ $voucher->beneficiaryAccount->accName ?? '' }}
-                        )
-
+                        <strong>رصيد المستفيد بعد العملية</strong>
+                        ({{ $voucher->beneficiaryAccount?->accName ?? '—' }})
                     </td>
-
                     <td class="amount-cell">
-
-                        {{ number_format($balanceAfter, 2) }}
-
+                        {{ number_format($beneficiaryBalanceAfter, 2) }}
                     </td>
-
-                    <td class="currency-cell">
-
-                        {{ $systemCurrencyCode ?? '—' }}
-
-                    </td>
-
+                    <td class="currency-cell">{{ $systemCurrencyCode ?: '—' }}</td>
                 </tr>
 
             </tbody>
@@ -560,34 +518,18 @@
         <!-- ═══ المبلغ كتابة ═══ -->
 
         <div class="amount-words-box">
-
-            <span class="label">
-                المبلغ كتابة
-            </span>
-
-            <span class="words">
-                {{ $amountWords ?? '—' }}
-            </span>
-
+            <span class="label">المبلغ كتابة</span>
+            <span class="words">{{ $amountWords ?: '—' }}</span>
         </div>
 
 
         <!-- ═══ الملاحظات ═══ -->
 
         @if($voucher->notes)
-
             <div class="notes-box">
-
-                <span class="label">
-                    البيان / الملاحظات
-                </span>
-
-                <span class="value">
-                    {{ $voucher->notes }}
-                </span>
-
+                <span class="label">البيان / الملاحظات</span>
+                <span class="value">{{ $voucher->notes }}</span>
             </div>
-
         @endif
 
 
@@ -596,33 +538,18 @@
         <div class="signatures">
 
             <div class="signature-box">
-
                 <div class="sig-line"></div>
-
-                <div class="sig-label">
-                    المحاسب
-                </div>
-
+                <div class="sig-label">المحاسب</div>
             </div>
 
             <div class="signature-box">
-
                 <div class="sig-line"></div>
-
-                <div class="sig-label">
-                    المراجع
-                </div>
-
+                <div class="sig-label">المراجع</div>
             </div>
 
             <div class="signature-box">
-
                 <div class="sig-line"></div>
-
-                <div class="sig-label">
-                    المدير المالي
-                </div>
-
+                <div class="sig-label">المدير المالي</div>
             </div>
 
         </div>
@@ -631,35 +558,28 @@
         <!-- ═══ التذييل ═══ -->
 
         <div class="footer">
-
-            <span>
-                {{ $companyName }}
-            </span>
-
-            <span>
-                طُبع في: {{ $printTime }}
-            </span>
-
+            <span>{{ $companyName }}</span>
+            <span>طُبع في: {{ $printTime }}</span>
         </div>
 
     </div>
 
 
     <script>
-
+        /*
+         * auto-print اختياري:
+         *   ?auto=1 → يفتح الطابعة تلقائياً
+         *   otherwise → المستخدم يضغط "طباعة"
+         */
         window.onload = function () {
+            const auto = new URLSearchParams(location.search).get('auto');
 
-            setTimeout(
-                function () {
-
+            if (auto === '1') {
+                setTimeout(function () {
                     window.print();
-
-                },
-                500
-            );
-
+                }, 500);
+            }
         };
-
     </script>
 
 </body>

@@ -55,6 +55,15 @@
         <button type="button" class="btn btn-warning" id="btnEditPaymentVoucher" disabled>
             <i class="bi bi-pencil-square"></i> تعديل
         </button>
+
+        <!-- ★ الزرّان المفقودان -->
+        <button type="button" class="btn btn-outline-success d-none" id="btnPostPaymentVoucher">
+            <i class="bi bi-check2-circle"></i> ترحيل
+        </button>
+        <button type="button" class="btn btn-outline-warning d-none" id="btnUnpostPaymentVoucher">
+            <i class="bi bi-arrow-counterclockwise"></i> إلغاء الترحيل
+        </button>
+
         <button type="button" class="btn btn-dark" id="btnPrintPaymentVoucher" disabled>
             <i class="bi bi-printer"></i> طباعة
         </button>
@@ -62,14 +71,17 @@
 
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- ══════════════════════════════════════════════════════════ -->
 <!--  النوافذ المنبثقة -->
-<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- ══════════════════════════════════════════════════════════ -->
 @include('operation.accounting.paymentVouchers.accountPickerModal')
 @include('operation.accounting.paymentVouchers.paymentSearch')
 
 @endsection
-
+{{-- ✅ المودال العام — يُحمَّل في هذه الصفحة فقط --}}
+@push('modals')
+    @include('shared.app-confirm-modal')
+@endpush
 
 @push('scripts')
     @vite(['resources/js/pages/payment-voucher.js'])

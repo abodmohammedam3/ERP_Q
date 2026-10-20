@@ -29,8 +29,7 @@
                                class="form-control"
                                id="PaymentVoucherSearchInput"
                                placeholder="ابحث برقم السند أو اسم الحساب..."
-                               autocomplete="off"
-                               autofocus>
+                               autocomplete="off">
                     </div>
                     <div class="col-md-2">
                         <button type="button"
@@ -42,23 +41,26 @@
                     </div>
                 </div>
 
-                <!-- جدول النتائج -->
+                <!-- جدول النتائج — 9 أعمدة -->
                 <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-                    <table class="table table-bordered table-hover align-middle mb-0">
-                        <thead class="table-light sticky-top">
+                    <table class="table table-bordered table-hover align-middle mb-0"
+                           aria-label="نتائج البحث عن سندات الصرف">
+                        <thead class="table-light sticky-top" style="z-index: 5;">
                             <tr class="text-center">
-                                <th style="width: 12%;">رقم السند</th>
-                                <th style="width: 10%;">التاريخ</th>
-                                <th>الحساب الدائن (المورد)</th>
-                                <th>الحساب المدين (الصندوق/البنك)</th>
-                                <th style="width: 12%;">المبلغ</th>
-                                <th style="width: 8%;">العملة</th>
-                                <th style="width: 10%;">طريقة الدفع</th>
+                                <th class="bg-light" style="width: 10%;">رقم السند</th>
+                                <th class="bg-light" style="width: 10%;">التاريخ</th>
+                                <th class="bg-light">المستفيد (مدين)</th>
+                                <th class="bg-light">الصندوق / البنك (دائن)</th>
+                                <th class="bg-light" style="width: 12%;">المبلغ</th>
+                                <th class="bg-light" style="width: 8%;">العملة</th>
+                                <th class="bg-light" style="width: 10%;">طريقة الدفع</th>
+                                <th class="bg-light" style="width: 8%;">الحالة</th>
+                                <th class="bg-light" style="width: 12%;">إجراءات</th>
                             </tr>
                         </thead>
                         <tbody id="PaymentVoucherSearchResults">
                             <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
+                                <td colspan="9" class="text-center text-muted py-4">
                                     ابحث عن سند صرف
                                 </td>
                             </tr>

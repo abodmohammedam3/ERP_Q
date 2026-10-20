@@ -27,7 +27,7 @@ use App\Http\Controllers\Operation\Purchases\PurchaseReturnApiController;
 use App\Http\Controllers\Operation\Purchases\PurchaseInvoiceApiController;
 use App\Http\Controllers\Operation\Sales\SalesReturnApiController;
 use App\Http\Controllers\Operation\ReceiptVoucher\ReceiptVoucherApiController;
-
+use App\Http\Controllers\Operation\PaymentVoucher\PaymentVoucherApiController;
 
 
 
@@ -462,61 +462,74 @@ Route::patch(
 
 // =====================================================
 // الصفحات التشغيلية
-// =====================================================
+// =====================================================// ═══════════════════════════════════════════════════════════
+// Payment Vouchers (سندات الصرف)
+// ═══════════════════════════════════════════════════════════
 
-// =====================================================
-// سندات الصرف
-// =====================================================
+Route::middleware(['web'])
+    ->prefix('operation/accounting/paymentVouchers')
+    ->name('paymentVouchers.')
+    ->group(function () {
 
-Route::get(
-    '/operation/accounting/paymentVouchers',
-    [PaymentVoucherController::class, 'index']
-)->name('paymentVouchers.index');
+        // -----------------------------------------------------
+        // Web (Views)
+        // -----------------------------------------------------
 
-Route::get(
-    '/operation/accounting/paymentVouchers/list',
-    [PaymentVoucherController::class, 'list']
-)->name('paymentVouchers.list');
+        Route::get('/', [PaymentVoucherController::class, 'index'])
+            ->name('index');
 
-Route::get(
-    '/operation/accounting/paymentVouchers/picker',
-    [PaymentVoucherController::class, 'picker']
-)->name('paymentVouchers.picker');
+        Route::get('/{id}/print', [PaymentVoucherController::class, 'printView'])
+            ->whereNumber('id')
+            ->name('print');
 
-Route::get(
-    '/operation/accounting/paymentVouchers/currencies',
-    [PaymentVoucherController::class, 'currencies']
-)->name('paymentVouchers.currencies');
+        // -----------------------------------------------------
+        // API (JSON)
+        // ⚠️ المسارات الثابتة قبل /{id}
+        // -----------------------------------------------------
 
-Route::get(
-    '/operation/accounting/paymentVouchers/next-number',
-    [PaymentVoucherController::class, 'nextNumber']
-)->name('paymentVouchers.nextNumber');
+        Route::get('/next-number', [PaymentVoucherApiController::class, 'nextNumber'])
+            ->name('nextNumber');
 
-Route::get(
-    '/operation/accounting/paymentVouchers/{id}/print',
-    [PaymentVoucherController::class, 'printView']
-)->name('paymentVouchers.print');
+        Route::get('/currencies', [PaymentVoucherApiController::class, 'currencies'])
+            ->name('currencies');
 
-Route::get(
-    '/operation/accounting/paymentVouchers/{id}',
-    [PaymentVoucherController::class, 'show']
-)->name('paymentVouchers.show');
+        Route::get('/picker', [PaymentVoucherApiController::class, 'picker'])
+            ->name('picker');
 
-Route::post(
-    '/operation/accounting/paymentVouchers',
-    [PaymentVoucherController::class, 'store']
-)->name('paymentVouchers.store');
+        Route::get('/list', [PaymentVoucherApiController::class, 'list'])
+            ->name('list');
 
-Route::put(
-    '/operation/accounting/paymentVouchers/{id}',
-    [PaymentVoucherController::class, 'update']
-)->name('paymentVouchers.update');
+        // ─────────────────────────────────────────────────────
+        // الترحيل / إلغاء الترحيل
+        // ─────────────────────────────────────────────────────
 
-Route::delete(
-    '/operation/accounting/paymentVouchers/{id}',
-    [PaymentVoucherController::class, 'destroy']
-)->name('paymentVouchers.destroy');
+        Route::post('/{id}/post', [PaymentVoucherApiController::class, 'post'])
+            ->whereNumber('id')
+            ->name('post');
+
+        Route::post('/{id}/unpost', [PaymentVoucherApiController::class, 'unpost'])
+            ->whereNumber('id')
+            ->name('unpost');
+
+        // ─────────────────────────────────────────────────────
+        // CRUD
+        // ─────────────────────────────────────────────────────
+
+        Route::get('/{id}', [PaymentVoucherApiController::class, 'show'])
+            ->whereNumber('id')
+            ->name('show');
+
+        Route::post('/', [PaymentVoucherApiController::class, 'store'])
+            ->name('store');
+
+        Route::put('/{id}', [PaymentVoucherApiController::class, 'update'])
+            ->whereNumber('id')
+            ->name('update');
+
+        Route::delete('/{id}', [PaymentVoucherApiController::class, 'destroy'])
+            ->whereNumber('id')
+            ->name('destroy');
+    });
 
 // =====================================================
 // سندات القبض

@@ -11,10 +11,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // Self-Healing: يفحص Worker كل 5 دقائق ويعيد تشغيله عند فشل Task Scheduler
-        $middleware->web(append: [
-            \App\Http\Middleware\EnsureWorkerAlive::class,
-        ]);
+        // ملاحظة أداء: EnsureWorkerAlive كان يعمل على كل طلب ويلمس الكاش/قاعدة البيانات.
+        // أُخرج من مجموعة web مؤقتاً (لا يوجد Worker/طابور backups مفعّل حالياً).
+        // لإعادة تفعيله: أضف \App\Http\Middleware\EnsureWorkerAlive::class مرة أخرى هنا.
 
         $middleware->alias([
             'can-manage-backup' => \App\Http\Middleware\CanManageBackup::class,

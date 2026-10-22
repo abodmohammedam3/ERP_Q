@@ -7,6 +7,7 @@ use App\Models\Accounting\Bank;
 use App\Models\Accounting\Coin;
 use App\Models\Purchases\PurchaseInvoice;
 use App\Support\Permissions;
+use Illuminate\Support\Facades\Cache;
 
 class PurchaseInvoiceController extends Controller
 {
@@ -16,8 +17,9 @@ class PurchaseInvoiceController extends Controller
 
         session()->save();
 
-        $systemCurrency = Coin::where('coinsSystem', 1)
-            ->first(['coinsID', 'coinsCode']);
+        // ✅ عملة النظام (مخزّنة — ثابتة عملياً)
+        $systemCurrency = Cache::rememberForever('system_coin', fn () => Coin::where('coinsSystem', 1)
+            ->first(['coinsID', 'coinsCode']));
 
         return view('operation.purchases.invoicesPurch.index', [
             'systemCurrencyId'   => $systemCurrency->coinsID ?? null,

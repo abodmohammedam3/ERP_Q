@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Accounting\Coin;
 use App\Models\Sales\SalesInvoice;
 use App\Support\Permissions;
+use Illuminate\Support\Facades\Cache;
 
 class SalesInvoiceController extends Controller
 {
@@ -15,9 +16,9 @@ class SalesInvoiceController extends Controller
 
         session()->save();
 
-        // ✅ عملة النظام
-        $systemCurrency = Coin::where('coinsSystem', 1)
-            ->first(['coinsID', 'coinsCode']);
+        // ✅ عملة النظام (مخزّنة — ثابتة عملياً)
+        $systemCurrency = Cache::rememberForever('system_coin', fn () => Coin::where('coinsSystem', 1)
+            ->first(['coinsID', 'coinsCode']));
 
         return view('operation.sales.invoices.index', [
             'systemCurrencyId'   => $systemCurrency->coinsID ?? null,

@@ -72,13 +72,6 @@ class InventoryService
         int $warehouseId,
         ?int $unitId = null
     ): float {
-        static $cache = [];
-        $key = "{$itemId}:{$warehouseId}:" . ($unitId ?? 'null');
-
-        if (array_key_exists($key, $cache)) {
-            return $cache[$key];
-        }
-
         $in = InventoryMovementDetail::query()
             ->join(
                 'inventory_movements',
@@ -109,7 +102,7 @@ class InventoryService
             ->where('inventory_movements.direction', 'out')
             ->sum('inventory_movement_details.quantity');
 
-        return $cache[$key] = (float) $in - (float) $out;
+        return (float) $in - (float) $out;
     }
 
     public function isAvailable(

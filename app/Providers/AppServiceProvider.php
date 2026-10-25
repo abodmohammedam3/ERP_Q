@@ -12,7 +12,11 @@ use App\Models\Inventory\Stock;
 use App\Models\Customer;
 use App\Models\Supplier;
 use App\Models\Purchases\PurchaseInvoice;
+use App\Models\Purchases\PurchaseReturn;
 use App\Models\Sales\SalesInvoice;
+use App\Models\Sales\SalesReturn;
+use App\Models\Inventory\InventoryMovement;
+use App\Models\Inventory\InventoryMovementDetail;
 use App\Models\Accounting\Coin;
 
 
@@ -26,6 +30,7 @@ use App\Observers\PurchaseInvoiceObserver;
 use App\Observers\SalesInvoiceObserver;
 use App\Observers\CoinObserver;
 use App\Listeners\RecordSystemActivity;
+use App\Listeners\FlushDashboardCache;
 use Illuminate\Support\Facades\Event;
 
 class AppServiceProvider extends ServiceProvider
@@ -64,6 +69,40 @@ class AppServiceProvider extends ServiceProvider
         ] as $activityEvent) {
             Event::listen($activityEvent, RecordSystemActivity::class);
         }
+
+        // لوحة المعلومات: إبطال الكاش عند أي كتابة (created/updated/deleted).
+        //
+        // لماذا هذه النماذج بالذات:
+        //  - SalesInvoice / PurchaseInvoice / المرتجعان / InventoryMovement
+        //    هي مصادر الأرقام المعروضة (عدّ + إجماليات + حركات).
+        //  - InventoryMovementDetail ضروريّ رغم أنه ليس له Observer:
+        //    InventoryMovementController::updatePricing() يعدّل sale_price
+        //    على التفصيل مباشرة بلا لمس الرأس (سطر 725-728).
+        //  - JournalEntry: القيود تنشأ/تُحذف من مسارات لم تمر بالفواتير.
+        //  - Customer / Supplier: بطاقتا العدّاد (is_active يغيّر الرقم).
+        //
+        // لاحظ أن الحذف الجماعي مثل $movement->details()->delete()
+        // (SalesInvoiceObserver:39) لا يُطلق أحداث Eloquent — لكنه يُنفَّذ
+        // دائمًا داخل حذف الرأس/الفاتورة الذي يُطلق حدثه الخاص.
+        foreach ([
+            SalesInvoice::class,
+            PurchaseInvoice::class,
+            SalesReturn::class,
+            PurchaseReturn::class,
+            InventoryMovement::class,
+            InventoryMovementDetail::class,
+            JournalEntry::class,
+            Customer::class,
+            Supplier::class,
+        ] as $dashboardModel) {
+            foreach (['created', 'updated', 'deleted'] as $dashboardAction) {
+                Event::listen(
+                    "eloquent.{$dashboardAction}: {$dashboardModel}",
+                    FlushDashboardCache::class
+                );
+            }
+        }
+
          if ($this->app->environment('testing')) {
         $bacPath = database_path('bac');
         if (is_dir($bacPath)) {

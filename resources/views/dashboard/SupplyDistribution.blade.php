@@ -32,7 +32,7 @@
 
                                     <th>رقم الحركة</th>
 
-                                    <th>الرعوي</th>
+                                    <th>المورد</th>
 
                                     <th>التاريخ</th>
 
@@ -60,10 +60,10 @@
                                 <tr>
 
                                     <td
-                                        colspan="5"
+                                        colspan="10"
                                         class="text-center text-muted py-4">
 
-                                        بيانات 
+                                        جاري تحميل البيانات...
 
                                     </td>
 
@@ -122,7 +122,7 @@
 
                                     <th>الكمية</th>
 
-                                    <th>السعر</th>
+                                    <th>تكلفة الوحدة</th>
 
                                     <th>الاجمالي</th>
 
@@ -135,13 +135,12 @@
 
                                 <tr>
                                     <td
-                                        colspan="5"
+                                        colspan="9"
                                         class="text-center text-muted py-4">
 
-                                        بيانات
+                                        جاري تحميل البيانات...
 
                                     </td>
-
                                 </tr>
 
                             </tbody>

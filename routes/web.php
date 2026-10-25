@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\accounting\CharAccountController;
+use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Reports\ReportCenterController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\SupplierController;
@@ -31,13 +32,18 @@ use App\Http\Controllers\Operation\PaymentVoucher\PaymentVoucherApiController;
 
 
 
-Route::get('/', function () {
-    return view('dashboard.index');
-});
+// =====================================================
+// لوحة المعلومات (Dashboard)
+// -----------------------------------------------------
+// "/" و "/dashboard" يخدمان نفس الشاشة من نفس الـ Controller —
+// قبل ذلك كانا Closure يرجع view فقط بلا بيانات ولا Route name،
+// و sidebar.blade.php:44 كان يعتمد على نص المسار request()->is('dashboard').
+// =====================================================
+Route::get('/', [DashboardController::class, 'index'])->name('home');
 
-Route::get('/dashboard', function () {
-    return view('dashboard.index');
-});
+Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+Route::get('/dashboard/data', [DashboardController::class, 'data'])->name('dashboard.data');
 
 // =====================================================
 // مركز التقارير

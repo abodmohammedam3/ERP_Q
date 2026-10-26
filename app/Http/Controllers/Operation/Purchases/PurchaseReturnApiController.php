@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Operation\Purchases;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Purchases\StorePurchaseReturnRequest;
 use App\Http\Requests\Purchases\UpdatePurchaseReturnRequest;
+use App\Models\Purchases\PurchaseInvoice;
 use App\Models\Purchases\PurchaseReturn;
 use App\Services\Purchases\PurchaseReturnService;
 use App\Support\Permissions;

@@ -47,6 +47,15 @@ const textOr = (value, fallback = '—') => {
     return str === '' ? fallback : str;
 };
 
+/**
+ * اسم الطرف (مورد أو عميل) — حقل `party_name` الجديد،
+ * مع رجوع آمن إلى `supplier_name` إن كان الخادم بقاعدةِ كود أقدم (توافق خلفي).
+ */
+const partyNameOr = (row, fallback = '—') =>
+    (row && row.party_name !== undefined && row.party_name !== null)
+        ? textOr(row.party_name, fallback)
+        : textOr(row?.supplier_name, fallback);
+
 /** رقم آمن للتنسيق */
 const numOr = (value) => {
     const n = Number(value);
@@ -154,7 +163,7 @@ function paintSupply(rows) {
     rows.forEach((row) => {
         fragment.appendChild(buildRow([
             textOr(row.display_id),
-            textOr(row.supplier_name),
+            partyNameOr(row),
             textOr(row.date),
             textOr(row.day_name),
             textOr(row.item_name),
@@ -185,7 +194,7 @@ function paintDistribution(rows) {
     rows.forEach((row) => {
         fragment.appendChild(buildRow([
             textOr(row.display_id),
-            textOr(row.supplier_name),
+            partyNameOr(row),
             textOr(row.movement_type),
             textOr(row.type_name),
             textOr(row.code),

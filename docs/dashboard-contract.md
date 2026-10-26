@@ -85,7 +85,8 @@
 | `date` | string `Y-m-d` | `inventory_movements.movement_date` |
 | `day_name` | string | اسم اليوم بالعربية (من نفس التاريخ) |
 | `statement` | string | `inventory_movements.statement` |
-| `supplier_name` | string | `purchase_invoices.account_id → characcount.accName` (فقط لو `source_type = purchase_invoice`) |
+| `supplier_name` | string | اسم الطرف من مصدر الحركة (انظر `party_name`) — يبقى للتوافق |
+| `party_name` | string | الاسم الموحّد للطرف حسب `source_type`: `purchase_invoice`/`purchase_returns` → `Suppliers.supName`، `sales_invoice`/`sales_returns` → `customers.CustomersName2`، ثم `characcount.accName` كبديل. `''` للحركات اليدوية (`supply`/`issue`) |
 | `item_name` | string | `Items.itemName2` |
 | `type_name` | string | `type.name` |
 | `unit_name` | string | `units.UnitName` |

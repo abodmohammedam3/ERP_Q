@@ -2,6 +2,7 @@
 
 namespace App\Services\Dashboard;
 
+use App\Models\Accounting\CharAccount;
 use App\Models\Customer;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\Inventory\InventoryMovementDetail;
@@ -10,7 +11,9 @@ use App\Models\Inventory\Stock;
 use App\Models\Inventory\Type;
 use App\Models\Inventory\Unit;
 use App\Models\Purchases\PurchaseInvoice;
+use App\Models\Purchases\PurchaseReturn;
 use App\Models\Sales\SalesInvoice;
+use App\Models\Sales\SalesReturn;
 use App\Models\Supplier;
 use App\Support\DashboardCache;
 use Illuminate\Support\Facades\DB;
@@ -46,6 +49,14 @@ class DashboardService
 {
     /** عدد صفوف "آخر الحركات" في كل جدول */
     public const RECENT_LIMIT = 10;
+
+    /**
+     * ذاكرة أسماء الأطراف داخل الطلب الواحد (account_id => name)
+     * تمنع استعلامًا مكررًا للحساب نفسه عند تكرر الحساب في أكثر من حركة.
+     *
+     * @var array<int,string>
+     */
+    private array $partyNameCache = [];
 
     /** أقصى عدد صفوف للحركات في ملخص المخزون */
     public const STOCK_MOVE_LIMIT = 10;
@@ -220,8 +231,9 @@ class DashboardService
             ->orderBy('movement_detail_id')
             ->get();
 
-        // ربط أسماء الموردين بالحسابات (purchase_invoices.account_id → characcount)
-        $supplierByAccount = $this->supplierNamesByInvoice(
+        // ربط أسماء المورد/العميل بالحسابات — لكل مصدر حسب نوعه
+        // (purchase_invoices / sales_invoices / purchase_returns / sales_returns)
+        $supplierByAccount = $this->partyNamesByMovement(
             $movements->pluck('source_id', 'movement_id')
                 ->filter()
                 ->all(),
@@ -279,6 +291,10 @@ class DashboardService
             'day_name'      => $this->dayName($movement->movement_date),
             'statement'     => (string) ($movement->statement ?? ''),
             'supplier_name' => $supplierName,
+            /* ✅ الاسم الموحّد (مورد أو عميل) — نفس قيمه في الأغلب لكنه واضح
+               للواجهة في جدول التوزيع حيث الطرف عميل لا مورد.
+               أُضيف كحقل جديد دون تغيير `supplier_name` حفاظًا على عقد الـ API. */
+            'party_name'    => $supplierName,
             'item_name'     => (string) ($detail->item->itemName2 ?? ''),
             'type_name'     => (string) ($detail->type->name ?? ''),
             'unit_name'     => (string) ($detail->unit->UnitName ?? ''),
@@ -291,45 +307,141 @@ class DashboardService
     }
 
     /**
-     * أسماء الموردين المتعلقة بفواتير الشراء المرتبطة بالحركات.
+     * اسم الطرف (مورد/عميل) لكل حركة، حسب نوع مصدر الحركة.
      *
-     * @param  array<int,int|string> $sourceIds
-     * @param  array<int,string|null> $sourceTypes
-     * @return array<int,string> movement_id => supplier name
+     * ⚠️ قبل هذا الإصلاح كان الشرط يستقبل فقط `purchase_invoice`، فكانت
+     * حركات `sale` و`sale_return` و`purchase_return` تصل بلا اسم رغم أن
+     * `account_id` محفوظ في جداولها الأصلية.
+     *
+     * الأسبقية في الاسم: كيان المورد/العميل (supName / CustomersName2)
+     * ثم اسم الحساب المحاسبي (characcount.accName) كبديل احتياطي.
+     *
+     * الجداول/الأعمدة المستخدمة مؤكَّدة في المخطط الفعلي:
+     *   purchase_invoices(purchase_invoice_id, account_id)
+     *   sales_invoices(sales_invoice_id, account_id)
+     *   purchase_returns(purchase_return_id, account_id)
+     *   sales_returns(sales_return_id, account_id)
+     *
+     * @param  array<int,int|string> $sourceIds   movement_id => source_id
+     * @param  array<int,string|null> $sourceTypes movement_id => source_type
+     * @return array<int,string> movement_id => party name ('' عند عدم التوفّر)
      */
-    private function supplierNamesByInvoice(array $sourceIds, array $sourceTypes): array
+    private function partyNamesByMovement(array $sourceIds, array $sourceTypes): array
     {
         if (empty($sourceIds)) {
             return [];
         }
 
-        $invoiceIds = [];
+        // تجميع source_id لكل مصدر معروف (مفاتيح المصادر التي لها جدول حساب)
+        $idsBySource = [
+            InventoryMovement::SOURCE_PURCHASE_INVOICE => [],
+            InventoryMovement::SOURCE_SALES_INVOICE    => [],
+            InventoryMovement::SOURCE_PURCHASE_RETURN  => [],
+            InventoryMovement::SOURCE_SALES_RETURN     => [],
+        ];
 
         foreach ($sourceIds as $movementId => $sourceId) {
-            if (($sourceTypes[$movementId] ?? null) === InventoryMovement::SOURCE_PURCHASE_INVOICE
-                && (int) $sourceId > 0) {
-                $invoiceIds[$movementId] = (int) $sourceId;
+            $type = $sourceTypes[$movementId] ?? null;
+
+            if (!isset($idsBySource[$type]) || (int) $sourceId <= 0) {
+                continue; // supply/issue اليدوية: لا جداول مصدر ⇒ تبقى بلا اسم
             }
+
+            $idsBySource[$type][] = (int) $sourceId;
         }
 
-        if (empty($invoiceIds)) {
-            return [];
-        }
+        // source_type => [source_id => account_id]
+        $accountBySource = [];
 
-        // account_id → اسم الحساب (اسم المورد يُحفظ في characcount.accName)
-        $accounts = PurchaseInvoice::query()
-            ->whereIn('purchase_invoice_id', array_values($invoiceIds))
-            ->with('supplierAccount:accountID,accName,accCode')
-            ->get(['purchase_invoice_id', 'account_id'])
-            ->pluck('supplierAccount.accName', 'purchase_invoice_id');
+        $accountBySource[InventoryMovement::SOURCE_PURCHASE_INVOICE] = $this->accountIdsByKey(
+            PurchaseInvoice::class, 'purchase_invoice_id', $idsBySource[InventoryMovement::SOURCE_PURCHASE_INVOICE]
+        );
+
+        $accountBySource[InventoryMovement::SOURCE_SALES_INVOICE] = $this->accountIdsByKey(
+            SalesInvoice::class, 'sales_invoice_id', $idsBySource[InventoryMovement::SOURCE_SALES_INVOICE]
+        );
+
+        $accountBySource[InventoryMovement::SOURCE_PURCHASE_RETURN] = $this->accountIdsByKey(
+            PurchaseReturn::class, 'purchase_return_id', $idsBySource[InventoryMovement::SOURCE_PURCHASE_RETURN]
+        );
+
+        $accountBySource[InventoryMovement::SOURCE_SALES_RETURN] = $this->accountIdsByKey(
+            SalesReturn::class, 'sales_return_id', $idsBySource[InventoryMovement::SOURCE_SALES_RETURN]
+        );
 
         $map = [];
 
-        foreach ($invoiceIds as $movementId => $invoiceId) {
-            $map[$movementId] = (string) ($accounts[$invoiceId] ?? '');
+        foreach ($sourceIds as $movementId => $sourceId) {
+            $type = $sourceTypes[$movementId] ?? null;
+
+            if (!isset($accountBySource[$type])) {
+                $map[$movementId] = ''; // لا مصدر ⇒ لا اسم (سلوك مقصود للحركات اليدوية)
+                continue;
+            }
+
+            $accountId = $accountBySource[$type][(int) $sourceId] ?? null;
+            $map[$movementId] = $accountId
+                ? $this->partyNameForAccount((int) $accountId)
+                : '';
         }
 
         return $map;
+    }
+
+    /**
+     * source_id => account_id لجدول مصدر واحد (استعلام واحد لكل نوع).
+     *
+     * @param  class-string<\Illuminate\Database\Eloquent\Model> $model
+     * @param  array<int,int> $ids
+     * @return array<int,int> source_id => account_id
+     */
+    private function accountIdsByKey(string $model, string $keyColumn, array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter($ids)));
+
+        if (empty($ids)) {
+            return [];
+        }
+
+        $rows = $model::query()
+            ->whereIn($keyColumn, $ids)
+            ->get([$keyColumn, 'account_id']);
+
+        $out = [];
+
+        foreach ($rows as $row) {
+            if ((int) $row->account_id > 0) {
+                $out[(int) $row->getAttribute($keyColumn)] = (int) $row->account_id;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * اسم الطرف لحساب واحد: اسم المورد/العميل أولًا ثم اسم الحساب.
+     *
+     * الاستعلامات تُنفَّذ مرة واحدة وتُحفظ بالذاكرة (يخدم ≤ RECENT_LIMIT حسابًا).
+     */
+    private function partyNameForAccount(int $accountId): string
+    {
+        if (!isset($this->partyNameCache[$accountId])) {
+            $supplier = Supplier::query()->where('accountID', $accountId)->value('supName');
+            $customer = Customer::query()->where('accountID', $accountId)->value('CustomersName2');
+            $account  = CharAccount::query()->where('accountID', $accountId)->value('accName');
+
+            $name = trim((string) ($supplier ?? ''));
+            if ($name === '') {
+                $name = trim((string) ($customer ?? ''));
+            }
+            if ($name === '') {
+                $name = trim((string) ($account ?? ''));
+            }
+
+            $this->partyNameCache[$accountId] = $name;
+        }
+
+        return $this->partyNameCache[$accountId];
     }
 
     private function dayName($date): string

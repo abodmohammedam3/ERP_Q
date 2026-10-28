@@ -531,6 +531,9 @@ class PurchaseReturnService
             $unitCost  = (float) $detail->unit_cost;
             $lineTotal = $quantity * $unitCost;
 
+            /* ✅ المورد: من فاتورة الأصل عبر سطر الفاتورة المرجعي */
+            $supplierAccountId = $detail->originalDetail?->purchaseInvoice?->account_id;
+
             InventoryMovementDetail::create([
                 'movement_id'  => $movement->movement_id,
                 'item_id'      => $detail->item_id,
@@ -538,6 +541,7 @@ class PurchaseReturnService
                 'unit_id'      => $detail->unit_id,
                 'code'         => $detail->code,
                 'warehouse_id' => $detail->warehouse_id ?: $headerWarehouse,
+                'supplier_account_id' => $supplierAccountId !== null ? (int) $supplierAccountId : null,
                 'quantity'     => $quantity,
                 'unit_cost'    => $unitCost,
                 'min_price'    => null,

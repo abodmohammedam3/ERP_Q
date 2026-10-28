@@ -244,16 +244,20 @@ class SalesInvoiceService
             $unitId      = isset($row['unit_id']) && $row['unit_id'] !== null
                 ? (int) $row['unit_id']
                 : null;
+            $supplierId  = !empty($row['supplier_account_id'])
+                ? (int) $row['supplier_account_id']
+                : null;
 
             if (!$itemId || !$warehouseId) {
                 continue;
             }
 
-            $key = $itemId . '|' . $warehouseId . '|' . ($unitId ?? 0);
+            $key = $itemId . '|' . $warehouseId . '|' . ($unitId ?? 0) . '|' . ($supplierId ?? 0);
             $pairs[$key] = [
                 'item_id'      => $itemId,
                 'warehouse_id' => $warehouseId,
                 'unit_id'      => $unitId,
+                'supplier_account_id' => $supplierId,
             ];
         }
 
@@ -266,6 +270,11 @@ class SalesInvoiceService
 
             if ($pair['unit_id']) {
                 $query->where('unit_id', $pair['unit_id']);
+            }
+
+            /* ✅ القفل على دفعة المورد المختار تحديداً */
+            if ($pair['supplier_account_id'] !== null) {
+                $query->where('supplier_account_id', $pair['supplier_account_id']);
             }
 
             $query->select('movement_detail_id')
@@ -285,19 +294,25 @@ class SalesInvoiceService
             $itemId      = $row['item_id'] ?? null;
             $warehouseId = $row['warehouse_id'] ?? null;
             $unitId      = $row['unit_id'] ?? null;
+            $supplierId  = !empty($row['supplier_account_id'])
+                ? (int) $row['supplier_account_id']
+                : null;
             $qty         = (float) ($row['quantity'] ?? 0);
 
             if (!$itemId || !$warehouseId || $qty <= 0) continue;
 
-            $available = $this->inventoryService->availableQuantity(
+            /* ✅ الفحص على دفعة المورد المختار تحديداً —
+               null = رصيد التوريد العام (بدون مورد) */
+            $available = $this->inventoryService->availableQuantityForSupplier(
                 (int) $itemId,
                 (int) $warehouseId,
-                $unitId !== null ? (int) $unitId : null
+                $unitId !== null ? (int) $unitId : null,
+                $supplierId
             );
 
             if ($available < $qty) {
                 $errors["details.{$i}.quantity"] =
-                    "الكمية المتوفرة {$available} أقل من المطلوب {$qty}";
+                    "الكمية المتوفرة من هذه الدفعة {$available} أقل من المطلوب {$qty}";
             }
         }
 
@@ -372,7 +387,8 @@ class SalesInvoiceService
             $lastPricing = $this->inventoryService->lastPricing(
                 (int) $detail->item_id,
                 (int) $detail->warehouse_id,
-                $detail->unit_id !== null ? (int) $detail->unit_id : null
+                $detail->unit_id !== null ? (int) $detail->unit_id : null,
+                $detail->supplier_account_id !== null ? (int) $detail->supplier_account_id : null
             );
 
             InventoryMovementDetail::create([
@@ -382,6 +398,7 @@ class SalesInvoiceService
                 'unit_id'      => $detail->unit_id,
                 'code'         => $detail->code,
                 'warehouse_id' => $detail->warehouse_id,
+                'supplier_account_id' => $detail->supplier_account_id, /* ✅ الخصم من دفعة المورد */
                 'quantity'     => $quantity,
                 'unit_cost'    => $unitCost,
                 'min_price'    => $lastPricing['min_price'] > 0 ? $lastPricing['min_price'] : null,
@@ -689,10 +706,16 @@ class SalesInvoiceService
             $discount = (float) ($row['discount'] ?? 0);
             $total    = max(0, ($quantity * $price) - $discount);
 
-            $serverCost = $this->inventoryService->lastCost(
+            $supplierId = !empty($row['supplier_account_id'])
+                ? (int) $row['supplier_account_id']
+                : null;
+
+            /* ✅ التكلفة من دفعة المورد المختار (لا من آخر حركة إجمالية) */
+            $serverCost = $this->inventoryService->lastCostForSupplier(
                 $itemId,
                 $warehouseId,
-                $unitId
+                $unitId,
+                $supplierId
             );
 
             $uiCost = (float) ($row['cost_price'] ?? 0);
@@ -712,6 +735,7 @@ class SalesInvoiceService
                 'type_id'          => $row['type_id'] ?? null,
                 'unit_id'          => $unitId,
                 'warehouse_id'     => $warehouseId,
+                'supplier_account_id' => $supplierId, /* ✅ المورد المختار للسطر */
                 'code'             => $row['code'] ?? null,
                 'quantity'         => $quantity,
                 'price'            => $price,

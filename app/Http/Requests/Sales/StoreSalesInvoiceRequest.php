@@ -41,6 +41,9 @@ class StoreSalesInvoiceRequest extends FormRequest
             'details.*.quantity'     => ['required', 'numeric', 'gt:0'],
             'details.*.price'        => ['required', 'numeric', 'gt:0'],
             'details.*.cost_price'   => ['nullable', 'numeric', 'min:0'],
+            /* ✅ المورد المختار من نافذة الأرصدة — بدونه يُحذف من validated
+               ويصبح الفحص على "التوريد العام" (رصيد 0) فتفشل الفاتورة */
+            'details.*.supplier_account_id' => ['nullable', 'exists:characcount,accountID'],
             'details.*.discount'     => ['nullable', 'numeric', 'min:0'],
         ];
     }

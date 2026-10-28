@@ -473,6 +473,11 @@ class SalesReturnService
             $unitCost  = (float) ($detail->cost_price ?? 0);
             $lineTotal = $quantity * $unitCost;
 
+            /* ✅ وراثة مورد الدفعة الأصلية:
+               سطر البيع الأصلي (supplier_account_id المُخزن عند البيع)
+               أو الدفعة التي خرج منها فعلياً عبر حركة البيع. */
+            $supplierAccountId = $this->resolveSupplierForSaleReturn($detail);
+
             InventoryMovementDetail::create([
                 'movement_id'  => $movement->movement_id,
                 'item_id'      => $detail->item_id,
@@ -480,6 +485,8 @@ class SalesReturnService
                 'unit_id'      => $detail->unit_id,
                 'code'         => $detail->code,
                 'warehouse_id' => $detail->warehouse_id ?: $headerWarehouse,
+                'supplier_account_id'  => $supplierAccountId,
+                'lot_source_detail_id' => $this->resolveLotSourceForSaleReturn($detail),
                 'quantity'     => $quantity,
                 'unit_cost'    => $unitCost,
                 'min_price'    => null,
@@ -496,6 +503,49 @@ class SalesReturnService
 
         $movement->load('details');
         $this->inventoryService->applyMovement($movement);
+    }
+
+    /**
+     * ✅ المورد الفعلي لبضاعة مرتجع البيع:
+     * أولوية: المورد المخزّن على سطر فاتورة البيع عند البيع،
+     * ثم المورد المكتوب على تفاصيل حركة البيع الصادرة (آخر حركة out لنفس التركيبة قبل المرتجع).
+     */
+    protected function resolveSupplierForSaleReturn(SalesReturnDetail $detail): ?int
+    {
+        $invoiceDetail = SalesInvoiceDetail::find($detail->sales_invoice_detail_id);
+        if ($invoiceDetail && $invoiceDetail->supplier_account_id) {
+            return (int) $invoiceDetail->supplier_account_id;
+        }
+
+        $outDetail = InventoryMovementDetail::query()
+            ->join('inventory_movements as im', 'im.movement_id', '=', 'inventory_movement_details.movement_id')
+            ->where('im.source_type', InventoryMovement::SOURCE_SALES_INVOICE)
+            ->where('im.direction', 'out')
+            ->where('inventory_movement_details.item_id', $detail->item_id)
+            ->where('inventory_movement_details.warehouse_id', $detail->warehouse_id)
+            ->where('inventory_movement_details.type_id', $detail->type_id)
+            ->where('inventory_movement_details.unit_id', $detail->unit_id)
+            ->orderByDesc('inventory_movement_details.movement_detail_id')
+            ->value('inventory_movement_details.supplier_account_id');
+
+        return $outDetail !== null ? (int) $outDetail : null;
+    }
+
+    /**
+     * ✅ دفعة الأصل (lot_source) لمرتجع البيع — لتفادي دمج التكلفة.
+     */
+    protected function resolveLotSourceForSaleReturn(SalesReturnDetail $detail): ?int
+    {
+        return InventoryMovementDetail::query()
+            ->join('inventory_movements as im', 'im.movement_id', '=', 'inventory_movement_details.movement_id')
+            ->where('im.source_type', InventoryMovement::SOURCE_SALES_INVOICE)
+            ->where('im.direction', 'out')
+            ->where('inventory_movement_details.item_id', $detail->item_id)
+            ->where('inventory_movement_details.warehouse_id', $detail->warehouse_id)
+            ->where('inventory_movement_details.type_id', $detail->type_id)
+            ->where('inventory_movement_details.unit_id', $detail->unit_id)
+            ->orderByDesc('inventory_movement_details.movement_detail_id')
+            ->value('inventory_movement_details.movement_detail_id');
     }
 
     public function deleteInventoryMovement(SalesReturn $salesReturn): void

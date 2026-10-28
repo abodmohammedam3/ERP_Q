@@ -32,6 +32,9 @@
                         <span><strong>الكمية المتاحة:</strong> <span id="sortingAvailable">0</span> <span id="sortingAvailableUnit"></span></span>
                     </div>
                     <div class="d-flex justify-content-between mt-1">
+                        <span><strong>المورد:</strong> <span id="sortingSupplierName">—</span></span>
+                    </div>
+                    <div class="d-flex justify-content-between mt-1">
                         <span><strong>تكلفة الوحدة:</strong> <span id="sortingUnitCost">0</span></span>
                     </div>
                 </div>

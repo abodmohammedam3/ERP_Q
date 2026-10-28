@@ -302,6 +302,8 @@
         {{-- المخزن --}}
         <td>
             <input type="hidden" class="row-warehouse-id">
+            <input type="hidden" class="row-supplier-id">
+            <input type="hidden" class="row-supplier">
             <input
                 type="text"
                 class="form-control form-control-sm row-warehouse"
@@ -394,7 +396,7 @@
                         type="text"
                         class="form-control"
                         id="stockBalancesSearch"
-                        placeholder="ابحث في: الصنف / النوع / الرمز / المخزن..."
+                        placeholder="ابحث في: الصنف / النوع / الرمز / المخزن / المورد..."
                         autocomplete="off"
                         oninput="filterStockBalances()"
                     >
@@ -408,6 +410,7 @@
                                 <th>النوع</th>
                                 <th>الرمز</th>
                                 <th>المخزن</th>
+                                <th>المورد</th>
                                 <th>الوحدة</th>
                                 <th>الرصيد</th>
                                 <th>التكلفة</th>
@@ -419,7 +422,7 @@
                         </thead>
                         <tbody id="stockBalancesBody">
                             <tr>
-                                <td colspan="11" class="text-center text-muted py-4">
+                                <td colspan="12" class="text-center text-muted py-4">
                                     <span class="spinner-border spinner-border-sm me-2"></span>
                                     جاري التحميل...
                                 </td>

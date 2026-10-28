@@ -21,6 +21,7 @@ class SalesInvoiceDetail extends Model
         'type_id',
         'unit_id',
         'warehouse_id',
+        'supplier_account_id',
         'code',
         'quantity',
         'price',

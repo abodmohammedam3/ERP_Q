@@ -1170,6 +1170,7 @@ async function saveSalesInvoice() {
             quantity: qty,
             price: price,
             cost_price: parseFloat(row.querySelector('.row-cost-price')?.value) || 0,
+            supplier_account_id: row.querySelector('.row-supplier-id')?.value || null,
             discount: discount,
         });
     }
@@ -1334,13 +1335,14 @@ function renderStockBalances(rows) {
         return;
     }
 
-    /* ✅ مفتاح مركّب: الصنف + النوع + المخزن + الوحدة
-       (لا يُعطَّل كل صنف بنفس item_id — فقط الدفعة المختارة تحديداً) */
+    /* ✅ مفتاح مركّب: الصنف + النوع + المخزن + الوحدة + المورد
+       (الدفعة الموردية هي وحدة التعطيل، لا الصنف كاملاً) */
     const balanceKey = (r) => [
         r.item_id ?? '',
         r.type_id ?? '',
         r.warehouse_id ?? '',
         r.unit_id ?? '',
+        r.supplier_account_id ?? '',
     ].join('|');
 
     const usedKeys = new Set();
@@ -1353,6 +1355,7 @@ function renderStockBalances(rows) {
             r.querySelector('.row-type-id')?.value ?? '',
             r.querySelector('.row-warehouse-id')?.value ?? '',
             r.querySelector('.row-unit-id')?.value ?? '',
+            r.querySelector('.row-supplier-id')?.value ?? '',
         ].join('|'));
     });
 
@@ -1373,6 +1376,7 @@ function renderStockBalances(rows) {
             { text: row.type_name || '—' },
             { text: row.code || '—' },
             { text: row.warehouse_name || '—' },
+            { text: row.supplier_name || 'توريد عام' },
             { text: row.unit_name || '—' },
             { text: salesFormatMoney(row.quantity), className: 'fw-bold text-success' },
             { text: salesFormatMoney(row.unit_cost) },
@@ -1397,7 +1401,7 @@ function renderStockBalances(rows) {
         if (isUsed) {
             btnSelect.disabled = true;
             btnSelect.classList.add('disabled');
-            btnSelect.title = 'هذه الدفعة (الصنف/النوع/المخزن/الوحدة) مضافة بالفعل في صف آخر';
+            btnSelect.title = 'هذه الدفعة (الصنف/النوع/المخزن/الوحدة/المورد) مضافة بالفعل في صف آخر';
         } else {
             btnSelect.addEventListener('click', () => selectStockBalance(row));
         }
@@ -1428,23 +1432,53 @@ function selectStockBalance(row) {
     activeStockBalanceRow.querySelector('.row-warehouse-id').value = row.warehouse_id ?? '';
     activeStockBalanceRow.querySelector('.row-warehouse').value = row.warehouse_name ?? '';
 
+    /* ✅ المورد المختار — يُرسل مع السطر ويُخصم رصيده تحديداً */
+    const supplierIdEl = activeStockBalanceRow.querySelector('.row-supplier-id');
+    const supplierNameEl = activeStockBalanceRow.querySelector('.row-supplier');
+    if (supplierIdEl) supplierIdEl.value = row.supplier_account_id ?? '';
+    if (supplierNameEl) supplierNameEl.value = row.supplier_name || 'توريد عام';
+
     /* ✅ التحويل للعرض فقط: الأرصدة محفوظة بالعملة الأساسية، وإدخال الفاتورة بعملتها.
        price (المحفوظ في السطر) يجب أن يكون بعملة الفاتورة → sale_price ÷ rate.
        cost_price يبقى بالعملة الأساسية (يستخدمه الخادم لحساب التكلفة). */
     const rate = parseFloat(document.getElementById('SalesExchangeRate')?.value) || 1;
     const safeRate = rate > 0 ? rate : 1;
 
-    const priceInInvoiceCurrency = (Number(row.sale_price) || 0) / safeRate;
+    /* ✅ سعر البيع من الدفعة المختارة؛ وإن كانت الدفعة بلا تسعير
+       (توريد عام مثلاً) نستخدم أول تسعير معروف لنفس
+       (الصنف/النوع/المخزن/الوحدة) من أي مورد في الكاش. */
+    let salePriceBase = Number(row.sale_price) || 0;
+    if (!salePriceBase) {
+        const comboKey = (r) => [r.item_id ?? '', r.type_id ?? '', r.warehouse_id ?? '', r.unit_id ?? ''].join('|');
+        const target = comboKey(row);
+        const priced = (stockBalancesCache || []).find(
+            r => comboKey(r) === target && (Number(r.sale_price) || 0) > 0
+        );
+        if (priced) salePriceBase = Number(priced.sale_price);
+    }
+
+    const priceInInvoiceCurrency = salePriceBase / safeRate;
 
     const priceEl = activeStockBalanceRow.querySelector('.row-price');
-    priceEl.value = window.AppFormat.amount(priceInInvoiceCurrency);
-    priceEl.dataset.rawValue = String(priceInInvoiceCurrency);
+    /* ✅ الحقل type=number — لا يقبل فواصل الآلاف؛ نضع الرقم الخام فقط */
+    const priceRounded = Math.round(priceInInvoiceCurrency * 100) / 100;
+    priceEl.value = String(priceRounded);
+    priceEl.dataset.rawValue = String(priceRounded);
+    priceEl.dispatchEvent(new Event('input', { bubbles: true }));
+
+    /* ✅ السعر قابل للتعديل الحر من المستخدم بعد التعبئة التلقائية
+       (نُبقيه غير readonly ونزيل وسم القفل إن وُجد) */
+    priceEl.readOnly = false;
+    priceEl.disabled = false;
 
     /* ✅ وسم «معدّل يدويًا» يُلغى لأن السعر جاء من الأرصدة لا من المستخدم */
     delete priceEl.dataset.manualPrice;
 
     activeStockBalanceRow.querySelector('.row-cost-price').value = row.unit_cost || 0;
     activeStockBalanceRow.querySelector('.row-measure').value = 1;
+
+    /* ✅ تمكين صف السطر بالكامل (الكمية/الخصم/السعر) بعد اختيار الدفعة */
+    enableSalesRow(activeStockBalanceRow);
 
     calculateSalesRow(activeStockBalanceRow.querySelector('.row-measure'));
 

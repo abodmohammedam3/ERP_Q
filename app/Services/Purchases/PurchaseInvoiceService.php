@@ -358,6 +358,7 @@ public function delete(int $id): void
                 'unit_id'      => $detail->unit_id,
                 'code'         => $detail->code,
                 'warehouse_id' => $invoice->warehouse_id,
+                'supplier_account_id' => $invoice->account_id, /* ✅ دفعة موردية */
                 'quantity'     => $quantity,
                 'unit_cost'    => $unitCostBC,
                 'min_price'    => $minPrice,

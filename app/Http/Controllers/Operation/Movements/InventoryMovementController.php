@@ -265,6 +265,7 @@ class InventoryMovementController extends Controller
             'input_quantity'  => ['required', 'numeric', 'gt:0'],
             'output_quantity' => ['required', 'numeric', 'gt:0'],
             'code'            => ['nullable', 'string', 'max:50'],
+            'supplier_account_id' => ['nullable', 'exists:characcount,accountID'],
             'sale_price'      => ['nullable', 'numeric', 'min:0'],
             'min_price'       => ['nullable', 'numeric', 'min:0'],
             'max_price'       => ['nullable', 'numeric', 'min:0'],
@@ -322,6 +323,9 @@ class InventoryMovementController extends Controller
                 'input_quantity'  => (float) $request->input('input_quantity'),
                 'output_quantity' => (float) $request->input('output_quantity'),
                 'code'            => $request->input('code'),
+                'supplier_account_id' => $request->filled('supplier_account_id')
+                    ? (int) $request->input('supplier_account_id')
+                    : null,
                 'sale_price'      => $request->input('sale_price'),
                 'min_price'       => $request->input('min_price'),
                 'max_price'       => $request->input('max_price'),
@@ -701,6 +705,9 @@ class InventoryMovementController extends Controller
         $itemId      = (int) $request->input('item_id');
         $warehouseId = (int) $request->input('warehouse_id');
         $unitId      = $request->input('unit_id') ? (int) $request->input('unit_id') : null;
+        $supplierId  = $request->filled('supplier_account_id')
+            ? (int) $request->input('supplier_account_id')
+            : null;
 
         $detail = InventoryMovementDetail::query()
             ->whereHas('movement', function ($q) {
@@ -712,6 +719,12 @@ class InventoryMovementController extends Controller
                 $unitId !== null,
                 fn($q) => $q->where('unit_id', $unitId),
                 fn($q) => $q->whereNull('unit_id')
+            )
+            /* ✅ التسعير يُحدَّث لآخر دفعة دخول لنفس المورد تحديداً */
+            ->when(
+                $supplierId !== null,
+                fn($q) => $q->where('supplier_account_id', $supplierId),
+                fn($q) => $q->whereNull('supplier_account_id')
             )
             ->orderByDesc('movement_detail_id')
             ->first();
@@ -732,6 +745,7 @@ class InventoryMovementController extends Controller
             'message' => 'تم تحديث التسعير بنجاح',
             'data'    => [
                 'movement_detail_id' => $detail->movement_detail_id,
+                'supplier_account_id'=> $detail->supplier_account_id !== null ? (int) $detail->supplier_account_id : null,
                 'sale_price'         => $detail->sale_price !== null ? (float) $detail->sale_price : 0,
                 'min_price'          => $detail->min_price  !== null ? (float) $detail->min_price  : 0,
                 'max_price'          => $detail->max_price  !== null ? (float) $detail->max_price  : 0,
@@ -741,17 +755,31 @@ class InventoryMovementController extends Controller
 
     public function allStockBalances(Request $request)
     {
+        /* ✅ التجميع خماسي: (صنف + نوع + مخزن + وحدة + مورد)
+           كل دفعة موردية لها سطر مستقل بتكلفتها ورصيدها —
+           شراء نفس الصنف من موردين لا يُدمج بعد الآن.
+           supplier_account_id = NULL ⇒ "توريد عام" (supply/يدوي/تاريخي). */
         $combinations = DB::table('inventory_movement_details as imd')
             ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
+            ->leftJoin('characcount as ca', 'ca.accountID', '=', 'imd.supplier_account_id')
             ->select(
                 'imd.item_id',
                 'imd.type_id',
                 'imd.warehouse_id',
                 'imd.unit_id',
+                'imd.supplier_account_id',
+                'ca.accName as supplier_name',
                 DB::raw("SUM(CASE WHEN im.direction = 'in' THEN imd.quantity ELSE 0 END) as total_in"),
                 DB::raw("SUM(CASE WHEN im.direction = 'out' THEN imd.quantity ELSE 0 END) as total_out")
             )
-            ->groupBy('imd.item_id', 'imd.type_id', 'imd.warehouse_id', 'imd.unit_id')
+            ->groupBy(
+                'imd.item_id',
+                'imd.type_id',
+                'imd.warehouse_id',
+                'imd.unit_id',
+                'imd.supplier_account_id',
+                'ca.accName'
+            )
             ->get()
             ->filter(function ($c) {
                 return ((float) $c->total_in - (float) $c->total_out) > 0.000001;
@@ -766,7 +794,6 @@ class InventoryMovementController extends Controller
         $typeIds      = $combinations->pluck('type_id')->unique()->filter()->values()->toArray();
         $warehouseIds = $combinations->pluck('warehouse_id')->unique()->filter()->values()->toArray();
         $unitIds      = $combinations->pluck('unit_id')->unique()->filter()->values()->toArray();
-
         $items = \App\Models\Inventory\Item::whereIn('itemID', $itemIds)
             ->pluck('itemName2', 'itemID')->toArray();
 
@@ -782,7 +809,7 @@ class InventoryMovementController extends Controller
         $latestIds = DB::table('inventory_movement_details as imd')
             ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
             ->where('im.direction', 'in')
-            ->groupBy('imd.item_id', 'imd.type_id', 'imd.warehouse_id', 'imd.unit_id')
+            ->groupBy('imd.item_id', 'imd.type_id', 'imd.warehouse_id', 'imd.unit_id', 'imd.supplier_account_id')
             ->selectRaw('MAX(imd.movement_detail_id) as max_id')
             ->pluck('max_id')
             ->toArray();
@@ -792,7 +819,8 @@ class InventoryMovementController extends Controller
             ->keyBy(function ($d) {
                 $typeKey = $d->type_id !== null ? $d->type_id : 'null';
                 $unitKey = $d->unit_id !== null ? $d->unit_id : 'null';
-                return "{$d->item_id}:{$typeKey}:{$d->warehouse_id}:{$unitKey}";
+                $supKey  = $d->supplier_account_id !== null ? $d->supplier_account_id : 'null';
+                return "{$d->item_id}:{$typeKey}:{$d->warehouse_id}:{$unitKey}:{$supKey}";
             });
 
         $rows = [];
@@ -800,7 +828,8 @@ class InventoryMovementController extends Controller
         foreach ($combinations as $c) {
             $typeKey = $c->type_id !== null ? $c->type_id : 'null';
             $unitKey = $c->unit_id !== null ? $c->unit_id : 'null';
-            $lookupKey = "{$c->item_id}:{$typeKey}:{$c->warehouse_id}:{$unitKey}";
+            $supKey  = $c->supplier_account_id !== null ? $c->supplier_account_id : 'null';
+            $lookupKey = "{$c->item_id}:{$typeKey}:{$c->warehouse_id}:{$unitKey}:{$supKey}";
 
             /** @var InventoryMovementDetail|null $last */
             $last = $latestDetails->get($lookupKey);
@@ -814,6 +843,8 @@ class InventoryMovementController extends Controller
                 'warehouse_name' => $warehouses[$c->warehouse_id] ?? '',
                 'unit_id'        => $c->unit_id !== null ? (int) $c->unit_id : null,
                 'unit_name'      => $c->unit_id !== null ? ($units[$c->unit_id] ?? '') : '',
+                'supplier_account_id' => $c->supplier_account_id !== null ? (int) $c->supplier_account_id : null,
+                'supplier_name'  => $c->supplier_name ?? '',
                 'code'           => $last->code ?? '',
                 'quantity'       => (float) $c->total_in - (float) $c->total_out,
                 'unit_cost'      => $last ? (float) $last->unit_cost : 0,
@@ -921,6 +952,8 @@ class InventoryMovementController extends Controller
                 'unit_id'      => $row['unit_id'] ?? null,
                 'code'         => $row['code'] ?? null,
                 'warehouse_id' => $row['warehouse_id'],
+                'supplier_account_id'  => $row['supplier_account_id'] ?? null, /* توريد يدوي: مورد اختياري */
+                'lot_source_detail_id' => $row['lot_source_detail_id'] ?? null,
                 'quantity'     => $quantity,
                 'unit_cost'    => $unitCost,
                 'min_price'    => $row['min_price'] ?? null,

@@ -3,6 +3,7 @@
 namespace App\Models\Inventory;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Accounting\CharAccount;
 
 class InventoryMovementDetail extends Model
 {
@@ -18,6 +19,8 @@ class InventoryMovementDetail extends Model
         'unit_id',
         'code',
         'warehouse_id',
+        'supplier_account_id',
+        'lot_source_detail_id',
         'quantity',
         'unit_cost',
         'min_price',
@@ -38,6 +41,26 @@ class InventoryMovementDetail extends Model
     // ============================================
     // العلاقات
     // ============================================
+
+    /**
+     * المورد الفعلي للدفعة (NULL = توريد عام)
+     */
+    public function supplierAccount()
+    {
+        return $this->belongsTo(CharAccount::class, 'supplier_account_id', 'accountID');
+    }
+
+    /**
+     * دفعة الأصل (مرتجع بيع / فرز يرث دفعة أصلها)
+     */
+    public function lotSource()
+    {
+        return $this->belongsTo(
+            InventoryMovementDetail::class,
+            'lot_source_detail_id',
+            'movement_detail_id'
+        );
+    }
 
     /**
      * رأس الحركة

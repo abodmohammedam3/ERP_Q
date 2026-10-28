@@ -205,12 +205,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     sortingFromBalanceModalInstance = initModal('sortingFromBalanceModal');
     pricingEditModal = initModal('pricingEditModal');
 
+    /* ✅ ربط مستمعات التابات أولاً — قبل أي await —
+       حتى لا تضيع نقرة المستخدم على تاب الأرصدة أثناء تحميل البيانات المرجعية
+       (كان سبب بقاء الجدول على "جاري التحميل" إلى الضغط على تحديث) */
+    initTabs();
+
     await preloadAll();
 
     setMovementMode('view');
     clearMovementForm();
 
-    initTabs();
+    /* ✅ إذا كان تاب الأرصدة هو النشط عند الدخول (أو نُقر أثناء التهيئة)
+       نحمّل الأرصدة فوراً */
+    const activeInput = document.getElementById('activeMovementTab');
+    if (activeInput && activeInput.value === 'balances') {
+        loadStockBalances();
+    }
 });
 
 async function preloadAll() {
@@ -256,9 +266,9 @@ function initTabs() {
 
             if (activeInput) activeInput.value = tabName;
 
-            if (tabName === 'balances' && !balancesLoaded) {
-                loadStockBalances();
-            }
+        if (tabName === 'balances' && !balancesLoaded) {
+            loadStockBalances();
+        }
         });
     });
 }
@@ -895,6 +905,7 @@ function stockBalancesPricingLookup(itemId, typeId, warehouseId, unitId) {
     ].join('|');
 
     const target = key(itemId, typeId, warehouseId, unitId);
+    /* أول تطابق لهذه التركيبة (مع أي مورد) — الـ fallback للعرض فقط */
     const row = stockBalancesCache.find(
         r => key(r.item_id, r.type_id, r.warehouse_id, r.unit_id) === target
     );
@@ -1219,7 +1230,7 @@ async function loadStockBalances() {
         tbody.replaceChildren();
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 11;
+        td.colSpan = 12;
         td.className = 'text-center text-muted py-4';
         td.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري التحميل...';
         tr.appendChild(td);
@@ -1239,7 +1250,7 @@ async function loadStockBalances() {
             tbody.replaceChildren();
             const tr = document.createElement('tr');
             const td = document.createElement('td');
-            td.colSpan = 11;
+            td.colSpan = 12;
             td.className = 'text-center text-danger py-4';
             td.textContent = 'فشل تحميل الأرصدة';
             tr.appendChild(td);
@@ -1262,6 +1273,7 @@ function filterStockBalances() {
             (row.type_name || '').toLowerCase().includes(search) ||
             (row.code || '').toLowerCase().includes(search) ||
             (row.warehouse_name || '').toLowerCase().includes(search) ||
+            (row.supplier_name || 'توريد عام').toLowerCase().includes(search) ||
             (row.unit_name || '').toLowerCase().includes(search)
         );
     });
@@ -1281,7 +1293,7 @@ function renderStockBalances(rows) {
     if (!rows.length) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 11;
+        td.colSpan = 12;
         td.className = 'text-center text-muted py-4';
         td.textContent = 'لا توجد أرصدة متاحة';
         tr.appendChild(td);
@@ -1315,10 +1327,18 @@ function renderStockBalances(rows) {
         tdCode.textContent = row.code || '—';
         tr.appendChild(tdCode);
 
-        // المخزن
+        // ✅ المخزن
         const tdWh = document.createElement('td');
         tdWh.textContent = row.warehouse_name || '—';
         tr.appendChild(tdWh);
+
+        // ✅ المورد (الدفعة الموردية) — عمود جديد
+        const tdSup = document.createElement('td');
+        tdSup.textContent = row.supplier_name || 'توريد عام';
+        if (!row.supplier_account_id) {
+            tdSup.className = 'text-muted';
+        }
+        tr.appendChild(tdSup);
 
         // الوحدة
         const tdUnit = document.createElement('td');
@@ -1437,6 +1457,7 @@ async function updatePricingInline(rowData, changes) {
         item_id: rowData.item_id,
         warehouse_id: rowData.warehouse_id,
         unit_id: rowData.unit_id || null,
+        supplier_account_id: rowData.supplier_account_id || null, /* ✅ تسعير دفعة المورد */
         sale_price: toNullable(saleValue),
         min_price: toNullable(minValue),
         max_price: toNullable(maxValue),
@@ -1556,6 +1577,42 @@ async function savePricingEdit() {
  *   تحقق الخلفية من الرصيد الفعلي بوحدة المصدر)
  * - «إلى وحدة» تُقيَّد بقيمة مختلفة عن «من وحدة» (الحبة افتراضياً إن وُجدت)
  */
+/* ✅ معامل التحويل بين وحدتين (كيلو ↔ جرام) — حسب الاسم
+   kilo = 1000 جرام؛ غير ذلك = لا تحويل تلقائي (null) */
+function sortingUnitFactor(fromName, toName) {
+    const norm = (n) => String(n || '').trim().toLowerCase();
+    const f = norm(fromName);
+    const t = norm(toName);
+
+    const isKilo  = (s) => s.includes('كيلو') || s.includes('كجم') || s === 'kg' || s.includes('kilogram');
+    const isGram  = (s) => s.includes('جرام') || s.includes('جم') || s === 'g' || s.includes('gram');
+
+    if (isKilo(f) && isGram(t)) return 1000;   /* كيلو → جرام */
+    if (isGram(f) && isKilo(t)) return 0.001;  /* جرام → كيلو */
+    return null; /* لا تحويل معروف — يدوي */
+}
+
+/* ✅ تعبئة الكمية الناتجة تلقائياً حسب التحويل بين الكيلو والجرام
+   (إلا إذا عدّلها المستخدم يدوياً) */
+function applySortingUnitConversion() {
+    const fromSel = document.getElementById('sortingFromUnit');
+    const toSel   = document.getElementById('sortingToUnit');
+    const inQtyEl = document.getElementById('sortingInputQty');
+    const outEl   = document.getElementById('sortingOutputQty');
+    if (!fromSel || !toSel || !inQtyEl || !outEl) return;
+
+    const fromUnit = (cache.units || []).find(u => String(u.UnitID) === String(fromSel.value));
+    const toUnit   = (cache.units || []).find(u => String(u.UnitID) === String(toSel.value));
+    const factor = sortingUnitFactor(fromUnit?.UnitName, toUnit?.UnitName);
+
+    const inQty = parseFloat(inQtyEl.value) || 0;
+    if (factor && inQty > 0 && outEl.dataset.userEdited !== '1') {
+        const converted = inQty * factor;
+        outEl.value = String(Math.round(converted * 1000) / 1000);
+    }
+    calculateSortingFromBalance();
+}
+
 function populateSortingUnitSelects(rowData) {
     const fromSel = document.getElementById('sortingFromUnit');
     const toSel = document.getElementById('sortingToUnit');
@@ -1602,15 +1659,16 @@ function populateSortingUnitSelects(rowData) {
         }
     };
 
-    fromSel.onchange = () => {
-        ensureDifferent(fromSel, toSel);
-        calculateSortingFromBalance();
-    };
-    toSel.onchange = () => {
-        ensureDifferent(toSel, fromSel);
-        calculateSortingFromBalance();
-    };
-}
+        fromSel.onchange = () => {
+            ensureDifferent(fromSel, toSel);
+            applySortingUnitConversion();
+        };
+
+        toSel.onchange = () => {
+            ensureDifferent(toSel, fromSel);
+            applySortingUnitConversion();
+        };
+    }
 
 function openSortingFromBalance(rowData) {
     activeSortingBalance = rowData;
@@ -1619,6 +1677,12 @@ function openSortingFromBalance(rowData) {
     document.getElementById('sortingItemName').textContent = rowData.item_name || '—';
     document.getElementById('sortingTypeName').textContent = rowData.type_name || '—';
     document.getElementById('sortingWarehouseName').textContent = rowData.warehouse_name || '—';
+    /* ✅ اسم المورد — الفرز سيتم من دفعة هذا المورد فقط */
+    const supplierEl = document.getElementById('sortingSupplierName');
+    if (supplierEl) {
+        supplierEl.textContent = rowData.supplier_name || 'توريد عام';
+        supplierEl.className = rowData.supplier_account_id ? '' : 'text-muted';
+    }
     document.getElementById('sortingAvailable').textContent = formatMoney(rowData.quantity);
     document.getElementById('sortingAvailableUnit').textContent = rowData.unit_name || '';
     document.getElementById('sortingUnitCost').textContent = formatMoney(rowData.unit_cost);
@@ -1639,6 +1703,9 @@ function openSortingFromBalance(rowData) {
     minEl.value = '';
     maxEl.value = '';
 
+    /* ✅ تحويل تلقائي فوري للكمية الناتجة (كيلو ↔ جرام) */
+    applySortingUnitConversion();
+
     /* ✅ مسح علامات "تم التعديل يدويًا" */
     delete saleEl.dataset.userEdited;
     delete minEl.dataset.userEdited;
@@ -1657,8 +1724,12 @@ function openSortingFromBalance(rowData) {
             delete minEl.dataset.userEdited;
             delete maxEl.dataset.userEdited;
         };
-        inQtyEl.addEventListener('input', clearEditedFlags);
-        outQtyEl.addEventListener('input', clearEditedFlags);
+        inQtyEl.addEventListener('input', () => {
+            clearEditedFlags();
+            /* ✅ تغيير الكمية المصدر يعيد حساب الناتجة تلقائياً */
+            applySortingUnitConversion();
+        });
+        outQtyEl.addEventListener('input', () => outEl.dataset.userEdited = '1');
 
         saleEl.dataset.listenerAttached = '1';
     }
@@ -1781,6 +1852,8 @@ async function saveSortingFromBalance() {
         input_quantity: inputQty,
         output_quantity: outputQty,
         code: activeSortingBalance.code || null,
+        /* ✅ الفرز من دفعة المورد المحدد فقط */
+        supplier_account_id: activeSortingBalance.supplier_account_id || null,
         sale_price: parseFloat(document.getElementById('sortingSalePrice').value) || null,
         min_price: parseFloat(document.getElementById('sortingMinPrice').value) || null,
         max_price: parseFloat(document.getElementById('sortingMaxPrice').value) || null,

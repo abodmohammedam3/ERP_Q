@@ -75,7 +75,7 @@
                 type="text"
                 class="form-control"
                 id="balancesSearchInput"
-                placeholder="ابحث في: الصنف / النوع / الرمز / المخزن / الوحدة..."
+                placeholder="ابحث في: الصنف / النوع / الرمز / المخزن / المورد / الوحدة..."
                 autocomplete="off"
                 oninput="filterStockBalances()"
             >
@@ -91,6 +91,7 @@
                         <th>النوع</th>
                         <th>الرمز</th>
                         <th>المخزن</th>
+                        <th>المورد</th>
                         <th>الوحدة</th>
                         <th>الكمية</th>
                         <th>التكلفة</th>
@@ -102,7 +103,7 @@
                 </thead>
                 <tbody id="balancesTableBody">
                     <tr>
-                        <td colspan="11" class="text-center text-muted py-4">
+                        <td colspan="12" class="text-center text-muted py-4">
                             <span class="spinner-border spinner-border-sm me-2"></span>
                             جاري التحميل...
                         </td>

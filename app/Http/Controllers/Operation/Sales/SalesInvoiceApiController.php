@@ -101,12 +101,18 @@ class SalesInvoiceApiController extends Controller
 
         $itemId      = (int) $request->input('item_id');
         $warehouseId = (int) $request->input('warehouse_id');
+        $supplierId  = $request->filled('supplier_account_id')
+            ? (int) $request->input('supplier_account_id')
+            : null;
 
         if (!$itemId || !$warehouseId) {
             return response()->json(['cost' => 0]);
         }
 
-        $cost = $this->inventoryService->lastCost($itemId, $warehouseId);
+        /* ✅ تكلفة دفعة المورد المحدد إن أُرسل، وإلا آخر تكلفة إجمالية */
+        $cost = $supplierId !== null
+            ? $this->inventoryService->lastCostForSupplier($itemId, $warehouseId, null, $supplierId)
+            : $this->inventoryService->lastCost($itemId, $warehouseId);
 
         return response()->json(['cost' => $cost]);
     }

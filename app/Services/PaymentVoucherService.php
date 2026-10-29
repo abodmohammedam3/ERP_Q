@@ -247,7 +247,7 @@ class PaymentVoucherService
         function () use ($data) {
 
             /*
-             * ⚠️ النظام في وضع التهيئة — لا يوجد مستخدمون بعد
+             *  النظام في وضع التهيئة — لا يوجد مستخدمون بعد
              * الأعمدة created_by / updated_by / posted_by كلها NULLABLE
              * عند تفعيل auth middleware → سيُملأ تلقائياً
              */
@@ -873,7 +873,7 @@ class PaymentVoucherService
      * يتحقق من أن الحسابين قابلان للترحيل.
      * استعلام واحد يجلب الحسابين معاً (بلا N+1).
      *
-     * ⚠️ الحماية المزدوجة (Defense in Depth):
+     *  الحماية المزدوجة (Defense in Depth):
      *   - FormRequest يفحصها في مسار HTTP
      *   - هذه الدالة تفحصها في Service (Jobs, Commands, Tests, ...)
      *

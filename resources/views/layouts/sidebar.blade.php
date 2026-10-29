@@ -379,7 +379,8 @@
                     @php
                         $isPurchasesActive =
                             request()->routeIs('invoicesPurch.*') ||
-                            request()->routeIs('purchases.returns.*');
+                            request()->routeIs('purchases.returns.*')||
+                            request()->routeIs('purchases.distribution.*');
                     @endphp
 
                     <button
@@ -420,6 +421,14 @@
                             >
                                 <i class="bi bi-arrow-return-right"></i>
                                 <span>مردود المشتريات</span>
+                            </a>
+                            <a
+                                href="{{ route('purchases.distribution.index') }}"
+                                class="d-flex align-items-center gap-3 text-decoration-none rounded-2 px-3 py-2
+                                {{ request()->routeIs('purchases.distribution.*') ? 'bg-success text-white' : 'text-white-50' }}"
+                            >
+                                <i class="bi bi-boxes"></i>
+                                <span>توزيع أصناف المشتريات</span>
                             </a>
 
                         </div>

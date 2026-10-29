@@ -29,16 +29,12 @@ use App\Http\Controllers\Operation\Purchases\PurchaseInvoiceApiController;
 use App\Http\Controllers\Operation\Sales\SalesReturnApiController;
 use App\Http\Controllers\Operation\ReceiptVoucher\ReceiptVoucherApiController;
 use App\Http\Controllers\Operation\PaymentVoucher\PaymentVoucherApiController;
-
+use App\Http\Controllers\Operation\PurchaseDistribution\PurchaseDistributionController;
 
 
 // =====================================================
 // لوحة المعلومات (Dashboard)
 // -----------------------------------------------------
-// "/" و "/dashboard" يخدمان نفس الشاشة من نفس الـ Controller —
-// قبل ذلك كانا Closure يرجع view فقط بلا بيانات ولا Route name،
-// و sidebar.blade.php:44 كان يعتمد على نص المسار request()->is('dashboard').
-// =====================================================
 Route::get('/', [DashboardController::class, 'index'])->name('home');
 
 Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -468,7 +464,8 @@ Route::patch(
 
 // =====================================================
 // الصفحات التشغيلية
-// =====================================================// ═══════════════════════════════════════════════════════════
+// =====================================================
+// ═══════════════════════════════════════════════════════════
 // Payment Vouchers (سندات الصرف)
 // ═══════════════════════════════════════════════════════════
 
@@ -733,63 +730,30 @@ Route::get(
     [InventoryMovementController::class, 'index']
 )->name('movements.index');
 
-
-// -----------------------------------------------------
-// رقم الحركة التالي
-// -----------------------------------------------------
-
 Route::get(
     '/operation/movements/next-number',
     [InventoryMovementController::class, 'nextNumber']
 )->name('movements.nextNumber');
-
-
-// -----------------------------------------------------
-// قائمة الحركات (JSON) — للبحث
-// -----------------------------------------------------
 
 Route::get(
     '/operation/movements/list',
     [InventoryMovementController::class, 'list']
 )->name('movements.list');
 
-
-// -----------------------------------------------------
-// ✅ Helpers — جلب الرصيد المتاح (Unit-aware)
-// ⚠️ يجب أن يوضع قبل /{id}
-// -----------------------------------------------------
-
 Route::get(
     '/operation/movements/helpers/available',
     [InventoryMovementController::class, 'available']
 )->name('movements.helpers.available');
-
-
-// -----------------------------------------------------
-// ✅ Helpers — جلب التسعير الحالي
-// ⚠️ يجب أن يوضع قبل /{id}
-// -----------------------------------------------------
 
 Route::get(
     '/operation/movements/helpers/pricing',
     [InventoryMovementController::class, 'pricing']
 )->name('movements.helpers.pricing');
 
-
-// -----------------------------------------------------
-// ✅ Helpers — جلب الرصيد + التكلفة + التسعير (مدمج)
-// ⚠️ يجب أن يوضع قبل /{id}
-// -----------------------------------------------------
-
 Route::get(
     '/operation/movements/helpers/stock-pricing',
     [InventoryMovementController::class, 'stockPricing']
 )->name('movements.helpers.stockPricing');
-
-
-// -----------------------------------------------------
-// ✅ تحديث التسعير لآخر حركة "in"
-// -----------------------------------------------------
 
 Route::put(
     '/operation/movements/helpers/pricing',
@@ -1031,7 +995,6 @@ Route::get(
     [PurchaseReturnApiController::class, 'list']
 )->name('purchases.returns.list');
 
-/* ✅ اختيار الفاتورة الأصلية — يُخفي المُرجَعة بالكامل */
 Route::get(
     '/operation/purchases/returns/invoice-picker',
     [PurchaseReturnApiController::class, 'invoicePicker']
@@ -1089,7 +1052,9 @@ Route::prefix('admin/export')->group(function () {
     Route::get('/items', [\App\Http\Controllers\Admin\ExportController::class, 'items'])->name('admin.export.items');
     Route::get('/customers', [\App\Http\Controllers\Admin\ExportController::class, 'customers'])->name('admin.export.customers');
     Route::get('/suppliers', [\App\Http\Controllers\Admin\ExportController::class, 'suppliers'])->name('admin.export.suppliers');
-});// ═══════════════════════════════════════
+});
+
+// ═══════════════════════════════════════
 //  إعدادات النظام — النسخ الاحتياطي
 // ═══════════════════════════════════════
 
@@ -1133,4 +1098,25 @@ Route::prefix('settings/system')
                 Route::post('/cleanup', [\App\Http\Controllers\Settings\BackupController::class, 'cleanup'])
                     ->name('cleanup');
             });
+    });
+
+    
+// ═══════════════════════════════════════
+// — شاشة التوزيع
+// ═══════════════════════════════════════use App\Http\Controllers\Operation\PurchaseDistribution\PurchaseDistributionController;
+
+Route::prefix('operation/purchases/distribution')
+    ->name('purchases.distribution.')
+    ->group(function () {
+        Route::get('/',                  [PurchaseDistributionController::class, 'index'])->name('index');
+        Route::get('/customer-invoices', [PurchaseDistributionController::class, 'customerInvoicesPage'])->name('customer-invoices.page');
+        Route::get('/invoices',            [PurchaseDistributionController::class, 'invoices'])->name('invoices');
+        Route::get('/invoices/{id}/items', [PurchaseDistributionController::class, 'items'])->name('items');
+        Route::get('/customers',           [PurchaseDistributionController::class, 'customers'])->name('customers');
+        Route::post('/save',               [PurchaseDistributionController::class, 'save'])->name('save');
+        Route::get('/list/all',            [PurchaseDistributionController::class, 'list'])->name('list');
+        Route::post('/issue-invoice',      [PurchaseDistributionController::class, 'issueInvoice'])->name('issue-invoice');
+        Route::get('/customer/{customerId}/distributions', [PurchaseDistributionController::class, 'customerDistributions'])->name('customer-distributions');
+        Route::get('/{id}',    [PurchaseDistributionController::class, 'show'])->name('show');
+        Route::delete('/{id}', [PurchaseDistributionController::class, 'destroy'])->name('destroy');
     });

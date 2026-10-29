@@ -230,42 +230,37 @@ class InventoryService
         return $detail ? (float) $detail->unit_cost : 0;
     }
 
-    public function currentUnitCost(
-        int $itemId,
-        ?int $typeId,
-        int $warehouseId,
-        int $unitId
+   public function currentUnitCost(
+    int $itemId,
+    ?int $typeId,
+    int $warehouseId,
+    int $unitId
     ): float {
+    /* ✅ إصلاح: إزالة استثناء source_type='sorting'
+       كان يمنع الفرز المتعدد المستويات (كجم → جرام → قطعة).
+       التكلفة الصحيحة للوحدة الناتجة عن فرز سابق = تكلفتها المخزّنة نفسها. */
         $query = InventoryMovementDetail::query()
-            ->join(
-                'inventory_movements',
-                'inventory_movements.movement_id',
-                '=',
-                'inventory_movement_details.movement_id'
-            )
-            ->where('inventory_movement_details.item_id', $itemId)
-            ->where('inventory_movement_details.warehouse_id', $warehouseId)
-            ->where('inventory_movement_details.unit_id', $unitId)
-            ->where('inventory_movements.direction', 'in')
-            ->where(function ($q) {
-                $q->whereNull('inventory_movements.source_type')
-                  ->orWhere(
-                      'inventory_movements.source_type',
-                      '!=',
-                      InventoryMovement::SOURCE_SORTING
-                  );
-            });
+        ->join(
+            'inventory_movements',
+            'inventory_movements.movement_id',
+            '=',
+            'inventory_movement_details.movement_id'
+        )
+        ->where('inventory_movement_details.item_id', $itemId)
+        ->where('inventory_movement_details.warehouse_id', $warehouseId)
+        ->where('inventory_movement_details.unit_id', $unitId)
+        ->where('inventory_movements.direction', 'in');
 
-        if ($typeId !== null) {
-            $query->where('inventory_movement_details.type_id', $typeId);
-        }
+     if ($typeId !== null) {
+        $query->where('inventory_movement_details.type_id', $typeId);
+     }
 
-        $detail = $query
-            ->orderByDesc('inventory_movement_details.movement_detail_id')
-            ->select('inventory_movement_details.unit_cost')
-            ->first();
+    $detail = $query
+        ->orderByDesc('inventory_movement_details.movement_detail_id')
+        ->select('inventory_movement_details.unit_cost')
+        ->first();
 
-        return $detail ? (float) $detail->unit_cost : 0;
+    return $detail ? (float) $detail->unit_cost : 0;
     }
 
     public function lastPricing(

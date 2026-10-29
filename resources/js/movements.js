@@ -25,7 +25,6 @@ const MOVEMENT_DIRECTION_LABELS = {
 const PIECE_UNIT_NAMES = ['الحبة', 'حبة', 'حبه', 'حب', 'قطعة', 'قطعه'];
 const DEFAULT_PROFIT_MARGIN = 0.20;
 
-/* ✅ تصدير للـ Console (للتشخيص) */
 if (typeof window !== 'undefined') {
     window.DEFAULT_PROFIT_MARGIN = DEFAULT_PROFIT_MARGIN;
     window.PIECE_UNIT_NAMES = PIECE_UNIT_NAMES;
@@ -42,12 +41,10 @@ let activeMovementRow = null;
 let activeWarehouseTarget = null;
 let isSavingMovement = false;
 
-/* حالة التابات والأرصدة */
 let activeTab = 'movements';
 let stockBalancesCache = [];
 let balancesLoaded = false;
 
-/* ✅ لا يحتاج فتح تاب الأرصدة: نُحمّلها مسبقًا إن أمكن (لـ fallback التسعير) */
 async function ensureStockBalancesCache() {
     if (balancesLoaded || stockBalancesCache.length) return;
     try {
@@ -58,6 +55,7 @@ async function ensureStockBalancesCache() {
         stockBalancesCache = [];
     }
 }
+
 let activeSortingBalance = null;
 let sortingFromBalanceModalInstance = null;
 
@@ -107,13 +105,11 @@ async function apiSend(url, method, body) {
     const json = await r.json().catch(() => ({}));
     if (!r.ok) {
         let message = json.message || 'فشل الطلب';
-
         if (json.errors) {
             message = Object.values(json.errors).flat().join(' | ');
         } else if (json.error) {
             message = json.error;
         }
-
         const e = new Error(message);
         e.errors = json.errors;
         e.raw = json;
@@ -149,7 +145,6 @@ function notify(message, type = 'info') {
     }
 }
 
-/** ✅ تأكيد موحّد عبر appConfirm (shared/app-confirm.js) */
 function movementConfirm(message, opts = {}) {
     if (typeof window.appConfirm === 'function') {
         return window.appConfirm(message, opts);
@@ -167,7 +162,6 @@ function formatMoney(v) {
     });
 }
 
-/* ✅ تنسيق بسيط (بدون فواصل آلاف) — للاستخدام داخل input.value */
 function toFixed2(v) {
     return Number(v || 0).toFixed(2);
 }
@@ -205,9 +199,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     sortingFromBalanceModalInstance = initModal('sortingFromBalanceModal');
     pricingEditModal = initModal('pricingEditModal');
 
-    /* ✅ ربط مستمعات التابات أولاً — قبل أي await —
-       حتى لا تضيع نقرة المستخدم على تاب الأرصدة أثناء تحميل البيانات المرجعية
-       (كان سبب بقاء الجدول على "جاري التحميل" إلى الضغط على تحديث) */
     initTabs();
 
     await preloadAll();
@@ -215,8 +206,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     setMovementMode('view');
     clearMovementForm();
 
-    /* ✅ إذا كان تاب الأرصدة هو النشط عند الدخول (أو نُقر أثناء التهيئة)
-       نحمّل الأرصدة فوراً */
     const activeInput = document.getElementById('activeMovementTab');
     if (activeInput && activeInput.value === 'balances') {
         loadStockBalances();
@@ -250,7 +239,7 @@ async function preloadAll() {
 }
 
 /* ============================================================
-   ✅ التابات
+   التابات
    ============================================================ */
 
 function initTabs() {
@@ -266,9 +255,9 @@ function initTabs() {
 
             if (activeInput) activeInput.value = tabName;
 
-        if (tabName === 'balances' && !balancesLoaded) {
-            loadStockBalances();
-        }
+            if (tabName === 'balances' && !balancesLoaded) {
+                loadStockBalances();
+            }
         });
     });
 }
@@ -862,7 +851,6 @@ function displayMovementSearchResults(results) {
         const tr = document.createElement('tr');
         tr.style.cursor = 'pointer';
 
-        /* الرقم التسلسلي (الأحدث في الأعلى = 1) */
         const tdSerial = document.createElement('td');
         tdSerial.textContent = idx + 1;
         tr.appendChild(tdSerial);
@@ -891,11 +879,6 @@ function displayMovementSearchResults(results) {
    تحميل حركة
    ============================================================ */
 
-/**
- * ✅ آخر تسعير معروف لكل تركيبة (صنف+نوع+مخزن+وحدة) من كاش الأرصدة
- *    يُستخدم كـ fallback عند عرض حركة لا تحمل min/max محفوظين.
- * @returns {{min_price: number|null, max_price: number|null}}
- */
 function stockBalancesPricingLookup(itemId, typeId, warehouseId, unitId) {
     const none = { min_price: null, max_price: null };
     if (!Array.isArray(stockBalancesCache) || !stockBalancesCache.length) return none;
@@ -905,7 +888,6 @@ function stockBalancesPricingLookup(itemId, typeId, warehouseId, unitId) {
     ].join('|');
 
     const target = key(itemId, typeId, warehouseId, unitId);
-    /* أول تطابق لهذه التركيبة (مع أي مورد) — الـ fallback للعرض فقط */
     const row = stockBalancesCache.find(
         r => key(r.item_id, r.type_id, r.warehouse_id, r.unit_id) === target
     );
@@ -928,7 +910,6 @@ async function loadMovement(movementId) {
         const h = res.header;
         const details = res.details || [];
 
-        /* ✅ غير حاجز: تُضبط قبل رسم الصفوف ليعمل fallback التسعير */
         await ensureStockBalancesCache();
 
         clearMovementForm();
@@ -965,8 +946,6 @@ async function loadMovement(movementId) {
             row.querySelector('.movement-quantity').value = d.quantity ?? 0;
             row.querySelector('.movement-unit-cost').value = toFixed2(d.unit_cost);
 
-            /* ✅ إن لم يحمل سطر الحركة تسعيرًا (حركات قديمة/بيع غير مُسعّر)
-               نعرض آخر تسعير معروف من الأرصدة مع وسم توضيحي بدل فراغ مضلّل */
             const knownPricing = stockBalancesPricingLookup(
                 d.item_id, d.type_id, d.warehouse_id, d.unit_id
             );
@@ -1221,7 +1200,7 @@ function setValue(id, value) {
 }
 
 /* =========================================================================
-   ✅ قسم أرصدة المخزون (التاب 2)
+   قسم أرصدة المخزون (التاب 2)
    ========================================================================= */
 
 async function loadStockBalances() {
@@ -1311,28 +1290,23 @@ function renderStockBalances(rows) {
             tr.classList.add('row-kilo');
         }
 
-        // الصنف
         const tdItem = document.createElement('td');
         tdItem.className = 'text-start';
         tdItem.textContent = row.item_name || '—';
         tr.appendChild(tdItem);
 
-        // النوع
         const tdType = document.createElement('td');
         tdType.textContent = row.type_name || '—';
         tr.appendChild(tdType);
 
-        // الرمز
         const tdCode = document.createElement('td');
         tdCode.textContent = row.code || '—';
         tr.appendChild(tdCode);
 
-        // ✅ المخزن
         const tdWh = document.createElement('td');
         tdWh.textContent = row.warehouse_name || '—';
         tr.appendChild(tdWh);
 
-        // ✅ المورد (الدفعة الموردية) — عمود جديد
         const tdSup = document.createElement('td');
         tdSup.textContent = row.supplier_name || 'توريد عام';
         if (!row.supplier_account_id) {
@@ -1340,25 +1314,21 @@ function renderStockBalances(rows) {
         }
         tr.appendChild(tdSup);
 
-        // الوحدة
         const tdUnit = document.createElement('td');
         tdUnit.textContent = row.unit_name || '—';
         tr.appendChild(tdUnit);
 
-        // الكمية
         const tdQty = document.createElement('td');
         tdQty.className = 'balance-qty amount-cell';
         const qty = Number(row.quantity) || 0;
         tdQty.textContent = Number.isInteger(qty) ? qty : qty.toFixed(2);
         tr.appendChild(tdQty);
 
-        // التكلفة
         const tdCost = document.createElement('td');
         tdCost.className = 'amount-cell';
         tdCost.textContent = formatMoney(row.unit_cost);
         tr.appendChild(tdCost);
 
-        // ✅ سعر البيع — للعرض فقط (التعديل عبر زر «تعديل»)
         const tdSale = document.createElement('td');
         const saleInput = document.createElement('input');
         saleInput.type = 'number';
@@ -1373,7 +1343,6 @@ function renderStockBalances(rows) {
         tdSale.appendChild(saleInput);
         tr.appendChild(tdSale);
 
-        // ✅ الحد الأدنى — للعرض فقط (readonly) — تنسيق 2 منازل
         const tdMin = document.createElement('td');
         const minInput = document.createElement('input');
         minInput.type = 'number';
@@ -1388,7 +1357,6 @@ function renderStockBalances(rows) {
         tdMin.appendChild(minInput);
         tr.appendChild(tdMin);
 
-        // ✅ الحد الأعلى — للعرض فقط (التعديل عبر زر «تعديل»)
         const tdMax = document.createElement('td');
         const maxInput = document.createElement('input');
         maxInput.type = 'number';
@@ -1403,12 +1371,10 @@ function renderStockBalances(rows) {
         tdMax.appendChild(maxInput);
         tr.appendChild(tdMax);
 
-        // الإجراءات
         const tdActions = document.createElement('td');
         const actionsWrap = document.createElement('div');
         actionsWrap.className = 'd-flex gap-1 justify-content-center';
 
-        /* زر التعديل (التسعير) — سعر البيع + الحد الأعلى */
         const btnEdit = document.createElement('button');
         btnEdit.type = 'button';
         btnEdit.className = 'btn btn-info btn-action';
@@ -1421,7 +1387,6 @@ function renderStockBalances(rows) {
         btnEdit.addEventListener('click', () => openPricingEdit(row, tr));
         actionsWrap.appendChild(btnEdit);
 
-        /* زر الفرز/تحويل الوحدات — دائم الظهور لأي وحدة */
         const btnSort = document.createElement('button');
         btnSort.type = 'button';
         btnSort.className = 'btn btn-warning btn-action';
@@ -1457,7 +1422,7 @@ async function updatePricingInline(rowData, changes) {
         item_id: rowData.item_id,
         warehouse_id: rowData.warehouse_id,
         unit_id: rowData.unit_id || null,
-        supplier_account_id: rowData.supplier_account_id || null, /* ✅ تسعير دفعة المورد */
+        supplier_account_id: rowData.supplier_account_id || null,
         sale_price: toNullable(saleValue),
         min_price: toNullable(minValue),
         max_price: toNullable(maxValue),
@@ -1512,7 +1477,7 @@ async function updatePricingInline(rowData, changes) {
 }
 
 /* =========================================================================
-   ✅ مودال تعديل التسعير (سعر البيع + الحد الأعلى فقط)
+   مودال تعديل التسعير
    ========================================================================= */
 
 let activePricingBalance = null;
@@ -1552,10 +1517,8 @@ async function savePricingEdit() {
 
         if (!ok) return;
 
-        /* تحديث عرض الحقول في الصف مباشرةً (بيانات rowData حُدِّثت داخل updatePricingInline) */
         if (activePricingRowEl) {
             const priceInputs = activePricingRowEl.querySelectorAll('input.price-input');
-            /* الترتيب في الصف: [سعر البيع، الحد الأدنى، الحد الأعلى] */
             if (priceInputs[0]) priceInputs[0].value = toFixed2(activePricingBalance.sale_price);
             if (priceInputs[1]) priceInputs[1].value = toFixed2(activePricingBalance.min_price);
             if (priceInputs[2]) priceInputs[2].value = toFixed2(activePricingBalance.max_price);
@@ -1568,41 +1531,31 @@ async function savePricingEdit() {
 }
 
 /* =========================================================================
-   ✅ الفرز
+   الفرز
    ========================================================================= */
 
-/**
- * ✅ تعبئة قوائم الوحدات (من / إلى) في مودال الفرز
- * - «من وحدة» تُقيَّد بوحدة الصف الافتراضية (لا تزال قابلة للتغيير مع
- *   تحقق الخلفية من الرصيد الفعلي بوحدة المصدر)
- * - «إلى وحدة» تُقيَّد بقيمة مختلفة عن «من وحدة» (الحبة افتراضياً إن وُجدت)
- */
-/* ✅ معامل التحويل بين وحدتين (كيلو ↔ جرام) — حسب الاسم
-   kilo = 1000 جرام؛ غير ذلك = لا تحويل تلقائي (null) */
 function sortingUnitFactor(fromName, toName) {
     const norm = (n) => String(n || '').trim().toLowerCase();
     const f = norm(fromName);
     const t = norm(toName);
 
-    const isKilo  = (s) => s.includes('كيلو') || s.includes('كجم') || s === 'kg' || s.includes('kilogram');
-    const isGram  = (s) => s.includes('جرام') || s.includes('جم') || s === 'g' || s.includes('gram');
+    const isKilo = (s) => s.includes('كيلو') || s.includes('كجم') || s === 'kg' || s.includes('kilogram');
+    const isGram = (s) => s.includes('جرام') || s.includes('جم') || s === 'g' || s.includes('gram');
 
-    if (isKilo(f) && isGram(t)) return 1000;   /* كيلو → جرام */
-    if (isGram(f) && isKilo(t)) return 0.001;  /* جرام → كيلو */
-    return null; /* لا تحويل معروف — يدوي */
+    if (isKilo(f) && isGram(t)) return 1000;
+    if (isGram(f) && isKilo(t)) return 0.001;
+    return null;
 }
 
-/* ✅ تعبئة الكمية الناتجة تلقائياً حسب التحويل بين الكيلو والجرام
-   (إلا إذا عدّلها المستخدم يدوياً) */
 function applySortingUnitConversion() {
     const fromSel = document.getElementById('sortingFromUnit');
-    const toSel   = document.getElementById('sortingToUnit');
+    const toSel = document.getElementById('sortingToUnit');
     const inQtyEl = document.getElementById('sortingInputQty');
-    const outEl   = document.getElementById('sortingOutputQty');
+    const outEl = document.getElementById('sortingOutputQty');
     if (!fromSel || !toSel || !inQtyEl || !outEl) return;
 
     const fromUnit = (cache.units || []).find(u => String(u.UnitID) === String(fromSel.value));
-    const toUnit   = (cache.units || []).find(u => String(u.UnitID) === String(toSel.value));
+    const toUnit = (cache.units || []).find(u => String(u.UnitID) === String(toSel.value));
     const factor = sortingUnitFactor(fromUnit?.UnitName, toUnit?.UnitName);
 
     const inQty = parseFloat(inQtyEl.value) || 0;
@@ -1634,7 +1587,6 @@ function populateSortingUnitSelects(rowData) {
         toSel.appendChild(optTo);
     });
 
-    /* الافتراضي: من = وحدة الصف، إلى = الحبة (أو أول وحدة مختلفة) */
     const rowUnitId = rowData.unit_id != null ? String(rowData.unit_id) : '';
     if (rowUnitId && units.some(u => String(u.UnitID) === rowUnitId)) {
         fromSel.value = rowUnitId;
@@ -1651,7 +1603,6 @@ function populateSortingUnitSelects(rowData) {
         if (alternative) toSel.value = alternative.UnitID;
     }
 
-    /* منع نفس الوحدة في الطرفين */
     const ensureDifferent = (changedSel, otherSel) => {
         if (changedSel.value && changedSel.value === otherSel.value) {
             const alternative = units.find(u => String(u.UnitID) !== String(changedSel.value));
@@ -1659,35 +1610,35 @@ function populateSortingUnitSelects(rowData) {
         }
     };
 
-        fromSel.onchange = () => {
-            ensureDifferent(fromSel, toSel);
-            applySortingUnitConversion();
-        };
+    fromSel.onchange = () => {
+        ensureDifferent(fromSel, toSel);
+        applySortingUnitConversion();
+    };
 
-        toSel.onchange = () => {
-            ensureDifferent(toSel, fromSel);
-            applySortingUnitConversion();
-        };
-    }
+    toSel.onchange = () => {
+        ensureDifferent(toSel, fromSel);
+        applySortingUnitConversion();
+    };
+}
 
 function openSortingFromBalance(rowData) {
     activeSortingBalance = rowData;
-    window.__activeSortingBalance = rowData; /* للتشخيص */
+    window.__activeSortingBalance = rowData;
 
     document.getElementById('sortingItemName').textContent = rowData.item_name || '—';
     document.getElementById('sortingTypeName').textContent = rowData.type_name || '—';
     document.getElementById('sortingWarehouseName').textContent = rowData.warehouse_name || '—';
-    /* ✅ اسم المورد — الفرز سيتم من دفعة هذا المورد فقط */
+
     const supplierEl = document.getElementById('sortingSupplierName');
     if (supplierEl) {
         supplierEl.textContent = rowData.supplier_name || 'توريد عام';
         supplierEl.className = rowData.supplier_account_id ? '' : 'text-muted';
     }
+
     document.getElementById('sortingAvailable').textContent = formatMoney(rowData.quantity);
     document.getElementById('sortingAvailableUnit').textContent = rowData.unit_name || '';
     document.getElementById('sortingUnitCost').textContent = formatMoney(rowData.unit_cost);
 
-    /* ✅ تعبئة قوائم الوحدات (من / إلى) — أي وحدتين مختلفتين */
     populateSortingUnitSelects(rowData);
 
     const inQtyEl = document.getElementById('sortingInputQty');
@@ -1696,24 +1647,21 @@ function openSortingFromBalance(rowData) {
     const minEl = document.getElementById('sortingMinPrice');
     const maxEl = document.getElementById('sortingMaxPrice');
 
-    /* ✅ default الكمية = الكمية الكاملة */
     inQtyEl.value = rowData.quantity;
     outQtyEl.value = '';
     saleEl.value = '';
     minEl.value = '';
     maxEl.value = '';
 
-    /* ✅ تحويل تلقائي فوري للكمية الناتجة (كيلو ↔ جرام) */
-    applySortingUnitConversion();
-
-    /* ✅ مسح علامات "تم التعديل يدويًا" */
+    /* ✅ مسح علامات "تم التعديل يدويًا" — بما فيها outQtyEl */
     delete saleEl.dataset.userEdited;
     delete minEl.dataset.userEdited;
     delete maxEl.dataset.userEdited;
+    delete outQtyEl.dataset.userEdited;
 
-    /* ✅ إرفاق المستمعات مرة واحدة فقط
-       - حقول الأسعار: تُعلَّم يدويًا عند الكتابة فيها
-       - حقول الكمية/العدد: تفكّ العلامة عند أي تغيير (دفعة جديدة = حساب جديد) */
+    applySortingUnitConversion();
+
+    /* ✅ إرفاق المستمعات مرة واحدة فقط */
     if (!saleEl.dataset.listenerAttached) {
         saleEl.addEventListener('input', () => saleEl.dataset.userEdited = '1');
         minEl.addEventListener('input', () => minEl.dataset.userEdited = '1');
@@ -1723,13 +1671,19 @@ function openSortingFromBalance(rowData) {
             delete saleEl.dataset.userEdited;
             delete minEl.dataset.userEdited;
             delete maxEl.dataset.userEdited;
+            delete outQtyEl.dataset.userEdited;
         };
+
         inQtyEl.addEventListener('input', () => {
             clearEditedFlags();
-            /* ✅ تغيير الكمية المصدر يعيد حساب الناتجة تلقائياً */
             applySortingUnitConversion();
         });
-        outQtyEl.addEventListener('input', () => outEl.dataset.userEdited = '1');
+
+        /* ✅ الإصلاح: outQtyEl (المتغير الصحيح في هذا النطاق) بدل outEl */
+        outQtyEl.addEventListener('input', () => {
+            outQtyEl.dataset.userEdited = '1';
+            calculateSortingFromBalance();
+        });
 
         saleEl.dataset.listenerAttached = '1';
     }
@@ -1762,7 +1716,6 @@ function calculateSortingFromBalance() {
     const outputQty = parseFloat(document.getElementById('sortingOutputQty').value) || 0;
     const kgCost = parseFloat(activeSortingBalance.unit_cost) || 0;
 
-    /* ✅ عند حذف الكمية أو عدم اكتمال البيانات → امسح الحقول */
     if (inputQty <= 0 || outputQty <= 0 || kgCost <= 0) {
         resultUnitCostEl.textContent = '0.00';
         resultTotalEl.textContent = '0.00';
@@ -1780,7 +1733,6 @@ function calculateSortingFromBalance() {
     resultUnitCostEl.textContent = formatMoney(unitCost);
     resultTotalEl.textContent = formatMoney(totalCost);
 
-    /* ✅ التحديث التلقائي فقط إذا لم يعدّلها المستخدم يدويًا */
     if (saleInput.dataset.userEdited !== '1') {
         saleInput.value = (unitCost * (1 + DEFAULT_PROFIT_MARGIN)).toFixed(2);
     }
@@ -1807,7 +1759,6 @@ async function saveSortingFromBalance() {
         return;
     }
 
-    /* ✅ الوحدات المختارة */
     const fromSel = document.getElementById('sortingFromUnit');
     const toSel = document.getElementById('sortingToUnit');
     const fromUnitId = fromSel ? parseInt(fromSel.value) : activeSortingBalance.unit_id;
@@ -1822,8 +1773,6 @@ async function saveSortingFromBalance() {
         return;
     }
 
-    /* فحص الرصيد محلياً فقط عند تطابق وحدة المصدر مع وحدة الصف
-       (الرصيد الفعلي بوحدة أخرى يتحقق منه الخلفية) */
     const rowUnitId = activeSortingBalance.unit_id != null ? parseInt(activeSortingBalance.unit_id) : null;
     if (fromUnitId === rowUnitId && inputQty > Number(activeSortingBalance.quantity)) {
         notify(`الكمية المتاحة (${formatMoney(activeSortingBalance.quantity)}) أقل من المطلوب`, 'warning');
@@ -1852,7 +1801,6 @@ async function saveSortingFromBalance() {
         input_quantity: inputQty,
         output_quantity: outputQty,
         code: activeSortingBalance.code || null,
-        /* ✅ الفرز من دفعة المورد المحدد فقط */
         supplier_account_id: activeSortingBalance.supplier_account_id || null,
         sale_price: parseFloat(document.getElementById('sortingSalePrice').value) || null,
         min_price: parseFloat(document.getElementById('sortingMinPrice').value) || null,
@@ -1893,7 +1841,6 @@ async function saveSortingFromBalance() {
    ═══════════════════════════════════════════════════════════ */
 
 Object.assign(window, {
-    // الحركات
     startSupplyMovement,
     startIssueMovement,
     searchMovements,
@@ -1905,20 +1852,17 @@ Object.assign(window, {
     calculateMovementTotal,
     validateSalePrice,
 
-    // keydown
     movementItemKeyDown,
     movementTypeKeyDown,
     movementWarehouseRowKeyDown,
     movementWarehouseHeaderKeyDown,
     movementUnitKeyDown,
 
-    // input
     movementItemInput,
     movementTypeInput,
     movementWarehouseInput,
     movementUnitInput,
 
-    // modals
     openMovementItemModal,
     openMovementTypeModal,
     openMovementWarehouseModal,
@@ -1938,7 +1882,6 @@ Object.assign(window, {
     clearMovementForm,
     setMovementMode,
 
-    // ✅ الأرصدة
     loadStockBalances,
     filterStockBalances,
     renderStockBalances,
@@ -1946,7 +1889,6 @@ Object.assign(window, {
     openPricingEdit,
     savePricingEdit,
 
-    // ✅ الفرز
     openSortingFromBalance,
     populateSortingUnitSelects,
     calculateSortingFromBalance,

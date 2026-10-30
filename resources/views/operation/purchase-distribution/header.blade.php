@@ -5,7 +5,12 @@
             <i class="bi bi-box-seam fs-4"></i>
         </div>
         <div>
-            <h5 class="mb-0 fw-bold">توزيع أصناف فواتير الشراء</h5>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <h5 class="mb-0 fw-bold">توزيع أصناف فواتير الشراء</h5>
+                <span id="distributionModeBadge" class="badge bg-success-subtle text-success">
+                    <i class="bi bi-plus-circle"></i> توزيع جديد
+                </span>
+            </div>
             <div class="text-muted small">وزّع أصناف الفواتير على العملاء ثم أصدر الفواتير</div>
         </div>
     </div>

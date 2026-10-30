@@ -8,6 +8,7 @@ use App\Models\Purchases\Distribution;
 use App\Models\Purchases\DistributionDetail;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\Inventory\InventoryMovementDetail;
+use App\Models\Inventory\Item;
 use App\Models\Customer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +26,12 @@ class PurchaseDistributionController extends Controller
 
     public function customerInvoicesPage()
     {
-        return view('operation.purchase-distribution.customer-invoices');
+        return view('operation.purchase-distribution.customer-invoices.index');
+    }
+
+    public function historyPage()
+    {
+        return view('operation.purchase-distribution.history.index');
     }
 
     // ============================================================
@@ -60,7 +66,7 @@ class PurchaseDistributionController extends Controller
     }
 
     // ============================================================
-    // أصناف فاتورة محددة (من حركة المخزون)
+    // أصناف فاتورة محددة
     // ============================================================
     public function items(int $id)
     {
@@ -126,7 +132,7 @@ class PurchaseDistributionController extends Controller
     }
 
     // ============================================================
-    // بحث العملاء (يدعم account-picker)
+    // بحث العملاء
     // ============================================================
     public function customers(Request $request)
     {
@@ -148,7 +154,7 @@ class PurchaseDistributionController extends Controller
             ->get()
             ->map(fn($c) => [
                 'id'    => $c->CustomersID,
-                'code'  => $c->account?->accCode ?? '',   // ← الحساب التحليلي
+                'code'  => $c->account?->accCode ?? '',
                 'name'  => $c->CustomersName2,
                 'phone' => $c->CusPhone ?? '',
             ]);
@@ -157,7 +163,7 @@ class PurchaseDistributionController extends Controller
     }
 
     // ============================================================
-    // حفظ توزيع (جديد أو تعديل)
+    // حفظ توزيع
     // ============================================================
     public function save(Request $request)
     {
@@ -267,7 +273,7 @@ class PurchaseDistributionController extends Controller
     }
 
     // ============================================================
-    // عرض توزيع
+    // عرض توزيع (كامل)
     // ============================================================
     public function show(int $id)
     {
@@ -279,6 +285,40 @@ class PurchaseDistributionController extends Controller
             'details.movementDetail.unit',
         ])->findOrFail($id);
 
+        $rows = $dist->details->map(fn($d) => [
+            'id'                  => $d->id,
+            'movement_detail_id'  => $d->movement_detail_id,
+            'movement_id'         => $d->movement_id,
+            'purchase_invoice_id' => $d->purchase_invoice_id,
+            'invoice_number'      => $d->purchaseInvoice?->invoice_number,
+            'customer_id'         => $d->customer_id,
+            'customer_name'       => $d->customer?->CustomersName2,
+            'customer_phone'      => $d->customer?->CusPhone,
+            'item_name'           => $d->movementDetail?->item?->itemName2 ?? '—',
+            'type_name'           => $d->movementDetail?->type?->name ?? '—',
+            'unit_name'           => $d->movementDetail?->unit?->UnitName ?? '—',
+            'code'                => $d->movementDetail?->code ?? '—',
+            'quantity'            => (float) $d->quantity,
+            'unit_cost'           => (float) $d->unit_cost,
+            'sale_price'          => (float) $d->sale_price,
+            'total_cost'          => (float) $d->quantity * (float) $d->unit_cost,
+            'total_sale'          => (float) $d->quantity * (float) $d->sale_price,
+            'sales_invoice_id'    => $d->sales_invoice_id,
+            'invoiced_at'         => optional($d->invoiced_at)->format('Y-m-d H:i'),
+            'is_invoiced'         => $d->invoiced_at !== null,
+        ]);
+
+        $customersSet = $rows->pluck('customer_id')->unique()->count();
+        $qtyByUnit    = [];
+        $totalCost    = 0.0;
+        $totalSale    = 0.0;
+        foreach ($rows as $r) {
+            $u = $r['unit_name'] ?: '—';
+            $qtyByUnit[$u] = ($qtyByUnit[$u] ?? 0) + $r['quantity'];
+            $totalCost += $r['total_cost'];
+            $totalSale += $r['total_sale'];
+        }
+
         return response()->json([
             'success' => true,
             'header'  => [
@@ -286,30 +326,23 @@ class PurchaseDistributionController extends Controller
                 'code'              => $dist->code,
                 'distribution_date' => optional($dist->distribution_date)->format('Y-m-d'),
                 'status'            => $dist->status,
+                'status_label'      => $dist->isDraft() ? 'مسودة' : 'مفوتر',
                 'notes'             => $dist->notes,
+                'is_draft'          => $dist->isDraft(),
             ],
-            'details' => $dist->details->map(fn($d) => [
-                'id'                  => $d->id,
-                'movement_detail_id'  => $d->movement_detail_id,
-                'movement_id'         => $d->movement_id,
-                'purchase_invoice_id' => $d->purchase_invoice_id,
-                'invoice_number'      => $d->purchaseInvoice?->invoice_number,
-                'customer_id'         => $d->customer_id,
-                'customer_name'       => $d->customer?->CustomersName2,
-                'item_name'           => $d->movementDetail?->item?->itemName2 ?? '—',
-                'type_name'           => $d->movementDetail?->type?->name ?? '—',
-                'unit_name'           => $d->movementDetail?->unit?->UnitName ?? '—',
-                'code'                => $d->movementDetail?->code ?? '—',
-                'quantity'            => (float) $d->quantity,
-                'unit_cost'           => (float) $d->unit_cost,
-                'sale_price'          => (float) $d->sale_price,
-                'sales_invoice_id'    => $d->sales_invoice_id,
-            ]),
+            'summary' => [
+                'details_count'   => $rows->count(),
+                'customers_count' => $customersSet,
+                'qty_by_unit'     => $qtyByUnit,
+                'total_cost'      => $totalCost,
+                'total_sale'      => $totalSale,
+            ],
+            'details' => $rows,
         ]);
     }
 
     // ============================================================
-    // حذف توزيع (draft فقط)
+    // حذف توزيع
     // ============================================================
     public function destroy(int $id)
     {
@@ -325,31 +358,69 @@ class PurchaseDistributionController extends Controller
     }
 
     // ============================================================
-    // سجل التوزيعات
+    // قائمة التوزيعات (سجل)
     // ============================================================
     public function list(Request $request)
     {
-        $q = Distribution::query()->withCount('details');
-        if ($request->filled('status'))      $q->where('status', $request->input('status'));
-        if ($request->filled('date_from'))   $q->whereDate('distribution_date', '>=', $request->input('date_from'));
-        if ($request->filled('date_to'))     $q->whereDate('distribution_date', '<=', $request->input('date_to'));
+        $q = Distribution::query()
+            ->with(['details:id,distribution_id,customer_id,quantity,unit_cost,sale_price']);
+
+        if ($request->filled('status')) {
+            $q->where('status', $request->input('status'));
+        }
+        if ($request->filled('date_from')) {
+            $q->whereDate('distribution_date', '>=', $request->input('date_from'));
+        }
+        if ($request->filled('date_to')) {
+            $q->whereDate('distribution_date', '<=', $request->input('date_to'));
+        }
+        if ($request->filled('search')) {
+            $q->where('code', 'like', '%' . $request->input('search') . '%');
+        }
         if ($request->filled('customer_id')) {
-            $q->whereHas('details', fn($d) => $d->where('customer_id', $request->input('customer_id')));
+            $q->whereHas('details', fn($d) => $d->where('customer_id', (int)$request->input('customer_id')));
         }
 
-        $rows = $q->orderByDesc('id')->limit(200)->get()->map(fn($d) => [
-            'id'                => $d->id,
-            'code'              => $d->code,
-            'distribution_date' => optional($d->distribution_date)->format('Y-m-d'),
-            'status'            => $d->status,
-            'details_count'     => $d->details_count,
-        ]);
+        $rows = $q->orderByDesc('id')
+            ->limit(300)
+            ->get()
+            ->map(function ($d) {
+                $customersCount = $d->details->pluck('customer_id')->unique()->count();
+                $totalCost = 0.0;
+                $totalSale = 0.0;
+                foreach ($d->details as $r) {
+                    $totalCost += (float)$r->quantity * (float)$r->unit_cost;
+                    $totalSale += (float)$r->quantity * (float)$r->sale_price;
+                }
 
-        return response()->json(['success' => true, 'data' => $rows]);
+                return [
+                    'id'                => $d->id,
+                    'code'              => $d->code,
+                    'distribution_date' => optional($d->distribution_date)->format('Y-m-d'),
+                    'status'            => $d->status,
+                    'status_label'      => $d->isDraft() ? 'مسودة' : 'مفوتر',
+                    'details_count'     => $d->details->count(),
+                    'customers_count'   => $customersCount,
+                    'total_cost'        => $totalCost,
+                    'total_sale'        => $totalSale,
+                ];
+            });
+
+        $stats = [
+            'total'    => Distribution::count(),
+            'draft'    => Distribution::where('status', 'draft')->count(),
+            'invoiced' => Distribution::where('status', 'invoiced')->count(),
+        ];
+
+        return response()->json([
+            'success' => true,
+            'data'    => $rows,
+            'stats'   => $stats,
+        ]);
     }
 
     // ============================================================
-    // توزيعات عميل (غير مفوترة)
+    // توزيعات عميل
     // ============================================================
     public function customerDistributions(int $customerId)
     {
@@ -395,6 +466,194 @@ class PurchaseDistributionController extends Controller
                     'sale_price'     => (float) $row->sale_price,
                 ]),
             ]),
+        ]);
+    }
+
+    // ============================================================
+    // ملخص العميل (سجل التوزيعات — التبويب 2)
+    // ============================================================
+    public function customerSummary(Request $request)
+    {
+        $validated = $request->validate([
+            'customer_id'     => ['required', 'integer', 'exists:customers,CustomersID'],
+            'invoiced_filter' => ['nullable', 'in:all,invoiced,not_invoiced'],
+        ]);
+
+        $customerId = (int) $validated['customer_id'];
+        $filter     = $validated['invoiced_filter'] ?? 'all';
+
+        $customer = Customer::with('account')->findOrFail($customerId);
+
+        $q = DistributionDetail::query()
+            ->with([
+                'distribution:id,code,distribution_date,status',
+                'purchaseInvoice:purchase_invoice_id,invoice_number',
+                'movementDetail.item:itemID,itemName2',
+                'movementDetail.type:id,name',
+                'movementDetail.unit:UnitID,UnitName',
+            ])
+            ->where('customer_id', $customerId);
+
+        if ($filter === 'invoiced')     $q->whereNotNull('invoiced_at');
+        if ($filter === 'not_invoiced') $q->whereNull('invoiced_at');
+
+        $rows = $q->orderByDesc('id')->get()->map(fn($d) => [
+            'id'             => $d->id,
+            'distribution'   => $d->distribution?->code,
+            'dist_date'      => optional($d->distribution?->distribution_date)->format('Y-m-d'),
+            'dist_status'    => $d->distribution?->status,
+            'invoice_number' => $d->purchaseInvoice?->invoice_number,
+            'item_name'      => $d->movementDetail?->item?->itemName2 ?? '—',
+            'type_name'      => $d->movementDetail?->type?->name ?? '—',
+            'unit_name'      => $d->movementDetail?->unit?->UnitName ?? '—',
+            'code'           => $d->movementDetail?->code ?? '—',
+            'quantity'       => (float) $d->quantity,
+            'unit_cost'      => (float) $d->unit_cost,
+            'sale_price'     => (float) $d->sale_price,
+            'total_cost'     => (float) $d->quantity * (float) $d->unit_cost,
+            'total_sale'     => (float) $d->quantity * (float) $d->sale_price,
+            'is_invoiced'    => $d->invoiced_at !== null,
+        ]);
+
+        $qtyByUnit = [];
+        $totalCost = 0.0;
+        $totalSale = 0.0;
+        $notInvoicedCost = 0.0;
+        $notInvoicedQtyByUnit = [];
+
+        foreach ($rows as $r) {
+            $u = $r['unit_name'] ?: '—';
+            $qtyByUnit[$u] = ($qtyByUnit[$u] ?? 0) + $r['quantity'];
+            $totalCost += $r['total_cost'];
+            $totalSale += $r['total_sale'];
+
+            if (! $r['is_invoiced']) {
+                $notInvoicedQtyByUnit[$u] = ($notInvoicedQtyByUnit[$u] ?? 0) + $r['quantity'];
+                $notInvoicedCost += $r['total_cost'];
+            }
+        }
+
+        return response()->json([
+            'success'  => true,
+            'customer' => [
+                'id'    => $customer->CustomersID,
+                'name'  => $customer->CustomersName2,
+                'phone' => $customer->CusPhone,
+                'code'  => $customer->account?->accCode ?? '',
+            ],
+            'summary' => [
+                'rows_count'           => $rows->count(),
+                'qty_by_unit'          => $qtyByUnit,
+                'total_cost'           => $totalCost,
+                'total_sale'           => $totalSale,
+                'not_invoiced_count'   => $rows->where('is_invoiced', false)->count(),
+                'not_invoiced_qty'     => $notInvoicedQtyByUnit,
+                'not_invoiced_cost'    => $notInvoicedCost,
+            ],
+            'data' => $rows,
+        ]);
+    }
+
+    // ============================================================
+    // البحث عن أصناف (لاختيار صنف في تبويب الملخص)
+    // ============================================================
+    public function searchItems(Request $request)
+    {
+        $term = trim((string) $request->input('q', ''));
+
+        $query = Item::query();
+
+        if ($term !== '') {
+            $query->where(function ($q) use ($term) {
+                $q->where('itemName2', 'like', "%{$term}%");
+                if (is_numeric($term)) {
+                    $q->orWhere('itemID', (int)$term);
+                }
+            });
+        }
+
+        $rows = $query->orderBy('itemName2')
+            ->limit(50)
+            ->get()
+            ->map(fn($i) => [
+                'id'   => $i->itemID,
+                'name' => $i->itemName2,
+            ]);
+
+        return response()->json(['success' => true, 'data' => $rows]);
+    }
+
+    // ============================================================
+    // ملخص الصنف (سجل التوزيعات — التبويب 3)
+    // ============================================================
+    public function itemSummary(Request $request)
+    {
+        $validated = $request->validate([
+            'item_id' => ['required', 'integer'],
+        ]);
+
+        $itemId = (int) $validated['item_id'];
+
+        $item = Item::findOrFail($itemId);
+
+        $rows = DistributionDetail::query()
+            ->with([
+                'distribution:id,code,distribution_date,status',
+                'customer:CustomersID,CustomersName2,CusPhone',
+                'purchaseInvoice:purchase_invoice_id,invoice_number',
+                'movementDetail.type:id,name',
+                'movementDetail.unit:UnitID,UnitName',
+            ])
+            ->whereHas('movementDetail', fn($q) => $q->where('item_id', $itemId))
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn($d) => [
+                'id'             => $d->id,
+                'distribution'   => $d->distribution?->code,
+                'dist_date'      => optional($d->distribution?->distribution_date)->format('Y-m-d'),
+                'dist_status'    => $d->distribution?->status,
+                'customer_id'    => $d->customer_id,
+                'customer_name'  => $d->customer?->CustomersName2 ?? '—',
+                'customer_phone' => $d->customer?->CusPhone,
+                'invoice_number' => $d->purchaseInvoice?->invoice_number,
+                'type_name'      => $d->movementDetail?->type?->name ?? '—',
+                'unit_name'      => $d->movementDetail?->unit?->UnitName ?? '—',
+                'quantity'       => (float) $d->quantity,
+                'is_invoiced'    => $d->invoiced_at !== null,
+            ]);
+
+        // الكمية الأصلية: مجموع الكميات الداخلة من فواتير الشراء لهذا الصنف
+        $originalQty = (float) InventoryMovementDetail::query()
+            ->where('item_id', $itemId)
+            ->whereHas('movement', fn($q) => $q->where('movement_type', InventoryMovement::TYPE_PURCHASE))
+            ->sum('quantity');
+
+        $totalDistributed = (float) $rows->sum('quantity');
+        $remaining = max(0, $originalQty - $totalDistributed);
+
+        $unitName = optional($rows->first())['unit_name'] ?? '—';
+
+        $qtyByCustomer = $rows->groupBy('customer_id')->map(fn($g) => [
+            'customer_name'  => $g->first()['customer_name'],
+            'customer_phone' => $g->first()['customer_phone'],
+            'total_qty'      => (float) $g->sum('quantity'),
+        ])->values();
+
+        return response()->json([
+            'success' => true,
+            'item' => [
+                'id'   => $item->itemID,
+                'name' => $item->itemName2,
+            ],
+            'summary' => [
+                'original_qty'      => $originalQty,
+                'total_distributed' => $totalDistributed,
+                'remaining'         => $remaining,
+                'unit_name'         => $unitName,
+                'customers_count'   => $rows->pluck('customer_id')->unique()->count(),
+            ],
+            'by_customer' => $qtyByCustomer,
+            'data'        => $rows,
         ]);
     }
 
@@ -461,4 +720,130 @@ class PurchaseDistributionController extends Controller
             'detail_ids'  => $details->pluck('id'),
         ]);
     }
+
+    public function stats()
+    {
+        return response()->json([
+            'success' => true,
+            'data'    => [
+                'total'    => Distribution::count(),
+                'draft'    => Distribution::where('status', 'draft')->count(),
+                'invoiced' => Distribution::where('status', 'invoiced')->count(),
+            ],
+        ]);
+    }
+
+    /**
+ * بحث الفواتير لتبويب "حسب الفاتورة"
+ */
+public function searchInvoices(Request $request)
+{
+    $term = trim((string) $request->input('q', ''));
+
+    $query = PurchaseInvoice::query()
+        ->with('supplierAccount')
+        ->where('is_posted', 1);
+
+    if ($term !== '') {
+        $query->where(function ($q) use ($term) {
+            $q->where('invoice_number', 'like', "%{$term}%")
+              ->orWhereHas('supplierAccount', fn($s) =>
+                    $s->where('accName', 'like', "%{$term}%"));
+        });
+    }
+
+    $rows = $query->orderByDesc('purchase_invoice_id')
+        ->limit(50)
+        ->get()
+        ->map(fn($i) => [
+            'id'       => $i->purchase_invoice_id,
+            'number'   => $i->invoice_number,
+            'date'     => optional($i->invoice_date)->format('Y-m-d'),
+            'supplier' => $i->supplierAccount?->accName ?? '—',
+        ]);
+
+    return response()->json(['success' => true, 'data' => $rows]);
+}
+
+/**
+ * ملخص الفاتورة — من وزّع منها ماذا وكم
+ */
+public function invoiceSummary(Request $request)
+{
+    $validated = $request->validate([
+        'invoice_id' => ['required', 'integer', 'exists:purchase_invoices,purchase_invoice_id'],
+    ]);
+
+    $invoiceId = (int) $validated['invoice_id'];
+    $invoice   = PurchaseInvoice::with('supplierAccount')->findOrFail($invoiceId);
+
+    $rows = DistributionDetail::query()
+        ->with([
+            'distribution:id,code,distribution_date,status',
+            'customer:CustomersID,CustomersName2,CusPhone',
+            'movementDetail.item:itemID,itemName2',
+            'movementDetail.type:id,name',
+            'movementDetail.unit:UnitID,UnitName',
+        ])
+        ->where('purchase_invoice_id', $invoiceId)
+        ->orderByDesc('id')
+        ->get()
+        ->map(fn($d) => [
+            'id'             => $d->id,
+            'distribution'   => $d->distribution?->code,
+            'dist_date'      => optional($d->distribution?->distribution_date)->format('Y-m-d'),
+            'dist_status'    => $d->distribution?->status,
+            'customer_id'    => $d->customer_id,
+            'customer_name'  => $d->customer?->CustomersName2 ?? '—',
+            'customer_phone' => $d->customer?->CusPhone,
+            'item_name'      => $d->movementDetail?->item?->itemName2 ?? '—',
+            'type_name'      => $d->movementDetail?->type?->name ?? '—',
+            'unit_name'      => $d->movementDetail?->unit?->UnitName ?? '—',
+            'code'           => $d->movementDetail?->code ?? '—',
+            'quantity'       => (float) $d->quantity,
+            'unit_cost'      => (float) $d->unit_cost,
+            'sale_price'     => (float) $d->sale_price,
+            'total_cost'     => (float) $d->quantity * (float) $d->unit_cost,
+            'total_sale'     => (float) $d->quantity * (float) $d->sale_price,
+            'is_invoiced'    => $d->invoiced_at !== null,
+        ]);
+
+    $qtyByUnit       = [];
+    $totalCost       = 0.0;
+    $totalSale       = 0.0;
+    $itemsSet        = collect();
+    $customersSet    = collect();
+    $notInvoicedCount = 0;
+
+    foreach ($rows as $r) {
+        $u = $r['unit_name'] ?: '—';
+        $qtyByUnit[$u]   = ($qtyByUnit[$u] ?? 0) + $r['quantity'];
+        $totalCost      += $r['total_cost'];
+        $totalSale      += $r['total_sale'];
+        $itemsSet->push($r['item_name']);
+        $customersSet->push($r['customer_id']);
+        if (! $r['is_invoiced']) $notInvoicedCount++;
+    }
+
+    return response()->json([
+        'success' => true,
+        'invoice' => [
+            'id'       => $invoice->purchase_invoice_id,
+            'number'   => $invoice->invoice_number,
+            'date'     => optional($invoice->invoice_date)->format('Y-m-d'),
+            'supplier' => $invoice->supplierAccount?->accName ?? '—',
+            'total'    => (float) $invoice->total_in_invoice_currency,
+        ],
+        'summary' => [
+            'rows_count'          => $rows->count(),
+            'items_count'         => $itemsSet->unique()->count(),
+            'customers_count'     => $customersSet->unique()->count(),
+            'qty_by_unit'         => $qtyByUnit,
+            'total_cost'          => $totalCost,
+            'total_sale'          => $totalSale,
+            'not_invoiced_count'  => $notInvoicedCount,
+        ],
+        'data' => $rows,
+    ]);
+}
 }

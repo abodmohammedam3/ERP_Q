@@ -1103,20 +1103,27 @@ Route::prefix('settings/system')
     
 // ═══════════════════════════════════════
 // — شاشة التوزيع
-// ═══════════════════════════════════════use App\Http\Controllers\Operation\PurchaseDistribution\PurchaseDistributionController;
+// ═══════════════════════════════════════
 
 Route::prefix('operation/purchases/distribution')
     ->name('purchases.distribution.')
     ->group(function () {
-        Route::get('/',                  [PurchaseDistributionController::class, 'index'])->name('index');
-        Route::get('/customer-invoices', [PurchaseDistributionController::class, 'customerInvoicesPage'])->name('customer-invoices.page');
-        Route::get('/invoices',            [PurchaseDistributionController::class, 'invoices'])->name('invoices');
-        Route::get('/invoices/{id}/items', [PurchaseDistributionController::class, 'items'])->name('items');
-        Route::get('/customers',           [PurchaseDistributionController::class, 'customers'])->name('customers');
-        Route::post('/save',               [PurchaseDistributionController::class, 'save'])->name('save');
-        Route::get('/list/all',            [PurchaseDistributionController::class, 'list'])->name('list');
-        Route::post('/issue-invoice',      [PurchaseDistributionController::class, 'issueInvoice'])->name('issue-invoice');
+        Route::get('/',                       [PurchaseDistributionController::class, 'index'])->name('index');
+        Route::get('/customer-invoices',      [PurchaseDistributionController::class, 'customerInvoicesPage'])->name('customer-invoices.page');
+        Route::get('/history',                [PurchaseDistributionController::class, 'historyPage'])->name('history');
+        Route::get('/customer-summary',       [PurchaseDistributionController::class, 'customerSummary'])->name('customer-summary');
+        Route::get('/item-summary',           [PurchaseDistributionController::class, 'itemSummary'])->name('item-summary');
+        Route::get('/items-search',           [PurchaseDistributionController::class, 'searchItems'])->name('items-search');
+        Route::get('/invoices',               [PurchaseDistributionController::class, 'invoices'])->name('invoices');
+        Route::get('/invoices/{id}/items',    [PurchaseDistributionController::class, 'items'])->name('items');
+        Route::get('/customers',              [PurchaseDistributionController::class, 'customers'])->name('customers');
+        Route::post('/save',                  [PurchaseDistributionController::class, 'save'])->name('save');
+        Route::get('/list/all',               [PurchaseDistributionController::class, 'list'])->name('list');
+        Route::post('/issue-invoice',         [PurchaseDistributionController::class, 'issueInvoice'])->name('issue-invoice');
         Route::get('/customer/{customerId}/distributions', [PurchaseDistributionController::class, 'customerDistributions'])->name('customer-distributions');
-        Route::get('/{id}',    [PurchaseDistributionController::class, 'show'])->name('show');
-        Route::delete('/{id}', [PurchaseDistributionController::class, 'destroy'])->name('destroy');
+        Route::get('/invoices-search',  [PurchaseDistributionController::class, 'searchInvoices'])->name('invoices-search');
+        Route::get('/invoice-summary',  [PurchaseDistributionController::class, 'invoiceSummary'])->name('invoice-summary');
+        Route::get('/stats', [PurchaseDistributionController::class, 'stats'])->name('stats');
+        Route::get('/{id}',    [PurchaseDistributionController::class, 'show'])->name('show')->where('id', '[0-9]+');
+        Route::delete('/{id}', [PurchaseDistributionController::class, 'destroy'])->name('destroy')->where('id', '[0-9]+');
     });

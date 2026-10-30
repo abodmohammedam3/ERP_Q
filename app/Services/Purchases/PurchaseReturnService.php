@@ -549,7 +549,7 @@ class PurchaseReturnService
                 ->value('inventory_movement_details.quantity');
 
             if ($outQty && (float) $outQty > 0) {
-                return (float) $in->quantity / (float) $outQty;   // كجم لكل حبة
+                return (float) $outQty / (float) $in->quantity;    // كجم لكل حبة
             }
         }
 

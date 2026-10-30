@@ -20,6 +20,7 @@ class ReturnsSystemTest extends TestCase
     protected int $supplierId;
     protected int $customerId;
     protected int $warehouseId;
+    protected int $warehouseAccId;
     protected int $itemId;
     protected int $typeId;
     protected int $unitId;
@@ -50,8 +51,14 @@ class ReturnsSystemTest extends TestCase
             'accCode' => 'C001',
         ]);
 
+        $this->warehouseAccId = DB::table('characcount')->insertGetId([
+            'accName' => 'حساب مخزن اختبار',
+            'accCode' => 'W001',
+        ]);
+
         $this->warehouseId = DB::table('stocks')->insertGetId([
             'StockName' => 'مخزن اختبار',
+            'accountID' => $this->warehouseAccId,
         ]);
 
         $this->itemId = DB::table('Items')->insertGetId([
@@ -273,7 +280,10 @@ class ReturnsSystemTest extends TestCase
 
         $this->assertEquals(20, (float) $movementDetail->quantity);
 
-        // 3) حذف المرتجع
+        // 3) حذف المرتجع (المرتجع مرحّل تلقائيًا عند الإنشاء — نلغي الترحيل أولًا)
+        $unpostResponse = $this->postJson("/operation/sales/returns/{$returnId}/unpost");
+        $unpostResponse->assertStatus(200);
+
         $deleteResponse = $this->deleteJson("/operation/sales/returns/{$returnId}");
         $deleteResponse->assertStatus(200);
 
@@ -427,7 +437,10 @@ class ReturnsSystemTest extends TestCase
 
         $this->assertEquals(25, (float) $movementDetail->quantity);
 
-        // 3) حذف
+        // 3) حذف (إلغاء الترحيل أولًا لأن المرتجع مرحّل تلقائيًا عند الإنشاء)
+        $unpostResponse = $this->postJson("/operation/purchases/returns/{$returnId}/unpost");
+        $unpostResponse->assertStatus(200);
+
         $deleteResponse = $this->deleteJson("/operation/purchases/returns/{$returnId}");
         $deleteResponse->assertStatus(200);
 

@@ -98,13 +98,20 @@ public function update(int $id, array $data): PurchaseInvoice
 }
 
 // =========================================================
-// DELETE — يمنع الحذف إذا كان لها مرتجعات
+// DELETE — يمنع حذف المرحّلة أو التي لها مرتجعات
 // =========================================================
 public function delete(int $id): void
 {
     $this->withWriteLock(function () use ($id) {
         DB::transaction(function () use ($id) {
             $invoice = PurchaseInvoice::lockForUpdate()->findOrFail($id);
+
+            // ✅ منع حذف الفاتورة المرحّلة قبل إلغاء الترحيل
+            if ($invoice->isPosted()) {
+                throw new \RuntimeException(
+                    'لا يمكن حذف فاتورة مرحّلة. قم بإلغاء الترحيل أولًا.'
+                );
+            }
 
             // ✅ منع الحذف إذا كان لها مرتجعات
             if ($invoice->returns()->exists()) {
@@ -153,6 +160,15 @@ public function delete(int $id): void
 
                 if (!$invoice->isPosted()) {
                     throw new \RuntimeException('الفاتورة غير مرحّلة');
+                }
+
+                /* ✅ لا يمكن إلغاء ترحيل فاتورة لها مرتجعات —
+                   قيود/harakat المرتجعات تعتمد على القيد وحركة الشراء الأصلية
+                   (getLandedCostFromMovement) ولذلك تبقى الفاتورة مرحّلة. */
+                if ($invoice->returns()->exists()) {
+                    throw new \RuntimeException(
+                        'لا يمكن إلغاء ترحيل فاتورة لها مرتجعات. احذف المرتجعات أولًا.'
+                    );
                 }
 
                 $this->unpostInternal($invoice);

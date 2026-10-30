@@ -23,9 +23,14 @@ class PurchaseInvoiceObserver
                 InventoryMovement::SOURCE_PURCHASE_INVOICE
             )
             ->where('source_id', $invoice->purchase_invoice_id)
+            ->with('details')
             ->get();
 
         foreach ($movements as $movement) {
+            // ✅ توحيد السلوك مع SalesInvoiceObserver: عكس الرصيد أولًا
+            app(\App\Services\Inventory\InventoryService::class)
+                ->reverseMovement($movement);
+
             $movement->details()->delete();
             $movement->delete();
         }

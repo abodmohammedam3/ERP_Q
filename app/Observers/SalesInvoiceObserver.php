@@ -23,6 +23,15 @@ class SalesInvoiceObserver
      */
     public function deleted(SalesInvoice $invoice): void
     {
+        // ✅ توحيد السلوك مع PurchaseInvoiceObserver: تنظيف القيد المحاسبي (شبكة أمان)
+        if (!empty($invoice->entryID)) {
+            \App\Services\JournalEntryService::delete((int) $invoice->entryID);
+        } elseif (!empty($invoice->invoice_number)) {
+            \App\Services\JournalEntryService::deleteByDocNumber(
+                (string) $invoice->invoice_number
+            );
+        }
+
         $movements = InventoryMovement::where(
                 'source_type',
                 InventoryMovement::SOURCE_SALES_INVOICE

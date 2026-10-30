@@ -113,7 +113,7 @@ class SalesInvoiceService
     }
 
     // =========================================================
-    // DELETE — يمنع الحذف إذا كان لها مرتجعات
+    // DELETE — يمنع حذف المرحّلة أو التي لها مرتجعات
     // =========================================================
     public function delete(int $id): void
     {
@@ -121,6 +121,12 @@ class SalesInvoiceService
             DB::transaction(function () use ($id) {
 
                 $invoice = SalesInvoice::lockForUpdate()->findOrFail($id);
+
+                if ($invoice->isPosted()) {
+                    throw new \RuntimeException(
+                        'لا يمكن حذف فاتورة مرحّلة. قم بإلغاء الترحيل أولًا.'
+                    );
+                }
 
                 if ($invoice->returns()->exists()) {
                     throw new \RuntimeException(
@@ -165,6 +171,15 @@ class SalesInvoiceService
 
                 if (!$invoice->isPosted()) {
                     throw new \RuntimeException('الفاتورة غير مرحّلة');
+                }
+
+                /* ✅ لا يمكن إلغاء ترحيل فاتورة لها مرتجعات —
+                   إلغاء الترحيل يمحو القيد والحركة الأصلية بينما قيود/harakat
+                   المرتجعات المرتبطة تبقى بلا مرجع سليم. */
+                if ($invoice->returns()->exists()) {
+                    throw new \RuntimeException(
+                        'لا يمكن إلغاء ترحيل فاتورة لها مرتجعات. احذف المرتجعات أولًا.'
+                    );
                 }
 
                 $this->unpostInternal($invoice);

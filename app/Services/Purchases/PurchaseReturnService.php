@@ -137,13 +137,20 @@ class PurchaseReturnService
     }
 
     // =========================================================
-    // DELETE
+    // DELETE — يمنع حذف المرحّل
     // =========================================================
     public function delete(int $id): void
     {
         $this->withWriteLock(function () use ($id) {
             DB::transaction(function () use ($id) {
                 $purchaseReturn = PurchaseReturn::lockForUpdate()->findOrFail($id);
+
+                // ✅ منع حذف المرتجع المرحّل قبل إلغاء الترحيل
+                if ($purchaseReturn->isPosted()) {
+                    throw new \RuntimeException(
+                        'لا يمكن حذف مرتجع مرحّل. قم بإلغاء الترحيل أولاً.'
+                    );
+                }
 
                 $this->deleteAccountingEntry($purchaseReturn);
                 $this->deleteInventoryMovement($purchaseReturn);

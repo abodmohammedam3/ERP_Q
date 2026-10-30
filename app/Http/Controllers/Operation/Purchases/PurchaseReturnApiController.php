@@ -189,14 +189,15 @@ class PurchaseReturnApiController extends Controller
                 'entryID'                      => $purchaseReturn->entryID,
             ],
             'details' => $purchaseReturn->details->map(function ($d) use ($purchaseReturn) {
-                /* ✅ الكمية المتاحة للعرض = الأصلية − كل المرتجعات **عدا هذا المرتجع**
-                   (لأن الكمية الحالية في السطر ستُحفظ/تُحدَّث من هذه الشاشة).
-                   الطريقة القديمة كانت تُرجع الكمية الأصلية كاملة لأنها تستثني
-                   كل المرتجعات ثم تعيد إضافة كمية هذا المرتجع. */
-                $availableForDisplay = $this->service->availableForReturn(
-                    $d->purchase_invoice_detail_id,
-                    (int) $purchaseReturn->purchase_return_id
-                );
+            /* ✅ الكمية المتاحة للعرض = الأصلية − كل المرتجعات **عدا هذا المرتجع** + كمية هذا السطر
+               (لأن الكمية الحالية في السطر ستُحفظ/تُحدَّث من هذه الشاشة)،
+               ومقصوصة بالرصيد الفعلي للمخزن داخل availableForReturn.
+               الطريقة القديمة كانت تُرجع الكمية الأصلية كاملة لأنها تستثني
+               كل المرتجعات ثم تعيد إضافة كمية هذا المرتجع. */
+            $availableForDisplay = $this->service->availableForReturn(
+                $d->purchase_invoice_detail_id,
+                (int) $purchaseReturn->purchase_return_id
+            ) + (float) $d->quantity;   // ✅ نفس نمط مرتجع البيع (SalesReturnApiController::show)
 
                 return [
                     'purchase_return_detail_id'  => $d->purchase_return_detail_id,

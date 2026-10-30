@@ -259,6 +259,9 @@ class PurchaseReturnService
 
     // =========================================================
     // AVAILABLE FOR RETURN
+    // الحد الفعلي = الأصغر بين (كمية سطر الفاتورة − المرتجعات)
+    // و(الرصيد الفعلي في مخزن الفاتورة) — حتى لا تعرض الشاشة
+    // كمية فاتورة مُصرف منها بالبيع/الفرز/مرتجعات شراء سابقة.
     // =========================================================
     public function availableForReturn(int $invoiceDetailId, ?int $exceptReturnId = null): float
     {
@@ -274,7 +277,41 @@ class PurchaseReturnService
             })
             ->sum('quantity');
 
-        return max(0.0, (float) $invoiceDetail->quantity - (float) $alreadyReturned);
+        $invoiceLimit = max(0.0, (float) $invoiceDetail->quantity - (float) $alreadyReturned);
+
+        if ($invoiceLimit <= 0) {
+            return 0.0;
+        }
+
+        /* ✅ قصّ الحد بالرصيد الفعلي — المصدر: مخزن رأس فاتورة الشراء
+           (سطر الفاتورة لا يحمل مخزنًا؛ purchase_invoice_details بلا warehouse_id).
+           وتمييزاً لكمية المرتجع المستثنى (exceptReturnId) الذي لا يزال
+           مستندها قابل للحفظ — نفس منطق validateStockAvailability أدناه. */
+        $warehouseId = optional($invoiceDetail->purchaseInvoice)->warehouse_id;
+
+        if (!$warehouseId) {
+            return $invoiceLimit;
+        }
+
+        $stock = $this->inventoryService->availableQuantity(
+            (int) $invoiceDetail->item_id,
+            (int) $warehouseId,
+            $invoiceDetail->unit_id !== null ? (int) $invoiceDetail->unit_id : null
+        );
+
+        if ($exceptReturnId) {
+            $currentReturnedQty = PurchaseReturnDetail::where('purchase_return_id', $exceptReturnId)
+                ->where('item_id', $invoiceDetail->item_id)
+                ->where('warehouse_id', (int) $warehouseId)
+                ->when($invoiceDetail->unit_id !== null, function ($q) use ($invoiceDetail) {
+                    $q->where('unit_id', $invoiceDetail->unit_id);
+                })
+                ->sum('quantity');
+
+            $stock += (float) $currentReturnedQty;
+        }
+
+        return min($invoiceLimit, max(0.0, $stock));
     }
 
     // =========================================================

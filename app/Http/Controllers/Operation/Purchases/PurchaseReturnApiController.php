@@ -236,6 +236,30 @@ class PurchaseReturnApiController extends Controller
     }
 
     /**
+     * ✅ دفعات الفرز المشتقة من فاتورة شراء (المرحلة 1 — عرض فقط)
+     */
+    public function sortedBatches(Request $request)
+    {
+        Permissions::authorize(config('permissions.purchase_returns.view'));
+
+        $invoiceId = (int) $request->input('purchase_invoice_id');
+
+        if (!$invoiceId) {
+            return response()->json(['data' => []]);
+        }
+
+        $invoice = PurchaseInvoice::find($invoiceId);
+
+        if (!$invoice) {
+            return response()->json(['message' => 'الفاتورة غير موجودة'], 404);
+        }
+
+        return response()->json([
+            'data' => $this->service->sortedBatchesForInvoice($invoice),
+        ]);
+    }
+
+    /**
      * الكمية القابلة للإرجاع لسطر فاتورة شراء معين
      */
     public function availableQuantity(Request $request)

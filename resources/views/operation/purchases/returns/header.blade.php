@@ -155,4 +155,23 @@
         -webkit-appearance: none;
         margin: 0;
     }
+
+    /* ✅ صفوف دفعات الفرز — تمييز بصري منظم (المرحلة 1: عرض فقط) */
+    #purchaseReturnDetails tr.row-converted > td {
+        background-color: #fff8e1 !important;   /* كهرماني فاتح ثابت */
+    }
+
+    #purchaseReturnDetails tr.row-converted .sort-badge {
+        display: inline-block;
+        margin-inline-start: 6px;
+        vertical-align: middle;
+        font-size: 0.68rem;
+        white-space: nowrap;
+    }
+
+    #purchaseReturnDetails tr.row-converted .row-available {
+        background-color: #fff3cd !important;
+        color: #856404 !important;
+        font-weight: 700;
+    }
 </style>

@@ -55,6 +55,7 @@ class PurchaseReturnService
                 $details = $data['details'] ?? [];
 
                 $this->validateReturnQuantities($originalInvoiceId, $details);
+                $this->validateSortedBatchRows($originalInvoiceId, $details);
 
                 $this->lockStockRows($details, $data['warehouse_id'] ?? null);
 
@@ -107,6 +108,12 @@ class PurchaseReturnService
                 $details = $data['details'] ?? [];
 
                 $this->validateReturnQuantities(
+                    $originalInvoiceId,
+                    $details,
+                    $purchaseReturn->purchase_return_id
+                );
+
+                $this->validateSortedBatchRows(
                     $originalInvoiceId,
                     $details,
                     $purchaseReturn->purchase_return_id
@@ -258,10 +265,161 @@ class PurchaseReturnService
     }
 
     // =========================================================
+    // SORTED BATCHES (المرحلة 1 — عرض فقط)
+    // =========================================================
+    /**
+     * ✅ دفعات الفرز المشتقة من فاتورة شراء محددة.
+     *
+     * الفرز يورّث مورد الدفعة (supplier_account_id) ودفعة الأصل
+     * (lot_source_detail_id — انظر InventoryService::sortInventory س474-489)،
+     * ولذلك نستطيع تتبّع سلسلة الوراثة حتى نصل إلى حركة
+     * source_type = purchase_invoice و source_id = رقم الفاتورة المطلوبة.
+     *
+     * المتاح للعرض = رصيد المورد الفعلي لنفس (الصنف، المخزن، الوحدة الناتجة)
+     * عبر availableQuantityForSupplier — نفس تعريف الرصيد المستخدم في الحفظ.
+     *
+     * ⚠️ هذه قراءة عرض فقط — لا تؤثر على أي مسار كتابة.
+     */
+    public function sortedBatchesForInvoice(PurchaseInvoice $invoice): array
+    {
+        $supplierId = (int) $invoice->account_id;
+        $warehouseId = (int) $invoice->warehouse_id;
+
+        if ($supplierId <= 0 || $warehouseId <= 0) {
+            return [];
+        }
+
+        /* وحدات أسطر الفاتورة الأصلية (للاستبعاد من دفعات الفرز المعروضة) */
+        $invoiceUnits = $invoice->details()
+            ->select('item_id', 'unit_id')
+            ->get()
+            ->mapWithKeys(fn ($d) => [$d->item_id.'|'.($d->unit_id ?? 0) => true])
+            ->all();
+
+        /* كل دفعات الفرز (in) لنفس المورد والمخزن */
+        $sortedRows = InventoryMovementDetail::query()
+            ->join('inventory_movements as im', 'im.movement_id', '=', 'inventory_movement_details.movement_id')
+            ->where('im.direction', 'in')
+            ->where('im.source_type', InventoryMovement::SOURCE_SORTING)
+            ->where('inventory_movement_details.supplier_account_id', $supplierId)
+            ->where('inventory_movement_details.warehouse_id', $warehouseId)
+            ->where('inventory_movement_details.quantity', '>', 0)
+            ->orderBy('inventory_movement_details.movement_detail_id')
+            ->select([
+                'inventory_movement_details.movement_detail_id',
+                'inventory_movement_details.item_id',
+                'inventory_movement_details.unit_id',
+                'inventory_movement_details.quantity',
+                'inventory_movement_details.unit_cost',
+                'inventory_movement_details.lot_source_detail_id',
+                'im.document_number',
+            ])
+            ->get();
+
+        $batches = [];
+        $candidates = [];
+        $candidateItemIds = [];
+        $candidateUnitIds = [];
+
+        foreach ($sortedRows as $row) {
+            /* استبعاد الصفوف بنفس وحدة سطر الفاتورة — تلك تُعرض ضمن الصف الأساسي */
+            $key = $row->item_id.'|'.($row->unit_id ?? 0);
+            if (isset($invoiceUnits[$key])) {
+                continue;
+            }
+
+            /* تتبّع سلسلة الوراثة حتى حركة الشراء — بعمق محدود حمايةً من الحلقات */
+            if (!$this->traceLotToInvoice($row->lot_source_detail_id, (int) $invoice->purchase_invoice_id)) {
+                continue;
+            }
+
+            $candidateItemIds[$row->item_id] = true;
+            $candidateUnitIds[(int) $row->unit_id] = true;
+
+            $candidates[] = $row;
+        }
+
+        if (empty($candidates)) {
+            return [];
+        }
+
+        /* أسماء الأصناف والوحدات باستعلامين مجمّعين (تفادي N+1) */
+        $itemNames = \App\Models\Inventory\Item::query()
+            ->whereIn('itemID', array_keys($candidateItemIds))
+            ->pluck('itemName2', 'itemID');
+
+        $unitNames = \App\Models\Inventory\Unit::query()
+            ->whereIn('UnitID', array_keys(array_filter($candidateUnitIds, fn ($id) => $id > 0)))
+            ->pluck('UnitName', 'UnitID');
+
+        $batches = [];
+
+        foreach ($candidates as $row) {
+            $available = $this->inventoryService->availableQuantityForSupplier(
+                (int) $row->item_id,
+                $warehouseId,
+                $row->unit_id !== null ? (int) $row->unit_id : null,
+                $supplierId
+            );
+
+            if ($available <= 0) {
+                continue;
+            }
+
+            $batches[$row->movement_detail_id] = [
+                'item_id'          => (int) $row->item_id,
+                'item_name'        => (string) ($itemNames[$row->item_id] ?? ''),
+                'unit_id'          => $row->unit_id !== null ? (int) $row->unit_id : null,
+                'unit_name'        => (string) ($unitNames[$row->unit_id] ?? ''),
+                'sort_document'    => (string) $row->document_number,
+                'sort_batch_qty'   => (float) $row->quantity,
+                'unit_cost'        => (float) $row->unit_cost,
+                'available'        => (float) $available,
+            ];
+        }
+
+        return array_values($batches);
+    }
+
+    /**
+     * مشي سلسلة lot_source_detail_id حتى نصل لدفع أصلها من فاتورة الشراء.
+     * عمق 5 يكفي عمليًا (فرز متعدد المستويات نادر) ويحمي من الحلقات اللانهائية.
+     */
+    protected function traceLotToInvoice(?int $lotSourceDetailId, int $invoiceId, int $depth = 0): bool
+    {
+        if (!$lotSourceDetailId || $depth >= 5) {
+            return false;
+        }
+
+        $ancestor = InventoryMovementDetail::query()
+            ->join('inventory_movements as im', 'im.movement_id', '=', 'inventory_movement_details.movement_id')
+            ->where('inventory_movement_details.movement_detail_id', $lotSourceDetailId)
+            ->select([
+                'inventory_movement_details.lot_source_detail_id',
+                'im.source_type',
+                'im.source_id',
+            ])
+            ->first();
+
+        if (!$ancestor) {
+            return false;
+        }
+
+        if ($ancestor->source_type === InventoryMovement::SOURCE_PURCHASE_INVOICE
+            && (int) $ancestor->source_id === $invoiceId) {
+            return true;
+        }
+
+        return $this->traceLotToInvoice($ancestor->lot_source_detail_id, $invoiceId, $depth + 1);
+    }
+
+    // =========================================================
     // AVAILABLE FOR RETURN
     // الحد الفعلي = الأصغر بين (كمية سطر الفاتورة − المرتجعات)
     // و(الرصيد الفعلي في مخزن الفاتورة) — حتى لا تعرض الشاشة
     // كمية فاتورة مُصرف منها بالبيع/الفرز/مرتجعات شراء سابقة.
+    // المرتجعات بوحدة مفرزة (مثل حبة) تُحتسب حصتها محوّلةً
+    // إلى وحدة الفاتورة: qty × (دخل الفرز ÷ خروج الفرز).
     // =========================================================
     public function availableForReturn(int $invoiceDetailId, ?int $exceptReturnId = null): float
     {
@@ -271,13 +429,21 @@ class PurchaseReturnService
             return 0.0;
         }
 
-        $alreadyReturned = PurchaseReturnDetail::where('purchase_invoice_detail_id', $invoiceDetailId)
+        /* استهلاك الحصة: صفوف بوحدة الفاتورة تُحتسب كما هي،
+           وصفوف بوحدة مفرزة تُحوَّل إلى مكافئ وحدة الفاتورة */
+        $rows = PurchaseReturnDetail::where('purchase_invoice_detail_id', $invoiceDetailId)
             ->when($exceptReturnId, function ($query, $exceptId) {
                 $query->where('purchase_return_id', '!=', $exceptId);
             })
-            ->sum('quantity');
+            ->get(['quantity', 'unit_id']);
 
-        $invoiceLimit = max(0.0, (float) $invoiceDetail->quantity - (float) $alreadyReturned);
+        $consumed = 0.0;
+
+        foreach ($rows as $row) {
+            $consumed += $this->quotaEquivalent($invoiceDetail, (int) $row->unit_id, (float) $row->quantity);
+        }
+
+        $invoiceLimit = max(0.0, (float) $invoiceDetail->quantity - $consumed);
 
         if ($invoiceLimit <= 0) {
             return 0.0;
@@ -312,6 +478,96 @@ class PurchaseReturnService
         }
 
         return min($invoiceLimit, max(0.0, $stock));
+    }
+
+    /**
+     * ✅ مكافئ كمية سطر مرتجع بوحدة الفاتورة (لحساب الحصة):
+     *  - وحدة الفاتورة نفسها: القيمة كما هي.
+     *  - وحدة مفرزة (من دفعة فرز مشتقة من هذه الفاتورة):
+     *      qty × (كمية دخول الفرز ÷ كمية خروج الفرز)
+     *    مثال: 5 كجم ← 20 حبة ⇒ الحبة = 0.25 كجم ⇒ إرجاع 10 حبات يستهلك 2.5 كجم من الحصة.
+     */
+    public function quotaEquivalent(PurchaseInvoiceDetail $invoiceDetail, int $rowUnitId, float $qty): float
+    {
+        $invoiceUnitId = $invoiceDetail->unit_id !== null ? (int) $invoiceDetail->unit_id : 0;
+
+        if ($rowUnitId === $invoiceUnitId || $rowUnitId <= 0) {
+            return $qty;
+        }
+
+        $ratio = $this->sortedBatchRatio($invoiceDetail, $rowUnitId);
+
+        return $ratio !== null ? $qty * $ratio : $qty;
+    }
+
+    /**
+     * نسبة التحويل (وحدة الفاتورة لكل وحدة مفرزة) لأحدث دفعة فرز
+     * مشتقة من هذه الفاتورة لنفس (الصنف، المخزن، وحدة الناتج، المورد).
+     * ratio = كمية الدخول الناتجة ÷ كمية الخروج المصدرية.
+     */
+    public function sortedBatchRatio(PurchaseInvoiceDetail $invoiceDetail, int $sortedUnitId): ?float
+    {
+        $invoice = $invoiceDetail->purchaseInvoice;
+
+        if (!$invoice) {
+            return null;
+        }
+
+        $warehouseId = (int) $invoice->warehouse_id;
+        $supplierId = (int) $invoice->account_id;
+
+        $sortedIns = InventoryMovementDetail::query()
+            ->join('inventory_movements as im', 'im.movement_id', '=', 'inventory_movement_details.movement_id')
+            ->where('im.direction', 'in')
+            ->where('im.source_type', InventoryMovement::SOURCE_SORTING)
+            ->where('inventory_movement_details.item_id', $invoiceDetail->item_id)
+            ->where('inventory_movement_details.warehouse_id', $warehouseId)
+            ->where('inventory_movement_details.unit_id', $sortedUnitId)
+            ->where('inventory_movement_details.supplier_account_id', $supplierId)
+            ->where('inventory_movement_details.quantity', '>', 0)
+            ->orderByDesc('inventory_movement_details.movement_detail_id')
+            ->select([
+                'inventory_movement_details.movement_detail_id',
+                'inventory_movement_details.quantity',
+                'inventory_movement_details.lot_source_detail_id',
+                'im.source_id',
+            ])
+            ->limit(50)
+            ->get();
+
+        foreach ($sortedIns as $in) {
+            if (!$this->traceLotToInvoice($in->lot_source_detail_id, (int) $invoice->purchase_invoice_id)) {
+                continue;
+            }
+
+            /* الخروج المصدر لحركة الدخول هذه: source_id يشير إلى movement_id الخاص بالخروج */
+            $outQty = InventoryMovementDetail::query()
+                ->join('inventory_movements as im', 'im.movement_id', '=', 'inventory_movement_details.movement_id')
+                ->where('inventory_movement_details.movement_id', (int) $in->source_id)
+                ->where('im.movement_type', InventoryMovement::TYPE_SORTING_OUT)
+                ->where('inventory_movement_details.quantity', '>', 0)
+                ->value('inventory_movement_details.quantity');
+
+            if ($outQty && (float) $outQty > 0) {
+                return (float) $in->quantity / (float) $outQty;   // كجم لكل حبة
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * ✅ رصيد دفعة فرز محددة (الصنف، المخزن، وحدة الناتج، المورد) —
+     * يستخدم للتحقق عند الإرجاع من صف فرز (المرحلة 2).
+     */
+    public function sortedBatchStock(int $itemId, int $warehouseId, ?int $unitId, ?int $supplierId): float
+    {
+        return $this->inventoryService->availableQuantityForSupplier(
+            $itemId,
+            $warehouseId,
+            $unitId,
+            $supplierId
+        );
     }
 
     // =========================================================
@@ -391,6 +647,22 @@ class PurchaseReturnService
                 continue;
             }
 
+            /* ✅ صفوف دفعات الفرز (بوحدة غير وحدة الفاتورة) تُستبعد من الحصة الأساسية —
+               تتحقق منها validateSortedBatchRows بالتحويل */
+            $rowUnitId = isset($row['unit_id']) && $row['unit_id'] !== null
+                ? (int) $row['unit_id']
+                : null;
+
+            if ($rowUnitId !== null) {
+                $invoiceDetailForUnit = PurchaseInvoiceDetail::find($detailId);
+
+                if ($invoiceDetailForUnit
+                    && $invoiceDetailForUnit->unit_id !== null
+                    && $rowUnitId !== (int) $invoiceDetailForUnit->unit_id) {
+                    continue;
+                }
+            }
+
             $grouped[$detailId] = ($grouped[$detailId] ?? 0) + $qty;
         }
 
@@ -400,6 +672,90 @@ class PurchaseReturnService
             if ($totalQty > $available) {
                 $errors["details"] =
                     "الكمية الإجمالية للسطر #{$detailId} ({$totalQty}) أكبر من المتاح ({$available})";
+            }
+        }
+
+        if (!empty($errors)) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
+    /**
+     * ✅ التحقق من صفوف دفعات الفرز (المرحلة 2):
+     *  1) الوحدة المرسلة يجب أن تكون دفعة فرز مشتقة من نفس الفاتورة
+     *     (تتبّع lot_source حتى حركة الشراء) — وإلا يُرفض السطر.
+     *  2) الكمية ≤ رصيد المورد الفعلي لهذه الدفعة (availableQuantityForSupplier).
+     *  3) المكافئ المحوّل (qty × دخل÷خروج) لا يتجاوز الحصة المتبقية للفاتورة.
+     */
+    protected function validateSortedBatchRows(
+        int $originalInvoiceId,
+        array $details,
+        ?int $exceptReturnId = null
+    ): void {
+        $errors = [];
+
+        foreach ($details as $i => $row) {
+            $detailId = (int) ($row['purchase_invoice_detail_id'] ?? 0);
+            $qty      = (float) ($row['quantity'] ?? 0);
+            $rowUnitId = isset($row['unit_id']) && $row['unit_id'] !== null
+                ? (int) $row['unit_id']
+                : null;
+
+            if ($detailId <= 0 || $qty <= 0 || $rowUnitId === null) {
+                continue;
+            }
+
+            $invoiceDetail = PurchaseInvoiceDetail::find($detailId);
+
+            if (!$invoiceDetail || (int) $invoiceDetail->purchase_invoice_id !== $originalInvoiceId) {
+                continue;   /* رُفض سابقاً في validateReturnQuantities */
+            }
+
+            $invoiceUnitId = $invoiceDetail->unit_id !== null ? (int) $invoiceDetail->unit_id : 0;
+
+            if ($rowUnitId === $invoiceUnitId) {
+                continue;   /* صف أساسي عادي — تحقق موجود سابقاً */
+            }
+
+            $invoice = $invoiceDetail->purchaseInvoice;
+
+            if (!$invoice) {
+                continue;
+            }
+
+            /* 1) يجب أن تكون دفعة فرز مشتقة من هذه الفاتورة */
+            $ratio = $this->sortedBatchRatio($invoiceDetail, $rowUnitId);
+
+            if ($ratio === null) {
+                $errors["details.{$i}.unit_id"] =
+                    "الوحدة المرسلة للسطر #{$detailId} ليست دفعة فرز مشتقة من هذه الفاتورة";
+                continue;
+            }
+
+            /* 2) رصيد المورد الفعلي للدفعة المفرزة */
+            $batchStock = $this->sortedBatchStock(
+                (int) $invoiceDetail->item_id,
+                (int) $invoice->warehouse_id,
+                $rowUnitId,
+                (int) $invoice->account_id
+            );
+
+            if ($qty > $batchStock) {
+                $errors["details.{$i}.quantity"] =
+                    "الكمية المطلوبة من دفعة الفرز ({$qty}) أكبر من الرصيد الفعلي ({$batchStock})";
+                continue;
+            }
+
+            /* 3) المكافئ المحوّل لا يتجاوز الحصة المتبقية للفاتورة */
+            $quotaEquivalent = $qty * $ratio;
+            $invoiceRemaining = $this->availableForReturn(
+                $detailId,
+                $exceptReturnId
+            );
+
+            if ($quotaEquivalent > $invoiceRemaining + 0.000001) {
+                $errors["details.{$i}.quantity"] =
+                    "مكافئ الكمية ({$quotaEquivalent} من وحدة الفاتورة) أكبر من المتبقي للفاتورة ({$invoiceRemaining})";
             }
         }
 
@@ -425,10 +781,15 @@ class PurchaseReturnService
             $detail = PurchaseInvoiceDetail::find($detailId);
             if (!$detail) continue;
 
-            $key = $detail->item_id . '|' . ($detail->unit_id ?? 0);
+            /* ✅ الوحدة من الصف (قد تكون دفعة فرز) وإلا وحدة الفاتورة */
+            $rowUnitId = isset($row['unit_id']) && $row['unit_id'] !== null
+                ? (int) $row['unit_id']
+                : ($detail->unit_id ? (int) $detail->unit_id : null);
+
+            $key = $detail->item_id . '|' . ($rowUnitId ?? 0);
             $pairs[$key] = [
                 'item_id' => (int) $detail->item_id,
-                'unit_id' => $detail->unit_id ? (int) $detail->unit_id : null,
+                'unit_id' => $rowUnitId,
             ];
         }
 
@@ -477,7 +838,12 @@ class PurchaseReturnService
                 continue;
             }
 
-            $key = $detail->item_id . '|' . ($detail->unit_id ?? 0);
+            /* ✅ الوحدة من الصف (قد تكون دفعة فرز) — الرصيد يُفحص لكل وحدة على حدة */
+            $rowUnitId = isset($row['unit_id']) && $row['unit_id'] !== null
+                ? (int) $row['unit_id']
+                : ($detail->unit_id ? (int) $detail->unit_id : null);
+
+            $key = $detail->item_id . '|' . ($rowUnitId ?? 0);
             $stockNeeds[$key] = ($stockNeeds[$key] ?? 0) + $qty;
         }
 
@@ -799,14 +1165,46 @@ class PurchaseReturnService
             $discount = (float) ($row['discount'] ?? 0);
             $total    = max(0, ($quantity * $price) - $discount);
 
-            $unitCost = $this->getLandedCostFromMovement($invoiceDetail);
+            /* ✅ المرحلة 2: الصف قد يكون بوحدة دفعة فرز (unit_id مرسل من الشاشة)
+               بعد اجتياز validateSortedBatchRows — وإلا تكون بوحدة الفاتورة كما سابقاً. */
+            $rowUnitId = isset($row['unit_id']) && $row['unit_id'] !== null
+                ? (int) $row['unit_id']
+                : null;
+
+            $invoiceUnitId = $invoiceDetail->unit_id !== null ? (int) $invoiceDetail->unit_id : 0;
+
+            $isSortedRow = $rowUnitId !== null
+                && $invoiceUnitId > 0
+                && $rowUnitId !== $invoiceUnitId;
+
+            $unitId = $isSortedRow ? $rowUnitId : $invoiceDetail->unit_id;
+
+            if ($isSortedRow) {
+                /* تكلفة سطر الفرز = تكلفة الوحدة الناتجة المحسوبة لحظة الفرز
+                   (إجمالي قيمة المصدر ÷ كمية الناتج) — وأسعره منسوخ من حركة الفرز */
+                $sortedCost = $this->getSortedBatchUnitCost(
+                    (int) $invoiceDetail->item_id,
+                    (int) $purchaseReturn->warehouse_id,
+                    $rowUnitId,
+                    (int) $purchaseReturn->account_id,
+                    (int) $invoiceDetail->purchase_invoice_id
+                );
+
+                if ($sortedCost !== null) {
+                    $unitCost = $sortedCost;
+                } else {
+                    $unitCost = $this->getLandedCostFromMovement($invoiceDetail);
+                }
+            } else {
+                $unitCost = $this->getLandedCostFromMovement($invoiceDetail);
+            }
 
             PurchaseReturnDetail::create([
                 'purchase_return_id'         => $purchaseReturn->purchase_return_id,
                 'purchase_invoice_detail_id' => $invoiceDetailId,
                 'item_id'                    => $invoiceDetail->item_id,
                 'type_id'                    => $invoiceDetail->type_id,
-                'unit_id'                    => $invoiceDetail->unit_id,
+                'unit_id'                    => $unitId,
                 'warehouse_id'               => $purchaseReturn->warehouse_id,
                 'code'                       => $invoiceDetail->code,
                 'quantity'                   => $quantity,
@@ -816,6 +1214,41 @@ class PurchaseReturnService
                 'total'                      => $total,
             ]);
         }
+    }
+
+    /**
+     * ✅ تكلفة الوحدة الناتجة من دفعة فرز مشتقة من فاتورة الشراء (المرحلة 2).
+     */
+    protected function getSortedBatchUnitCost(
+        int $itemId,
+        int $warehouseId,
+        int $sortedUnitId,
+        int $supplierId,
+        int $invoiceId
+    ): ?float {
+        $sortedIns = InventoryMovementDetail::query()
+            ->join('inventory_movements as im', 'im.movement_id', '=', 'inventory_movement_details.movement_id')
+            ->where('im.direction', 'in')
+            ->where('im.source_type', InventoryMovement::SOURCE_SORTING)
+            ->where('inventory_movement_details.item_id', $itemId)
+            ->where('inventory_movement_details.warehouse_id', $warehouseId)
+            ->where('inventory_movement_details.unit_id', $sortedUnitId)
+            ->where('inventory_movement_details.supplier_account_id', $supplierId)
+            ->orderByDesc('inventory_movement_details.movement_detail_id')
+            ->select([
+                'inventory_movement_details.unit_cost',
+                'inventory_movement_details.lot_source_detail_id',
+            ])
+            ->limit(50)
+            ->get();
+
+        foreach ($sortedIns as $in) {
+            if ($this->traceLotToInvoice($in->lot_source_detail_id, $invoiceId)) {
+                return (float) $in->unit_cost;
+            }
+        }
+
+        return null;
     }
 
     protected function getLandedCostFromMovement(PurchaseInvoiceDetail $invoiceDetail): float

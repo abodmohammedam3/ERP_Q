@@ -758,10 +758,16 @@ class InventoryMovementController extends Controller
         /* ✅ التجميع خماسي: (صنف + نوع + مخزن + وحدة + مورد)
            كل دفعة موردية لها سطر مستقل بتكلفتها ورصيدها —
            شراء نفس الصنف من موردين لا يُدمج بعد الآن.
-           supplier_account_id = NULL ⇒ "توريد عام" (supply/يدوي/تاريخي). */
+           supplier_account_id = NULL ⇒ "توريد عام" (supply/يدوي/تاريخي).
+
+           ✅ إضافة: استبعاد الأصناف المعطّلة (is_active = 0) من شاشة الأرصدة.
+           الصنف المعطّل يختفي من هذه الشاشة فقط، بينما تبقى كل السجلات
+           التاريخية (فواتير، قيود، حركات) سليمة للتدقيق المحاسبي. */
         $combinations = DB::table('inventory_movement_details as imd')
             ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
             ->leftJoin('characcount as ca', 'ca.accountID', '=', 'imd.supplier_account_id')
+            ->join('Items as it', 'it.itemID', '=', 'imd.item_id')
+            ->where('it.is_active', 1)
             ->select(
                 'imd.item_id',
                 'imd.type_id',

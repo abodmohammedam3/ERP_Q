@@ -33,6 +33,7 @@ class StorePurchaseReturnRequest extends FormRequest
 
             'details'                               => ['required', 'array', 'min:1'],
             'details.*.purchase_invoice_detail_id' => ['required', 'exists:purchase_invoice_details,purchase_invoice_detail_id'],
+            'details.*.unit_id'                     => ['nullable', 'exists:units,UnitID'],
             'details.*.quantity'                    => ['required', 'numeric', 'gt:0'],
             'details.*.price'                       => ['required', 'numeric', 'gt:0'],
             'details.*.discount'                    => ['nullable', 'numeric', 'min:0'],

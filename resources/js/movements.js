@@ -1531,6 +1531,80 @@ async function savePricingEdit() {
 }
 
 /* =========================================================================
+   حذف الصنف من نافذة تعديل التسعير (أرصدة المخازن)
+   يستخدم مسار items.destroy الموجود — والحماية على الخادم (ItemService::delete)
+   ترفض الحذف إن كان الصنف مستخدماً في مستندات/حركات مع رسالة عربية واضحة.
+   ========================================================================= */
+
+async function deleteItemFromPricingModal() {
+    if (!activePricingBalance?.item_id) return;
+
+    const itemId = activePricingBalance.item_id;
+    const itemName = activePricingBalance.item_name || `#${itemId}`;
+    const qty = Number(activePricingBalance.quantity) || 0;
+
+    /* المرحلة 1: رسالة توضيحية قبل أي إجراء */
+    const ok = await movementConfirm(
+        `الصنف "${itemName}" له رصيد حالي ${qty}.\n\n` +
+        `حذف الصنف نهائيًا يستلزم ألا يكون مرتبطًا بأي فاتورة أو حركة.\n` +
+        `إذا كان مرتبطًا، يمكنك تعطيله بدلًا من ذلك (يختفي من الشاشة، والبيانات التاريخية تبقى سليمة).\n\n` +
+        `متابعة؟`,
+        {
+            title: 'حذف / تعطيل الصنف',
+            okText: 'متابعة',
+            danger: true,
+        }
+    );
+    if (!ok) return;
+
+    const btn = document.getElementById('btnDeleteItemFromPricing');
+    if (btn) btn.disabled = true;
+
+    try {
+        /* المرحلة 2: محاولة الحذف الفعلي */
+        const r = await apiSend(`/setting/inventory/items/${itemId}`, 'DELETE', {});
+        notify(r.message || 'تم حذف الصنف نهائيًا', 'success');
+        pricingEditModal?.hide();
+        await loadStockBalances();
+    } catch (deleteErr) {
+        /* المرحلة 3: الحذف فشل (الصنف مستخدم) → عرض خيار التعطيل */
+        try {
+            const deactivate = await movementConfirm(
+                `لا يمكن حذف الصنف "${itemName}" نهائيًا:\n\n${deleteErr.message}\n\n` +
+                `هل تريد تعطيله بدلًا من ذلك؟\n` +
+                `• سيختفي من قوائم الاختيار والأرصدة\n` +
+                `• الفواتير والقيود والحركات التاريخية تبقى سليمة 100%`,
+                {
+                    title: 'تعطيل الصنف بدلًا من الحذف',
+                    okText: 'تعطيل الصنف',
+                    cancelText: 'إلغاء',
+                    danger: false,
+                }
+            );
+
+            if (!deactivate) {
+                notify('تم إلغاء العملية', 'info');
+                return;
+            }
+
+            /* تنفيذ التعطيل */
+            await apiSend(
+                `/setting/inventory/items/${itemId}/toggle-status`,
+                'PATCH',
+                {}
+            );
+            notify('تم تعطيل الصنف — سيختفي من الأرصدة', 'success');
+            pricingEditModal?.hide();
+            await loadStockBalances();
+        } catch (deactivateErr) {
+            notify(deactivateErr.message, 'danger');
+        }
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+/* =========================================================================
    الفرز
    ========================================================================= */
 
@@ -1896,4 +1970,5 @@ Object.assign(window, {
 
     findDefaultPieceUnit,
     isKiloUnit,
+    deleteItemFromPricingModal,
 });

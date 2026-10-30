@@ -627,6 +627,90 @@ function onInvoiceRowClick(inv) {
 }
 
 /* =========================================================
+   ✅ دفعات الفرز المشتقة من الفاتورة — قابلة للإرجاع (المرحلة 2)
+   الصف يحمل unit_id الدفعة وتكلفة الفرز؛ الحصة والرصيد
+   يتحقق منهما الخادم (validateSortedBatchRows بالتحويل دخل÷خروج).
+   ========================================================= */
+
+async function appendPurchaseReturnSortedBatches(invoiceId, baseDetailsByItem) {
+    if (!invoiceId) return;
+
+    try {
+        const res = await purchaseReturnApiGet(
+            `/operation/purchases/returns/sorted-batches?purchase_invoice_id=${invoiceId}`
+        );
+        const batches = (res && res.data) || [];
+        if (!batches.length) return;
+
+        const tbody = document.getElementById('purchaseReturnDetails');
+        const tpl = document.getElementById('purchaseReturnRowTemplate');
+        if (!tbody || !tpl) return;
+
+        batches.forEach((b) => {
+            const row = tpl.content.firstElementChild.cloneNode(true);
+
+            row.classList.add('row-converted');
+            row.dataset.converted = '1';
+            row.dataset.baseDetailId = '';
+            row.querySelector('.row-detail-id').value = '';
+            row.dataset.converted = '1';
+            row.dataset.baseDetailId = '';
+            row.querySelector('.row-item').value = b.item_name ?? '';
+            row.querySelector('.row-item-id').value = b.item_id ?? '';
+            row.querySelector('.row-unit').value = b.unit_name ?? '';
+            row.querySelector('.row-unit-id').value = b.unit_id ?? '';
+            row.querySelector('.row-available').value = b.available ?? 0;
+            row.querySelector('.row-price').value = b.unit_cost ?? 0;
+            row.querySelector('.row-unit-cost').value = b.unit_cost ?? 0;
+
+            /* شارة توضيحية: مصدر الدفعة = فرز من الكمية الأساسية */
+            const itemCell = row.querySelector('.row-item');
+            if (itemCell) {
+                const badge = document.createElement('span');
+                badge.className = 'badge rounded-pill text-bg-warning sort-badge';
+                badge.textContent = `فرز من الكمية الأساسية — ${b.sort_document ?? ''}`;
+                badge.title = 'دفعة ناتجة عن فرز كميات هذه الفاتورة (تحويل وحدات)';
+                itemCell.insertAdjacentElement('afterend', badge);
+            }
+
+            /* ✅ المرحلة 2: صف الفرز قابل للإرجاع فعليًا — يرسل unit_id الخاص بالدفعة
+               والسعر بتكلفة الفرز؛ والتحقق من الحصة والرصيد على الخادم (validateSortedBatchRows) */
+            const qtyInput = row.querySelector('.row-measure');
+            if (qtyInput) {
+                qtyInput.value = 0;
+                qtyInput.disabled = false;
+                qtyInput.readOnly = false;
+                qtyInput.dataset.converted = '1';
+                qtyInput.dataset.unitId = b.unit_id ?? '';
+                qtyInput.dataset.sortCost = b.unit_cost ?? 0;
+            }
+
+            row.querySelector('.row-detail-id').dataset.unitId = b.unit_id ?? '';
+
+            /* ✅ ربط بسطر الفاتورة الأساسي لنفس الصنف — لتمرير purchase_invoice_detail_id */
+            const baseDetailId = baseDetailsByItem ? (baseDetailsByItem[b.item_id] ?? '') : '';
+            if (baseDetailId) {
+                row.querySelector('.row-detail-id').value = baseDetailId;
+                row.dataset.baseDetailId = baseDetailId;
+            }
+
+            const removeBtn = row.querySelector('button');
+            if (removeBtn) removeBtn.remove();
+
+            tbody.appendChild(row);
+        });
+
+        purchaseReturnNotify(
+            `تم العثور على ${batches.length} دفعة فرز مرتبطة بهذه الفاتورة`,
+            'info'
+        );
+    } catch (e) {
+        /* الفشل هنا لا يعيق الشاشة — إنها ميزة عرض فقط */
+        console.warn('sorted-batches fetch failed', e);
+    }
+}
+
+/* =========================================================
    ✅ اختيار الفاتورة — تحميل التفاصيل
    ========================================================= */
 
@@ -665,6 +749,14 @@ async function selectOriginalPurchaseInvoice(invoiceId) {
 
         const tpl = document.getElementById('purchaseReturnRowTemplate');
         let hasAvailableItems = false;
+
+        /* خريطة الصنف → أول سطر فاتورة أساسي (تربط به صفوف دفعات الفرز) */
+        const baseDetailsByItem = {};
+        details.forEach((d) => {
+            if (!(d.item_id in baseDetailsByItem)) {
+                baseDetailsByItem[d.item_id] = d.purchase_invoice_detail_id;
+            }
+        });
 
         for (let i = 0; i < details.length; i++) {
             const d = details[i];
@@ -724,6 +816,9 @@ async function selectOriginalPurchaseInvoice(invoiceId) {
             calculatePurchaseReturnTotals();
             purchaseReturnNotify('تم تحميل تفاصيل الفاتورة بنجاح', 'success');
         }
+
+        /* ✅ المرحلة 2: تربط صف الفرز بسطر الفاتورة الأساسي لنفس الصنف (لحساب الحصة) */
+        await appendPurchaseReturnSortedBatches(invoiceId, baseDetailsByItem);
 
         const modalEl = document.getElementById('originalPurchaseInvoiceSearchModal');
         if (modalEl) {
@@ -1168,7 +1263,16 @@ async function savePurchaseReturn() {
     const details = [];
     for (const row of rows) {
         const detailId = row.querySelector('.row-detail-id')?.value;
-        if (!detailId) continue;
+
+        /* صفوف دفعات الفرز (row-converted): تُحفظ بمعرّف سطر الفاتورة + unit_id الدفعة */
+        const convertedQtyInput = row.querySelector('.row-measure[data-converted="1"]');
+
+        if (!detailId) {
+            if (convertedQtyInput) {
+                continue;
+            }
+            continue;
+        }
 
         const qty = parseFloat(row.querySelector('.row-measure')?.value) || 0;
         if (qty <= 0) continue;
@@ -1176,12 +1280,19 @@ async function savePurchaseReturn() {
         const price = parseFloat(row.querySelector('.row-price')?.value) || 0;
         const discount = parseFloat(row.querySelector('.row-discount')?.value) || 0;
 
-        details.push({
+        const payloadLine = {
             purchase_invoice_detail_id: Number(detailId),
             quantity: qty,
             price: price,
             discount: discount,
-        });
+        };
+
+        /* ✅ صف دفعة فرز: ترسل وحدته الخاصة ليُحفظ بها ويُتحقق منها على الخادم */
+        if (convertedQtyInput && convertedQtyInput.dataset.unitId) {
+            payloadLine.unit_id = Number(convertedQtyInput.dataset.unitId);
+        }
+
+        details.push(payloadLine);
     }
 
     if (!details.length) {

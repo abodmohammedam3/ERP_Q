@@ -165,6 +165,11 @@
 
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                {{-- ✅ حذف الصنف — عبر ItemController::destroy بحماية ItemService (منع الحذف إن كان مستخدماً) --}}
+                <button type="button" class="btn btn-outline-danger me-auto" id="btnDeleteItemFromPricing" onclick="deleteItemFromPricingModal()">
+                    <i class="bi bi-trash3"></i>
+                    حذف الصنف
+                </button>
                 <button type="button" class="btn btn-info" id="btnSavePricing" onclick="savePricingEdit()">
                     <i class="bi bi-check-lg"></i>
                     حفظ

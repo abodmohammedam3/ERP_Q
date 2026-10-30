@@ -1001,6 +1001,11 @@ Route::get(
 )->name('purchases.returns.invoicePicker');
 
 Route::get(
+    '/operation/purchases/returns/sorted-batches',
+    [PurchaseReturnApiController::class, 'sortedBatches']
+)->name('purchases.returns.sortedBatches');
+
+Route::get(
     '/operation/purchases/returns/{id}',
     [PurchaseReturnApiController::class, 'show']
 )->name('purchases.returns.show');

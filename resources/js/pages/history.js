@@ -18,6 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
         customerSummary: '/operation/purchases/distribution/customer-summary',
         searchInvoices:  '/operation/purchases/distribution/invoices-search',
         invoiceSummary:  '/operation/purchases/distribution/invoice-summary',
+        itemsSearch:     '/operation/purchases/distribution/items-search',
+        itemSummary:     '/operation/purchases/distribution/item-summary',
         distributionPage:'/operation/purchases/distribution',
     };
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -82,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
         distributions:    false,
         customersTab:     false,
         invoicesTab:      false,
+        itemsTab:         false,
         customerSelected: false,
         invoiceSelected:  false,
     };
@@ -112,7 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.classList.add('active');
 
             const tab = btn.dataset.tab;
-            ['distributions','customers','invoices'].forEach(t => {
+            ['distributions','customers','invoices','items'].forEach(t => {
                 $('tab-' + t)?.classList.toggle('d-none', t !== tab);
             });
 
@@ -124,6 +127,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (tab === 'invoices' && !loaded.invoicesTab) {
                 loaded.invoicesTab = true;
+            }
+            if (tab === 'items' && !loaded.itemsTab) {
+                loaded.itemsTab = true;
             }
         });
     });
@@ -327,6 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
         created: 'plus-circle text-success',
         updated: 'pencil-square text-warning',
         issued:  'receipt text-primary',
+        partially_issued: 'receipt-cutoff text-info',
         deleted: 'trash text-danger',
     };
 
@@ -597,6 +604,123 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             if (tbody) {
                 tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-3">فشل: ${escapeHtml(e.message)}</td></tr>`;
+            }
+        }
+    }
+
+    // ============================================================
+    // 6) تبويب الأصناف — مستقل (الربط الفعلي لـ itemSummary)
+    // ============================================================
+    $('itemSearch')?.addEventListener('input', debounce(searchItems, 400));
+
+    async function searchItems() {
+        const q = $('itemSearch').value.trim();
+        const box = $('itemResults');
+        if (!box) return;
+        if (q.length < 1) { box.style.display = 'none'; box.innerHTML = ''; return; }
+
+        try {
+            const res = await api(`${ROUTES.itemsSearch}?q=${encodeURIComponent(q)}`);
+            const rows = res.data || [];
+            box.innerHTML = '';
+            box.style.display = rows.length ? '' : 'none';
+
+            rows.forEach(item => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'list-group-item list-group-item-action py-2 small border-0';
+                btn.innerHTML = `
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-box-seam text-warning"></i>
+                        <span class="fw-semibold">${escapeHtml(item.name)}</span>
+                    </div>`;
+                btn.addEventListener('click', () => {
+                    box.style.display = 'none';
+                    $('itemSearch').value = item.name;
+                    loadItemSummary(item.id);
+                });
+                box.appendChild(btn);
+            });
+
+            if (!rows.length) {
+                box.innerHTML = '<div class="list-group-item text-muted small text-center py-2 border-0">لا نتائج</div>';
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    async function loadItemSummary(itemId) {
+        $('itemEmpty')?.classList.add('d-none');
+        $('itemSummaryBox')?.classList.remove('d-none');
+
+        const tbody = $('itmTbody');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr><td colspan="5" class="text-center text-muted py-3">
+                    <div class="spinner-border spinner-border-sm text-primary"></div> جارٍ التحميل...
+                </td></tr>`;
+        }
+
+        try {
+            const res = await api(`${ROUTES.itemSummary}?item_id=${itemId}`);
+
+            if ($('itmName'))       $('itmName').textContent       = res.item.name;
+            if ($('itmOriginal'))   $('itmOriginal').textContent   = fmt(res.summary.original_qty, 3);
+            if ($('itmDistributed'))$('itmDistributed').textContent = fmt(res.summary.total_distributed, 3);
+            if ($('itmRemaining'))  $('itmRemaining').textContent  = fmt(res.summary.remaining, 3);
+            if ($('itmCustomers'))  $('itmCustomers').textContent  = res.summary.customers_count;
+
+            /* تفصيل لكل وحدة — من الكمية الأصلية والموزّع والمتبقي، مفصولة بالوحدة */
+            if ($('itmByUnit')) {
+                const parts = Object.entries(res.summary.qty_by_unit || {}).map(([u, s]) =>
+                    `${escapeHtml(u)}: أصلي <b>${fmt(s.original, 3)}</b> · موزّع <b>${fmt(s.distributed, 3)}</b> · متبقٍ <b>${fmt(s.remaining, 3)}</b>`);
+                $('itmByUnit').innerHTML = parts.length ? 'حسب الوحدة: ' + parts.join(' &nbsp;|&nbsp; ') : '';
+            }
+
+            if (tbody) {
+                tbody.innerHTML = '';
+                if (!(res.data || []).length) {
+                    tbody.innerHTML = `
+                        <tr><td colspan="5" class="text-center text-muted py-4">
+                            لم يتم توزيع هذا الصنف على أي عميل بعد.
+                        </td></tr>`;
+                } else {
+                    res.data.forEach(d => {
+                        const badge = d.is_invoiced
+                            ? `<span class="badge bg-success-subtle text-success" title="فاتورة البيع رقم ${escapeHtml(d.sales_invoice_number || '—')}">مفوتر${d.sales_invoice_number ? ` · ${escapeHtml(d.sales_invoice_number)}` : ''}</span>`
+                            : '<span class="badge bg-warning-subtle text-warning">غير مفوتر</span>';
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td class="fw-semibold small">${escapeHtml(d.customer_name)}</td>
+                            <td class="text-muted small">${escapeHtml(d.distribution || '—')}</td>
+                            <td class="text-end fw-semibold text-success">${fmt(d.quantity, 3)}</td>
+                            <td class="text-end text-muted">${fmt(d.quantity * (d.sale_price || 0))}</td>
+                            <td class="text-center">${badge}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            }
+
+            /* ملخص حسب العميل (مع كميات مفصولة بالوحدة) */
+            const cTbody = $('itmCustomersTbody');
+            if (cTbody) {
+                cTbody.innerHTML = '';
+                (res.by_customer || []).forEach(c => {
+                    const qtyParts = Object.entries(c.qty_by_unit || {})
+                        .map(([u, q]) => `${fmt(q, 3)} ${escapeHtml(u)}`).join(' + ');
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="fw-semibold small">${escapeHtml(c.customer_name)}</td>
+                        <td class="text-end">${qtyParts || fmt(c.total_qty, 3)}</td>
+                    `;
+                    cTbody.appendChild(tr);
+                });
+            }
+
+            loaded.itemSelected = true;
+        } catch (e) {
+            if (tbody) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">فشل: ${escapeHtml(e.message)}</td></tr>`;
             }
         }
     }

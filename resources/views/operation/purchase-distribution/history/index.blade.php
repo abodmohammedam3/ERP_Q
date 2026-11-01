@@ -18,6 +18,7 @@
             @include('operation.purchase-distribution.history.tab-distributions')
             @include('operation.purchase-distribution.history.tab-customers')
             @include('operation.purchase-distribution.history.tab-invoices')
+            @include('operation.purchase-distribution.history.tab-items')
         </div>
     </div>
 </div>

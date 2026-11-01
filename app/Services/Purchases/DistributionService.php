@@ -120,24 +120,37 @@ class DistributionService
                 'details'        => $invoiceDetails,
             ]);
 
-            // 7) ربط صفوف التوزيع بالفاتورة الناتجة (للاسترجاع والتتبع)
-            $details->each(function (DistributionDetail $d) use ($salesInvoice) {
-                $d->update([
+            // 7) ربط صفوف التوزيع بالفاتورة الناتجة — تحديث جماعي واحد بدل each()->update()
+            DistributionDetail::query()
+                ->whereIn('id', $details->pluck('id'))
+                ->update([
                     'sales_invoice_id' => $salesInvoice->sales_invoice_id,
                     'invoiced_at'      => now(),
                 ]);
-            });
 
-            // ✅ Audit Log: إصدار فاتورة بيع حقيقية — لكل توزيع مشارك
-            $details->pluck('distribution_id')->unique()->each(function ($distId) use ($details, $salesInvoice, $customer, $customerId) {
+            /* المتبقي غير المفوتر لكل توزيع — استعلام تجميعي واحد بدل
+               count() منفصل لكل توزيع داخل حلقة. */
+            $remainingByDist = DistributionDetail::query()
+                ->whereIn('distribution_id', $distributionIds)
+                ->whereNull('invoiced_at')
+                ->groupBy('distribution_id')
+                ->selectRaw('distribution_id, COUNT(*) as c')
+                ->pluck('c', 'distribution_id');
+
+            // ✅ Audit Log: لكل توزيع مشارك — يميّز الإصدار الكامل عن الجزئي
+            $details->pluck('distribution_id')->unique()->each(function ($distId) use ($details, $salesInvoice, $customer, $customerId, $remainingByDist) {
                 $dist = Distribution::find($distId);
                 if (! $dist) return;
 
                 $distRows = $details->where('distribution_id', $distId);
+                $partial  = ($remainingByDist[$distId] ?? 0) > 0;
 
                 $dist->log(
-                    DistributionLog::ACTION_ISSUED,
-                    "إصدار فاتورة البيع {$salesInvoice->invoice_number} للعميل "
+                    $partial
+                        ? DistributionLog::ACTION_PARTIALLY_ISSUED
+                        : DistributionLog::ACTION_ISSUED,
+                    "إصدار " . ($partial ? 'جزئي من ' : '')
+                        . "فاتورة البيع {$salesInvoice->invoice_number} للعميل "
                         . ($customer->CustomersName2 ?? $customerId)
                         . " — " . $distRows->count() . " صف",
                     [
@@ -146,12 +159,26 @@ class DistributionService
                         'total'                => (float) $salesInvoice->total_in_invoice_currency,
                         'customer_id'          => $customerId,
                         'details_count'        => $distRows->count(),
+                        'partial'              => $partial,
                     ],
                 );
             });
 
-            // 8) إغلاق كل توزيع أصبحت صفوفه كلها مفوترة
-            $this->closeFullyInvoicedDistributions($distributionIds);
+            // 8) إغلاق التوزيعات المكتملة — تحديث جماعي واحد بدل حلقة count()+update()
+            $fullyInvoiced = collect($distributionIds)
+                ->reject(fn ($id) => isset($remainingByDist[$id]))
+                ->values();
+
+            if ($fullyInvoiced->isNotEmpty()) {
+                Distribution::query()
+                    ->whereIn('id', $fullyInvoiced)
+                    ->where('status', Distribution::STATUS_DRAFT)
+                    ->update([
+                        'status'      => Distribution::STATUS_INVOICED,
+                        'invoiced_at' => now(),
+                        'invoiced_by' => auth()->id(),
+                    ]);
+            }
 
             return $salesInvoice;
         });
@@ -191,29 +218,6 @@ class DistributionService
                 'distribution_ids' => 'التوزيعات التالية مفوترة مسبقًا ولا يمكن إصدارها: '
                     . $bad->pluck('code')->implode('، '),
             ]);
-        }
-    }
-
-    // =========================================================
-    // إغلاق التوزيعات التي اكتملت صفوفها
-    // =========================================================
-    protected function closeFullyInvoicedDistributions(array $distributionIds): void
-    {
-        foreach ($distributionIds as $distId) {
-            $remaining = DistributionDetail::query()
-                ->where('distribution_id', $distId)
-                ->whereNull('invoiced_at')
-                ->count();
-
-            if ($remaining === 0) {
-                Distribution::query()
-                    ->where('id', $distId)
-                    ->update([
-                        'status'      => Distribution::STATUS_INVOICED,
-                        'invoiced_at' => now(),
-                        'invoiced_by' => auth()->id(),
-                    ]);
-            }
         }
     }
 }

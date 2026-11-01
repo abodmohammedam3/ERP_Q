@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Purchases\PurchaseInvoice;
 use App\Models\Purchases\Distribution;
 use App\Models\Purchases\DistributionDetail;
+use App\Models\Purchases\DistributionLog;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\Inventory\InventoryMovementDetail;
 use App\Models\Inventory\Item;
@@ -248,6 +249,12 @@ class PurchaseDistributionController extends Controller
                     'notes'             => $validated['notes'] ?? null,
                 ]);
                 $distribution->details()->delete();
+
+                $distribution->log(
+                    DistributionLog::ACTION_UPDATED,
+                    "تعديل التوزيع {$distribution->code} — إعادة بناء " . count($validated['details']) . " صف",
+                    ['details_count' => count($validated['details'])],
+                );
             } else {
                 $distribution = Distribution::create([
                     'code'              => Distribution::nextCode(),
@@ -256,6 +263,12 @@ class PurchaseDistributionController extends Controller
                     'notes'             => $validated['notes'] ?? null,
                     'created_by'        => auth()->id(),
                 ]);
+
+                $distribution->log(
+                    DistributionLog::ACTION_CREATED,
+                    "إنشاء توزيع {$distribution->code} بـ " . count($validated['details']) . " صف",
+                    ['details_count' => count($validated['details'])],
+                );
             }
 
             foreach ($validated['details'] as $row) {
@@ -358,6 +371,34 @@ class PurchaseDistributionController extends Controller
     }
 
     // ============================================================
+    // سجل تتبع توزيع (Audit Log)
+    // ============================================================
+    public function logs(int $id)
+    {
+        $dist = Distribution::findOrFail($id);
+
+        $rows = $dist->logs()
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get()
+            ->map(fn ($l) => [
+                'id'           => $l->id,
+                'action'       => $l->action,
+                'action_label' => DistributionLog::actionLabel($l->action),
+                'description'  => $l->description,
+                'meta'         => $l->meta,
+                'user_id'      => $l->user_id,
+                'created_at'   => optional($l->created_at)->format('Y-m-d H:i'),
+            ]);
+
+        return response()->json([
+            'success' => true,
+            'code'    => $dist->code,
+            'data'    => $rows,
+        ]);
+    }
+
+    // ============================================================
     // حذف توزيع
     // ============================================================
     public function destroy(int $id)
@@ -369,6 +410,20 @@ class PurchaseDistributionController extends Controller
                 'message' => 'لا يمكن حذف توزيع مفوتر.',
             ], 422);
         }
+        // ✅ Audit Log: لقطة الصفوف قبل الحذف (التوزيع والتفاصيل سيُحذفان cascade)
+        $snapshot = [
+            'code'          => $dist->code,
+            'details_count' => $dist->details()->count(),
+            'total_cost'    => round((float) $dist->details()->sum(DB::raw('quantity * unit_cost')), 6),
+            'total_sale'    => round((float) $dist->details()->sum(DB::raw('quantity * sale_price')), 6),
+        ];
+
+        $dist->log(
+            DistributionLog::ACTION_DELETED,
+            "حذف التوزيع {$dist->code} (" . $snapshot['details_count'] . " صف)",
+            $snapshot,
+        );
+
         $dist->delete();
         return response()->json(['success' => true, 'message' => 'تم حذف التوزيع.']);
     }
@@ -400,8 +455,15 @@ class PurchaseDistributionController extends Controller
             $q->whereHas('details', fn($d) => $d->where('customer_id', (int)$request->input('customer_id')));
         }
 
+        // ✅ Pagination احترافي بدل الـ limit(300) الثابت —
+        //    يمنع اختفاء التوزيعات القديمة ويعطي meta للواجهة.
+        $perPage = min(100, max(10, (int) $request->input('per_page', 25)));
+        $page    = max(1, (int) $request->input('page', 1));
+
+        $total = (clone $q)->count();
+
         $rows = $q->orderByDesc('id')
-            ->limit(300)
+            ->forPage($page, $perPage)
             ->get()
             ->map(function ($d) {
                 $customersCount = $d->details->pluck('customer_id')->unique()->count();
@@ -441,6 +503,13 @@ class PurchaseDistributionController extends Controller
             'success' => true,
             'data'    => $rows,
             'stats'   => $stats,
+            'meta'    => [
+                'total'        => $total,
+                'page'         => $page,
+                'per_page'     => $perPage,
+                'last_page'    => (int) max(1, ceil($total / $perPage)),
+                'has_more'     => $page < max(1, ceil($total / $perPage)),
+            ],
         ]);
     }
 

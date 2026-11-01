@@ -69,6 +69,21 @@
                         <tbody id="ddTbody"></tbody>
                     </table>
                 </div>
+
+                {{-- سجل تتبع التوزيع (Audit Log) --}}
+                <div class="mt-3">
+                    <button class="btn btn-sm btn-outline-secondary w-100 d-flex align-items-center justify-content-between" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#ddLogsCollapse"
+                            aria-expanded="false" aria-controls="ddLogsCollapse">
+                        <span><i class="bi bi-clock-history"></i> سجل التتبع (Audit Log)</span>
+                        <i class="bi bi-chevron-down small"></i>
+                    </button>
+                    <div class="collapse" id="ddLogsCollapse">
+                        <div class="border border-top-0 rounded-bottom p-2 bg-light">
+                            <div id="ddLogsBody" class="small text-muted py-2 text-center">جارٍ التحميل…</div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="modal-footer bg-white border-0 d-flex justify-content-between">

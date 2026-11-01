@@ -56,4 +56,18 @@
             </tbody>
         </table>
     </div>
+
+    {{-- الترقيم (Pagination) --}}
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
+        <div class="text-muted small" id="distPagerInfo">—</div>
+        <div class="btn-group btn-group-sm" id="distPager" style="display:none;">
+            <button type="button" class="btn btn-outline-secondary" id="distPrevBtn" disabled>
+                <i class="bi bi-chevron-right"></i> السابق
+            </button>
+            <span class="btn btn-outline-primary disabled" id="distPageLabel">صفحة 1</span>
+            <button type="button" class="btn btn-outline-secondary" id="distNextBtn" disabled>
+                التالي <i class="bi bi-chevron-left"></i>
+            </button>
+        </div>
+    </div>
 </div>

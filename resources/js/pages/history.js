@@ -129,13 +129,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ============================================================
-    // 2) تبويب التوزيعات — مستقل
+    // 2) تبويب التوزيعات — مستقل (مع Pagination)
     // ============================================================
     let distModalInstance = null;
+    const distPager = { page: 1, perPage: 25, total: 0, lastPage: 1 };
 
-    async function loadDistributions() {
+    async function loadDistributions(page = 1) {
         const tbody = $('distTbody');
         if (!tbody) return;
+        distPager.page = page;
 
         tbody.innerHTML = `
             <tr><td colspan="9" class="text-center text-muted py-4">
@@ -148,9 +150,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if ($('fStatus')?.value)         params.set('status',    $('fStatus').value);
             if ($('fDateFrom')?.value)       params.set('date_from', $('fDateFrom').value);
             if ($('fDateTo')?.value)         params.set('date_to',   $('fDateTo').value);
+            params.set('page', String(distPager.page));
+            params.set('per_page', String(distPager.perPage));
 
             const res = await api(`${ROUTES.list}?${params}`);
             renderDistRows(res.data || []);
+            if (res.meta) {
+                distPager.total    = res.meta.total;
+                distPager.lastPage = res.meta.last_page;
+                renderDistPager(res.meta);
+            }
             loaded.distributions = true;
         } catch (e) {
             tbody.innerHTML = `
@@ -159,6 +168,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 </td></tr>`;
         }
     }
+
+    function renderDistPager(meta) {
+        const pager = $('distPager');
+        const info  = $('distPagerInfo');
+        if (!pager || !info) return;
+
+        if (!meta || meta.total === 0) {
+            pager.style.display = 'none';
+            info.textContent = '';
+            return;
+        }
+
+        pager.style.display = 'flex';
+        const from = (meta.page - 1) * meta.per_page + 1;
+        const to   = Math.min(meta.page * meta.per_page, meta.total);
+        info.textContent = `عرض ${from}–${to} من ${meta.total} توزيع`;
+
+        $('distPageLabel').textContent = `صفحة ${meta.page} من ${meta.last_page}`;
+        $('distPrevBtn').disabled = meta.page <= 1;
+        $('distNextBtn').disabled = meta.page >= meta.last_page;
+    }
+
+    $('distPrevBtn')?.addEventListener('click', () => loadDistributions(distPager.page - 1));
+    $('distNextBtn')?.addEventListener('click', () => loadDistributions(distPager.page + 1));
 
     function renderDistRows(rows) {
         const tbody = $('distTbody');
@@ -269,6 +302,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 editBtn.classList.add('d-none');
             }
 
+            // تحميل سجل التتبع (Audit Log)
+            loadDistLogs(res.header.id);
+
             const modalEl = $('distDetailsModal');
             const Modal = await ensureBootstrap();
             if (Modal) {
@@ -281,6 +317,54 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (e) {
             toastError('فشل التحميل: ' + e.message);
+        }
+    }
+
+    // ============================================================
+    // 3-أ) سجل تتبع التوزيع (Audit Log)
+    // ============================================================
+    const ACTION_ICONS = {
+        created: 'plus-circle text-success',
+        updated: 'pencil-square text-warning',
+        issued:  'receipt text-primary',
+        deleted: 'trash text-danger',
+    };
+
+    async function loadDistLogs(distributionId) {
+        const box = $('ddLogsBody');
+        if (!box) return;
+        box.innerHTML = '<div class="py-2 text-center text-muted">جارٍ التحميل…</div>';
+
+        try {
+            const res = await api(`${ROUTES.show(distributionId)}/logs`);
+            const rows = res.data || [];
+            if (!rows.length) {
+                box.innerHTML = '<div class="py-2 text-center text-muted">لا توجد فعاليات مسجّلة بعد.</div>';
+                return;
+            }
+            box.innerHTML = '';
+            rows.forEach(l => {
+                const icon = ACTION_ICONS[l.action] || 'circle text-muted';
+                const metaTxt = l.meta
+                    ? Object.entries(l.meta).map(([k, v]) => `${escapeHtml(k)}: ${escapeHtml(String(v))}`).join('، ')
+                    : '';
+                const el = document.createElement('div');
+                el.className = 'd-flex align-items-start gap-2 py-1 border-bottom';
+                el.innerHTML = `
+                    <i class="bi bi-${icon}"></i>
+                    <div class="flex-fill">
+                        <div class="fw-semibold">${escapeHtml(l.action_label)}</div>
+                        <div class="text-muted">${escapeHtml(l.description || '')}</div>
+                        ${metaTxt ? `<div class="text-muted" style="font-size:0.72rem;">${metaTxt}</div>` : ''}
+                    </div>
+                    <div class="text-end text-muted" style="font-size:0.72rem; min-width:110px;">
+                        ${escapeHtml(l.created_at || '—')}
+                    </div>
+                `;
+                box.appendChild(el);
+            });
+        } catch (e) {
+            box.innerHTML = `<div class="py-2 text-center text-danger">فشل التحميل: ${escapeHtml(e.message)}</div>`;
         }
     }
 

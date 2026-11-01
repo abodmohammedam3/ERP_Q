@@ -6,6 +6,7 @@ use App\Models\Accounting\Coin;
 use App\Models\Customer;
 use App\Models\Purchases\Distribution;
 use App\Models\Purchases\DistributionDetail;
+use App\Models\Purchases\DistributionLog;
 use App\Models\Sales\SalesInvoice;
 use App\Services\Sales\SalesInvoiceService;
 use Illuminate\Support\Facades\DB;
@@ -125,6 +126,28 @@ class DistributionService
                     'sales_invoice_id' => $salesInvoice->sales_invoice_id,
                     'invoiced_at'      => now(),
                 ]);
+            });
+
+            // ✅ Audit Log: إصدار فاتورة بيع حقيقية — لكل توزيع مشارك
+            $details->pluck('distribution_id')->unique()->each(function ($distId) use ($details, $salesInvoice, $customer, $customerId) {
+                $dist = Distribution::find($distId);
+                if (! $dist) return;
+
+                $distRows = $details->where('distribution_id', $distId);
+
+                $dist->log(
+                    DistributionLog::ACTION_ISSUED,
+                    "إصدار فاتورة البيع {$salesInvoice->invoice_number} للعميل "
+                        . ($customer->CustomersName2 ?? $customerId)
+                        . " — " . $distRows->count() . " صف",
+                    [
+                        'sales_invoice_id'     => $salesInvoice->sales_invoice_id,
+                        'sales_invoice_number' => $salesInvoice->invoice_number,
+                        'total'                => (float) $salesInvoice->total_in_invoice_currency,
+                        'customer_id'          => $customerId,
+                        'details_count'        => $distRows->count(),
+                    ],
+                );
             });
 
             // 8) إغلاق كل توزيع أصبحت صفوفه كلها مفوترة

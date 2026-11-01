@@ -22,6 +22,29 @@ class Distribution extends Model
         return $this->hasMany(DistributionDetail::class, 'distribution_id');
     }
 
+    /** سجل تتبع التوزيع (Audit Log) */
+    public function logs()
+    {
+        return $this->hasMany(DistributionLog::class, 'distribution_id');
+    }
+
+    /**
+     * تسجيل فعالية على التوزيع (Audit Log).
+     * @param string $action       created | updated | issued | deleted
+     * @param string|null $description وصف عربي
+     * @param array  $meta         بيانات إضافية (رقم الفاتورة، لقطة الصفوف...)
+     */
+    public function log(string $action, ?string $description = null, array $meta = []): DistributionLog
+    {
+        return DistributionLog::create([
+            'distribution_id' => $this->id,
+            'action'          => $action,
+            'description'     => $description,
+            'user_id'         => auth()->id(),
+            'meta'            => $meta ?: null,
+        ]);
+    }
+
     public function isDraft(): bool
     {
         return $this->status === self::STATUS_DRAFT;

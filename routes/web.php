@@ -1129,6 +1129,7 @@ Route::prefix('operation/purchases/distribution')
         Route::get('/invoices-search',  [PurchaseDistributionController::class, 'searchInvoices'])->name('invoices-search');
         Route::get('/invoice-summary',  [PurchaseDistributionController::class, 'invoiceSummary'])->name('invoice-summary');
         Route::get('/stats', [PurchaseDistributionController::class, 'stats'])->name('stats');
+        Route::get('/{id}/logs', [PurchaseDistributionController::class, 'logs'])->name('logs')->where('id', '[0-9]+');
         Route::get('/{id}',    [PurchaseDistributionController::class, 'show'])->name('show')->where('id', '[0-9]+');
         Route::delete('/{id}', [PurchaseDistributionController::class, 'destroy'])->name('destroy')->where('id', '[0-9]+');
     });

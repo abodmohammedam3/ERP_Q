@@ -10,12 +10,17 @@ use App\Models\Inventory\InventoryMovement;
 use App\Models\Inventory\InventoryMovementDetail;
 use App\Models\Inventory\Item;
 use App\Models\Customer;
+use App\Services\Purchases\DistributionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class PurchaseDistributionController extends Controller
 {
+    public function __construct(protected DistributionService $distributionService)
+    {
+    }
+
     // ============================================================
     // الشاشات
     // ============================================================
@@ -203,30 +208,39 @@ class PurchaseDistributionController extends Controller
         if ($existing) {
             $query->where('distribution_id', '!=', $existing->id);
         }
-        $alreadyDistributed = $query->groupBy('movement_detail_id')->pluck('total', 'movement_detail_id');
 
         $movementDetails = InventoryMovementDetail::whereIn(
             'movement_detail_id', array_keys($requested)
         )->with('item')->get()->keyBy('movement_detail_id');
 
-        foreach ($requested as $mdId => $qty) {
-            $source = $movementDetails->get($mdId);
-            if (! $source) {
-                throw ValidationException::withMessages([
-                    'details' => "الصنف رقم {$mdId} غير موجود في حركة المخزون.",
-                ]);
-            }
-            $available = (float) $source->quantity - (float) ($alreadyDistributed[$mdId] ?? 0);
-            if ($qty > $available + 0.000001) {
-                $itemName = $source->item?->itemName2 ?? 'الصنف';
-                throw ValidationException::withMessages([
-                    'details' => "الكمية المتاحة لـ «{$itemName}» هي {$available} فقط (المطلوب {$qty}).",
-                ]);
-            }
-        }
-
         DB::beginTransaction();
         try {
+            /* ✅ قفل صفوف التوزيع المرتبطة بهذه الحركات داخل الترانزكشن —
+               يمنع توزيعين متزامنين من قراءة "الموزع سابقًا" نفسه
+               وتجاوز الكمية المتاحة (race condition). */
+            DistributionDetail::query()
+                ->whereIn('movement_detail_id', array_keys($requested))
+                ->lockForUpdate()
+                ->get();
+
+            $alreadyDistributed = $query->groupBy('movement_detail_id')->pluck('total', 'movement_detail_id');
+
+            foreach ($requested as $mdId => $qty) {
+                $source = $movementDetails->get($mdId);
+                if (! $source) {
+                    throw ValidationException::withMessages([
+                        'details' => "الصنف رقم {$mdId} غير موجود في حركة المخزون.",
+                    ]);
+                }
+                $available = (float) $source->quantity - (float) ($alreadyDistributed[$mdId] ?? 0);
+                if ($qty > $available + 0.000001) {
+                    $itemName = $source->item?->itemName2 ?? 'الصنف';
+                    throw ValidationException::withMessages([
+                        'details' => "الكمية المتاحة لـ «{$itemName}» هي {$available} فقط (المطلوب {$qty}).",
+                    ]);
+                }
+            }
+
             if ($existing) {
                 $distribution = $existing;
                 $distribution->update([
@@ -671,53 +685,31 @@ class PurchaseDistributionController extends Controller
         $customerId = (int) $validated['customer_id'];
         $ids        = $validated['distribution_ids'];
 
-        $details = DistributionDetail::query()
-            ->whereIn('distribution_id', $ids)
-            ->where('customer_id', $customerId)
-            ->whereNull('invoiced_at')
-            ->get();
+        try {
+            $salesInvoice = $this->distributionService->issueInvoice($customerId, $ids);
+        } catch (ValidationException $e) {
+            $firstMessage = collect($e->errors())->flatten()->first();
 
-        if ($details->isEmpty()) {
             return response()->json([
                 'success' => false,
-                'message' => 'لا توجد تفاصيل قابلة للفوترة.',
+                'message' => $firstMessage ?? 'لا توجد تفاصيل قابلة للفوترة.',
             ], 422);
-        }
-
-        DB::beginTransaction();
-        try {
-            foreach ($details as $row) {
-                $row->update(['invoiced_at' => now()]);
-            }
-
-            foreach ($ids as $distId) {
-                $dist = Distribution::find($distId);
-                if (! $dist) continue;
-
-                $remaining = DistributionDetail::where('distribution_id', $distId)
-                    ->whereNull('invoiced_at')
-                    ->count();
-
-                if ($remaining === 0) {
-                    $dist->update([
-                        'status'      => Distribution::STATUS_INVOICED,
-                        'invoiced_at' => now(),
-                        'invoiced_by' => auth()->id(),
-                    ]);
-                }
-            }
-
-            DB::commit();
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
         }
 
         return response()->json([
             'success'     => true,
-            'message'     => 'تم تجهيز البيانات للفاتورة.',
+            'message'     => 'تم إصدار فاتورة البيع رقم ' . $salesInvoice->invoice_number
+                . ' للعميل (إجمالي: ' . number_format((float) $salesInvoice->total_in_invoice_currency, 2) . ').',
             'customer_id' => $customerId,
-            'detail_ids'  => $details->pluck('id'),
+            'sales_invoice_id'     => $salesInvoice->sales_invoice_id,
+            'sales_invoice_number' => $salesInvoice->invoice_number,
+            'sales_invoice_total'  => (float) $salesInvoice->total_in_invoice_currency,
+            'detail_ids'           => $validated['distribution_ids'],
         ]);
     }
 

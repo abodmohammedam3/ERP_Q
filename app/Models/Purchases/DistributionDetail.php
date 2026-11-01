@@ -43,4 +43,10 @@ class DistributionDetail extends Model
     {
         return $this->belongsTo(InventoryMovementDetail::class, 'movement_detail_id', 'movement_detail_id');
     }
+
+    /** فاتورة البيع الناتجة عن هذا الصف (بعد الإصدار) */
+    public function salesInvoice()
+    {
+        return $this->belongsTo(\App\Models\Sales\SalesInvoice::class, 'sales_invoice_id', 'sales_invoice_id');
+    }
 }

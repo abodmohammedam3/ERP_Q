@@ -176,7 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         rows.forEach((r, i) => {
             const statusBadge = r.status === 'invoiced'
-                ? '<span class="badge bg-success-subtle text-success"><i class="bi bi-check2-circle"></i> مفوتر</span>'
+                ? `<span class="badge bg-success-subtle text-success" title="فاتورات البيع: ${(r.sales_invoice_numbers || []).map(escapeHtml).join('، ')}"><i class="bi bi-check2-circle"></i> مفوتر${(r.sales_invoice_numbers || []).length ? ` · ${r.sales_invoice_numbers.length}` : ''}</span>`
                 : '<span class="badge bg-warning-subtle text-warning"><i class="bi bi-pencil-square"></i> مسودة</span>';
 
             const tr = document.createElement('tr');
@@ -239,7 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tbody.innerHTML = '';
             (res.details || []).forEach(d => {
                 const invBadge = d.is_invoiced
-                    ? '<span class="badge bg-success-subtle text-success">مفوتر</span>'
+                    ? `<span class="badge bg-success-subtle text-success" title="فاتورة البيع رقم ${escapeHtml(d.sales_invoice_number || '—')}">مفوتر${d.sales_invoice_number ? ` · ${escapeHtml(d.sales_invoice_number)}` : ''}</span>`
                     : '<span class="badge bg-secondary-subtle text-secondary">غير مفوتر</span>';
 
                 const tr = document.createElement('tr');
@@ -373,7 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tbody.innerHTML = '';
                 (res.data || []).forEach(d => {
                     const badge = d.is_invoiced
-                        ? '<span class="badge bg-success-subtle text-success">مفوتر</span>'
+                        ? `<span class="badge bg-success-subtle text-success" title="فاتورة البيع رقم ${escapeHtml(d.sales_invoice_number || '—')}">مفوتر${d.sales_invoice_number ? ` · ${escapeHtml(d.sales_invoice_number)}` : ''}</span>`
                         : '<span class="badge bg-warning-subtle text-warning">غير مفوتر</span>';
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
@@ -487,7 +487,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     res.data.forEach(d => {
                         const badge = d.is_invoiced
-                            ? '<span class="badge bg-success-subtle text-success">مفوتر</span>'
+                            ? `<span class="badge bg-success-subtle text-success" title="فاتورة البيع رقم ${escapeHtml(d.sales_invoice_number || '—')}">مفوتر${d.sales_invoice_number ? ` · ${escapeHtml(d.sales_invoice_number)}` : ''}</span>`
                             : '<span class="badge bg-warning-subtle text-warning">غير مفوتر</span>';
                         const tr = document.createElement('tr');
                         tr.innerHTML = `

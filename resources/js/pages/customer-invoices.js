@@ -419,7 +419,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 }),
             });
 
-            toastSuccess(res.message || 'تم تجهيز البيانات للفاتورة.');
+            toastSuccess(res.message || 'تم إصدار الفاتورة.');
+
+            // عرض رقم فاتورة البيع الناتجة بشكل واضح
+            if (res.sales_invoice_number) {
+                setTimeout(() => {
+                    toastSuccess(`فاتورة البيع: ${res.sales_invoice_number} — إجمالي: ${(res.sales_invoice_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+                }, 500);
+            }
 
             // إعادة تحميل التوزيعات (المفوترة ستختفي تلقائيًا)
             await loadCustomerDistributions(state.customer.id);

@@ -294,6 +294,7 @@ class PurchaseDistributionController extends Controller
         $dist = Distribution::with([
             'details.customer',
             'details.purchaseInvoice',
+            'details.salesInvoice:sales_invoice_id,invoice_number',
             'details.movementDetail.item',
             'details.movementDetail.type',
             'details.movementDetail.unit',
@@ -317,9 +318,10 @@ class PurchaseDistributionController extends Controller
             'sale_price'          => (float) $d->sale_price,
             'total_cost'          => (float) $d->quantity * (float) $d->unit_cost,
             'total_sale'          => (float) $d->quantity * (float) $d->sale_price,
-            'sales_invoice_id'    => $d->sales_invoice_id,
-            'invoiced_at'         => optional($d->invoiced_at)->format('Y-m-d H:i'),
-            'is_invoiced'         => $d->invoiced_at !== null,
+            'sales_invoice_id'      => $d->sales_invoice_id,
+            'sales_invoice_number'  => $d->salesInvoice?->invoice_number,
+            'invoiced_at'           => optional($d->invoiced_at)->format('Y-m-d H:i'),
+            'is_invoiced'           => $d->invoiced_at !== null,
         ]);
 
         $customersSet = $rows->pluck('customer_id')->unique()->count();
@@ -377,7 +379,10 @@ class PurchaseDistributionController extends Controller
     public function list(Request $request)
     {
         $q = Distribution::query()
-            ->with(['details:id,distribution_id,customer_id,quantity,unit_cost,sale_price']);
+            ->with([
+                'details:id,distribution_id,customer_id,quantity,unit_cost,sale_price,sales_invoice_id',
+                'details.salesInvoice:sales_invoice_id,invoice_number',
+            ]);
 
         if ($request->filled('status')) {
             $q->where('status', $request->input('status'));
@@ -417,6 +422,12 @@ class PurchaseDistributionController extends Controller
                     'customers_count'   => $customersCount,
                     'total_cost'        => $totalCost,
                     'total_sale'        => $totalSale,
+                    'sales_invoice_numbers' => $d->details
+                        ->map(fn($r) => $r->salesInvoice?->invoice_number)
+                        ->filter()
+                        ->unique()
+                        ->values()
+                        ->all(),
                 ];
             });
 
@@ -446,6 +457,7 @@ class PurchaseDistributionController extends Controller
                   ->whereNull('invoiced_at')
                   ->with([
                       'purchaseInvoice',
+                      'salesInvoice:sales_invoice_id,invoice_number',
                       'movementDetail.item',
                       'movementDetail.type',
                       'movementDetail.unit',
@@ -471,6 +483,8 @@ class PurchaseDistributionController extends Controller
                 'details' => $d->details->map(fn($row) => [
                     'id'             => $row->id,
                     'invoice_number' => $row->purchaseInvoice?->invoice_number,
+                    'sales_invoice_id'     => $row->sales_invoice_id,
+                    'sales_invoice_number' => $row->salesInvoice?->invoice_number,
                     'item_name'      => $row->movementDetail?->item?->itemName2 ?? '—',
                     'type_name'      => $row->movementDetail?->type?->name ?? '—',
                     'unit_name'      => $row->movementDetail?->unit?->UnitName ?? '—',
@@ -502,6 +516,7 @@ class PurchaseDistributionController extends Controller
             ->with([
                 'distribution:id,code,distribution_date,status',
                 'purchaseInvoice:purchase_invoice_id,invoice_number',
+                'salesInvoice:sales_invoice_id,invoice_number',
                 'movementDetail.item:itemID,itemName2',
                 'movementDetail.type:id,name',
                 'movementDetail.unit:UnitID,UnitName',
@@ -516,7 +531,9 @@ class PurchaseDistributionController extends Controller
             'distribution'   => $d->distribution?->code,
             'dist_date'      => optional($d->distribution?->distribution_date)->format('Y-m-d'),
             'dist_status'    => $d->distribution?->status,
-            'invoice_number' => $d->purchaseInvoice?->invoice_number,
+            'invoice_number'      => $d->purchaseInvoice?->invoice_number,
+            'sales_invoice_id'     => $d->sales_invoice_id,
+            'sales_invoice_number' => $d->salesInvoice?->invoice_number,
             'item_name'      => $d->movementDetail?->item?->itemName2 ?? '—',
             'type_name'      => $d->movementDetail?->type?->name ?? '—',
             'unit_name'      => $d->movementDetail?->unit?->UnitName ?? '—',
@@ -615,6 +632,7 @@ class PurchaseDistributionController extends Controller
                 'distribution:id,code,distribution_date,status',
                 'customer:CustomersID,CustomersName2,CusPhone',
                 'purchaseInvoice:purchase_invoice_id,invoice_number',
+                'salesInvoice:sales_invoice_id,invoice_number',
                 'movementDetail.type:id,name',
                 'movementDetail.unit:UnitID,UnitName',
             ])
@@ -629,7 +647,9 @@ class PurchaseDistributionController extends Controller
                 'customer_id'    => $d->customer_id,
                 'customer_name'  => $d->customer?->CustomersName2 ?? '—',
                 'customer_phone' => $d->customer?->CusPhone,
-                'invoice_number' => $d->purchaseInvoice?->invoice_number,
+                'invoice_number'      => $d->purchaseInvoice?->invoice_number,
+                'sales_invoice_id'     => $d->sales_invoice_id,
+                'sales_invoice_number' => $d->salesInvoice?->invoice_number,
                 'type_name'      => $d->movementDetail?->type?->name ?? '—',
                 'unit_name'      => $d->movementDetail?->unit?->UnitName ?? '—',
                 'quantity'       => (float) $d->quantity,
@@ -773,6 +793,7 @@ public function invoiceSummary(Request $request)
         ->with([
             'distribution:id,code,distribution_date,status',
             'customer:CustomersID,CustomersName2,CusPhone',
+            'salesInvoice:sales_invoice_id,invoice_number',
             'movementDetail.item:itemID,itemName2',
             'movementDetail.type:id,name',
             'movementDetail.unit:UnitID,UnitName',
@@ -797,6 +818,8 @@ public function invoiceSummary(Request $request)
             'sale_price'     => (float) $d->sale_price,
             'total_cost'     => (float) $d->quantity * (float) $d->unit_cost,
             'total_sale'     => (float) $d->quantity * (float) $d->sale_price,
+            'sales_invoice_id'     => $d->sales_invoice_id,
+            'sales_invoice_number' => $d->salesInvoice?->invoice_number,
             'is_invoiced'    => $d->invoiced_at !== null,
         ]);
 

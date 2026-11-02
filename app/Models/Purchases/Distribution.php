@@ -55,11 +55,19 @@ class Distribution extends Model
         return $this->status === self::STATUS_INVOICED;
     }
 
+    /**
+     * ✅ توليد رقم توزيع فريد مع قفل الصف لمنع التكرار.
+     * يجب أن يُستدعى داخل DB::transaction.
+     */
     public static function nextCode(): string
     {
-        $year = now()->format('Y');
+        $year   = now()->format('Y');
+        $prefix = "DIST-{$year}-";
+
         $last = static::whereYear('created_at', $year)
+            ->where('code', 'like', $prefix . '%')
             ->orderByDesc('id')
+            ->lockForUpdate()
             ->value('code');
 
         $seq = 1;

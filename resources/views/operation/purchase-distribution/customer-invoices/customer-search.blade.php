@@ -1,20 +1,39 @@
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-body py-3">
-        <div class="row g-2 align-items-end">
-            <div class="col-md-8">
-                <label class="form-label small text-muted mb-1">
-                    <i class="bi bi-person"></i> العميل
-                </label>
-                <div class="border rounded-3 p-2 bg-light d-flex align-items-center gap-2"
-                     id="customerPickerTrigger"
-                     style="cursor:pointer; min-height:42px;">
-                    <i class="bi bi-search text-muted"></i>
-                    <span class="text-muted small" id="customerPickerLabel">اضغط لاختيار عميل...</span>
+<div class="row g-2 mb-3">
+    {{-- التوزيع --}}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2 py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="bg-primary-subtle text-primary rounded-2 px-2 py-1">
+                        <i class="bi bi-diagram-3"></i>
+                    </span>
+                    <div>
+                        <div class="text-muted small">التوزيع المختار</div>
+                        <div class="fw-bold" id="selectedDistributionLabel">لم يتم اختيار توزيع</div>
+                    </div>
                 </div>
+                <button id="btnPickDistribution" class="btn btn-sm btn-primary">
+                    <i class="bi bi-search"></i> اختيار توزيع
+                </button>
             </div>
-            <div class="col-md-4 text-md-end">
-                <button class="btn btn-sm btn-outline-secondary" id="btnClearCustomer" disabled>
-                    <i class="bi bi-x-circle"></i> إلغاء التحديد
+        </div>
+    </div>
+
+    {{-- العميل --}}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2 py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="bg-success-subtle text-success rounded-2 px-2 py-1">
+                        <i class="bi bi-person-circle"></i>
+                    </span>
+                    <div>
+                        <div class="text-muted small">العميل المختار</div>
+                        <div class="fw-bold" id="selectedCustomerLabel">اختر توزيعًا أولًا</div>
+                    </div>
+                </div>
+                <button id="btnPickCustomer" class="btn btn-sm btn-outline-success" disabled>
+                    <i class="bi bi-person-plus"></i> اختيار عميل
                 </button>
             </div>
         </div>

@@ -7,9 +7,6 @@
             <button class="btn btn-outline-secondary" id="btnSaveDraft">
                 <i class="bi bi-save"></i> حفظ التوزيع
             </button>
-            <button class="btn btn-success px-4" id="btnIssueInvoice">
-                <i class="bi bi-receipt"></i> شاشة الفوترة
-            </button>
         </div>
     </div>
 </div>

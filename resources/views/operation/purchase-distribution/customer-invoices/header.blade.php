@@ -9,12 +9,4 @@
             <div class="text-muted small">اختر عميلًا، راجع توزيعاته غير المفوترة، ثم أصدر الفاتورة</div>
         </div>
     </div>
-    <div class="d-flex gap-2">
-        <a href="{{ route('purchases.distribution.index') }}" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-arrow-right-circle"></i> شاشة التوزيع
-        </a>
-        <a href="{{ route('purchases.distribution.history') }}" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-clock-history"></i> سجل التوزيعات
-        </a>
-    </div>
 </div>

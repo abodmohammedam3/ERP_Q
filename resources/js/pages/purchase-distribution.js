@@ -1,4 +1,4 @@
-// resources/js/pages/purchase-distribution/index.js
+// resources/js/pages/purchase-distribution.js
 
 let BootstrapModal = null;
 async function ensureBootstrap() {
@@ -16,8 +16,6 @@ document.addEventListener('DOMContentLoaded', () => {
         customers:     '/operation/purchases/distribution/customers',
         save:          '/operation/purchases/distribution/save',
         show:          (id) => `/operation/purchases/distribution/${id}`,
-        issueInvoice:  '/operation/purchases/distribution/issue-invoice',
-        customerPage:  '/operation/purchases/distribution/customer-invoices',
     };
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
@@ -64,16 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
             window.showSystemToast(msg, type);
             return;
         }
-        const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
-        const cls   = { success:'alert-success', danger:'alert-danger', warning:'alert-warning', info:'alert-info' };
-        const area = $('alertArea');
-        if (!area) { console.log(`[${type}] ${msg}`); return; }
-        area.innerHTML = `
-            <div class="alert ${cls[type] || 'alert-info'} border-0 alert-dismissible fade show py-2 d-flex align-items-center gap-2" role="alert">
-                <i class="bi bi-${icons[type] || 'info-circle'}"></i>
-                <span>${escapeHtml(msg)}</span>
-                <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
-            </div>`;
+        console.log(`[dist:${type}] ${msg}`);
     }
     const toastSuccess = (m) => showToast(m, 'success');
     const toastError   = (m) => showToast(m, 'danger');
@@ -98,6 +87,39 @@ document.addEventListener('DOMContentLoaded', () => {
             badge.className = 'badge bg-success-subtle text-success';
             badge.innerHTML = `<i class="bi bi-plus-circle"></i> توزيع جديد`;
         }
+    }
+
+    // ============================================================
+    // التبويبات الرئيسية
+    // ============================================================
+    const mainTabsEl = document.getElementById('mainTabs');
+    const mainTabsPanes = mainTabsEl ? {
+        distribute: document.getElementById('tab-distribute'),
+        issue:      document.getElementById('tab-issue'),
+        history:    document.getElementById('tab-history'),
+    } : null;
+
+    function activateMainTab(name) {
+        if (!mainTabsEl || !mainTabsPanes?.[name]) return;
+        mainTabsEl.querySelectorAll('.nav-link').forEach(t => {
+            t.classList.toggle('active', t.dataset.tab === name);
+        });
+        Object.entries(mainTabsPanes).forEach(([k, el]) => {
+            el?.classList.toggle('d-none', k !== name);
+        });
+        try {
+            const url = new URL(window.location);
+            url.searchParams.set('tab', name);
+            window.history.replaceState({}, '', url);
+        } catch (e) {}
+    }
+
+    if (mainTabsEl) {
+        mainTabsEl.querySelectorAll('.nav-link').forEach(btn => {
+            btn.addEventListener('click', () => activateMainTab(btn.dataset.tab));
+        });
+        const urlTab = new URLSearchParams(location.search).get('tab');
+        if (urlTab && mainTabsPanes[urlTab]) activateMainTab(urlTab);
     }
 
     // ============================================================
@@ -169,6 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     $('btnPickInvoice')?.addEventListener('click', openInvoiceModal);
+    $('btnAddInvoice')?.addEventListener('click', openInvoiceModal);
     document.querySelectorAll('#invoicePickerModal [data-bs-dismiss="modal"]').forEach(btn =>
         btn.addEventListener('click', hideInvoiceModal));
 
@@ -313,7 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ============================================================
-    // شريط التبويبات
+    // شريط التبويبات (الفواتير)
     // ============================================================
     function renderTabs() {
         const box = $('invoicesTabsBox');
@@ -327,11 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="text-muted small text-center w-100 py-2">
                     <i class="bi bi-inbox fs-4 d-block mb-1 opacity-50"></i>
                     لم تُضف فواتير بعد — اضغط «إضافة فاتورة» للبدء.
-                </div>
-                <button type="button" class="btn btn-sm btn-primary" id="btnAddInvoice">
-                    <i class="bi bi-plus-lg"></i> إضافة فاتورة
-                </button>`;
-            $('btnAddInvoice')?.addEventListener('click', openInvoiceModal);
+                </div>`;
             return;
         }
 
@@ -344,6 +363,7 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (distCount > 0)                          badgeClass = 'bg-warning-subtle text-warning';
 
             const isActive = state.activeInvoiceId == inv.id;
+            const supplier = inv.supplier || '—';
 
             const wrapper = document.createElement('div');
             wrapper.className = 'd-flex align-items-stretch';
@@ -354,7 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <i class="bi bi-file-earmark-text"></i>
                     <span class="fw-semibold">${escapeHtml(inv.number)}</span>
                     <span class="badge ${isActive ? 'bg-white text-primary' : badgeClass}">
-                        ${distCount}/${totalCount}
+                        ${escapeHtml(supplier)}
                     </span>
                 </button>
                 <button type="button"
@@ -365,13 +385,6 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
             box.appendChild(wrapper);
         });
-
-        const addBtn = document.createElement('button');
-        addBtn.type = 'button';
-        addBtn.className = 'btn btn-sm btn-outline-primary';
-        addBtn.innerHTML = `<i class="bi bi-plus-lg"></i> إضافة فاتورة`;
-        addBtn.addEventListener('click', openInvoiceModal);
-        box.appendChild(addBtn);
 
         box.querySelectorAll('button[data-tab-id]').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -392,6 +405,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // جدول الأصناف
     // ============================================================
     $('itemsSearch')?.addEventListener('input', renderItems);
+    $('itemsClearBtn')?.addEventListener('click', () => {
+        if ($('itemsSearch')) {
+            $('itemsSearch').value = '';
+            renderItems();
+        }
+    });
 
     function renderItems() {
         const body = $('itemsTableBody');
@@ -599,15 +618,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${info.phone ? `<div class="text-muted" style="font-size:0.7rem;">${escapeHtml(info.phone)}</div>` : ''}
                 </td>
                 <td>
-                        <input type="text"
-                            inputmode="decimal"
-                            autocomplete="off"
-                            dir="ltr"
-                            class="form-control form-control-sm text-center alloc-input ${editable ? '' : 'bg-body-secondary'} ${isEmpty && editable ? 'border-danger' : ''}"
-                            data-customer="${cid}"
-                            value="${curQty || ''}"
-                            ${editable ? '' : 'readonly'}
-                            placeholder="${editable ? 'أدخل كمية' : 'لا توجد كمية متبقية'}">
+                    <input type="text"
+                           inputmode="decimal"
+                           autocomplete="off"
+                           dir="ltr"
+                           class="form-control form-control-sm text-center alloc-input ${editable ? '' : 'bg-body-secondary'} ${isEmpty && editable ? 'border-danger' : ''}"
+                           data-customer="${cid}"
+                           value="${curQty || ''}"
+                           ${editable ? '' : 'readonly'}
+                           placeholder="${editable ? 'أدخل كمية' : 'لا توجد كمية متبقية'}">
                 </td>
                 <td class="text-center">
                     <button type="button" class="btn btn-sm btn-link text-danger p-0 alloc-remove"
@@ -628,7 +647,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 inp.addEventListener('focus', () => inp.blur());
             } else {
-                // keydown — يدعم Backspace/Delete/Ctrl+A/C/V/X/Z
                 inp.addEventListener('keydown', (e) => {
                     const ch = e.key;
 
@@ -669,6 +687,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     toastWarning('لا يمكن إفلات نص هنا.');
                 });
 
+                inp.addEventListener('input', () => handleModalAllocLiveInput(inp));
                 inp.addEventListener('blur', () => handleModalAllocInput(inp));
             }
         });
@@ -698,6 +717,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderSummary();
                 renderTabs();
             }));
+    }
+
+    function handleModalAllocLiveInput(input) {
+        const itemId = state.modalItemId;
+        const custId = input.dataset.customer;
+        const item   = findItem(itemId);
+        if (!item) return;
+
+        let qty = num(input.value);
+        if (qty < 0) qty = 0;
+
+        const others = Object.entries(state.allocation[itemId] || {})
+            .filter(([cid]) => cid != custId)
+            .reduce((s, [, q]) => s + num(q), 0);
+
+        const maxForField = num(item.available) - others;
+        if (qty > maxForField) {
+            qty = Math.max(0, maxForField);
+            input.value = qty;
+        }
+
+        state.allocation[itemId] = state.allocation[itemId] || {};
+        state.allocation[itemId][custId] = qty;
+
+        renderSummary();
+        renderTabs();
     }
 
     function handleModalAllocInput(input) {
@@ -795,7 +840,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('btnNextItem')?.addEventListener('click', () => navigateItem(+1));
 
     // ============================================================
-    // Account Picker (Multi-Select)
+    // Account Picker (Multi-Select للعملاء)
     // ============================================================
     let accountPickerInstance = null;
 
@@ -869,6 +914,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const modalEl = $('AccountPickerModal');
         if (!modalEl) { toastError('مودال الحسابات غير محمّل.'); return; }
 
+        // ✅ علّم السياق لمنع التعارض مع customer-invoices.js
+        window.__accountPickerOwner = 'allocation';
+
         const Modal = await ensureBootstrap();
         if (Modal) {
             if (!accountPickerInstance) accountPickerInstance = new Modal(modalEl);
@@ -912,14 +960,24 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.classList.remove('modal-open');
             document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
         }
+
+        // ✅ صفّر السياق
+        window.__accountPickerOwner = null;
     }
 
     $('btnAddCustomerToItem')?.addEventListener('click', openAccountPicker);
     document.querySelectorAll('#AccountPickerModal [data-bs-dismiss="modal"]').forEach(btn =>
         btn.addEventListener('click', closeAccountPicker));
 
-    $('AccountPickerSearch')?.addEventListener('input', debounce(loadAccounts, 400));
+    // ✅ مستمع البحث — احترم السياق
+    $('AccountPickerSearch')?.addEventListener('input', debounce(() => {
+        if (window.__accountPickerOwner !== 'allocation') return;
+        loadAccounts();
+    }, 400));
+
+    // ✅ زر التفريغ — احترم السياق
     $('AccountPickerClearBtn')?.addEventListener('click', () => {
+        if (window.__accountPickerOwner !== 'allocation') return;
         if ($('AccountPickerSearch')) $('AccountPickerSearch').value = '';
         loadAccounts();
     });
@@ -1061,29 +1119,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderSummary() {
         let itemsCount = 0, cost = 0, sale = 0;
         const customersSet = new Set();
-        const breakdown = [];
 
         Object.values(state.invoices).forEach(inv => {
-            inv.items.forEach(item => {
+            (inv.items || []).forEach(item => {
                 const alloc = getAllocatedQty(item.id);
-                const unit  = (item.unit_name || '—').trim();
 
                 if (alloc > 0) {
                     itemsCount++;
-                    const c = alloc * num(item.unit_cost);
-                    const s = alloc * num(item.sale_price);
-                    cost += c;
-                    sale += s;
-                    breakdown.push({
-                        item_name:      item.item_name,
-                        invoice_number: inv.number,
-                        qty:            alloc,
-                        unit_name:      unit,
-                        unit_cost:      num(item.unit_cost),
-                        unit_sale:      num(item.sale_price),
-                        total_cost:     c,
-                        total_sale:     s,
-                    });
+                    cost += alloc * num(item.unit_cost);
+                    sale += alloc * num(item.sale_price);
+
                     Object.entries(state.allocation[item.id] || {}).forEach(([cid, q]) => {
                         if (num(q) > 0) customersSet.add(cid);
                     });
@@ -1093,38 +1138,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if ($('sumItemsCount'))     $('sumItemsCount').textContent     = itemsCount;
         if ($('sumCustomersCount')) $('sumCustomersCount').textContent = customersSet.size;
-        if ($('sumCost'))           $('sumCost').textContent           = fmt(cost) + ' ر.ي';
-        if ($('sumSale'))           $('sumSale').textContent           = fmt(sale) + ' ر.ي';
-
-        const body = $('itemsBreakdownBody');
-        if (!body) return;
-        body.innerHTML = '';
-
-        if (!breakdown.length) {
-            body.innerHTML = `
-                <tr>
-                    <td colspan="8" class="text-center text-muted py-3 small">
-                        <i class="bi bi-info-circle"></i>
-                        لا توجد كميات موزعة بعد.
-                    </td>
-                </tr>`;
-            return;
-        }
-
-        breakdown.forEach(b => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td class="fw-semibold small">${escapeHtml(b.item_name)}</td>
-                <td class="text-muted small">${escapeHtml(b.invoice_number)}</td>
-                <td class="text-end fw-semibold text-success">${fmt(b.qty, 3)}</td>
-                <td class="text-center small text-muted">${escapeHtml(b.unit_name)}</td>
-                <td class="text-end text-muted">${fmt(b.unit_cost)}</td>
-                <td class="text-end text-muted">${fmt(b.unit_sale)}</td>
-                <td class="text-end">${fmt(b.total_cost)} ر.ي</td>
-                <td class="text-end">${fmt(b.total_sale)} ر.ي</td>
-            `;
-            body.appendChild(tr);
-        });
+        if ($('sumCost'))           $('sumCost').textContent           = fmt(cost);
+        if ($('sumSale'))           $('sumSale').textContent           = fmt(sale);
     }
 
     // ============================================================
@@ -1285,14 +1300,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============================================================
     // إجراءات
     // ============================================================
-    $('btnIssueInvoice')?.addEventListener('click', () => {
-        if (!state.distributionId) {
-            toastError('احفظ التوزيع أولًا قبل الانتقال لشاشة الفوترة.');
-            return;
-        }
-        window.open(ROUTES.customerPage, '_blank');
-    });
-
     $('btnCancelAll')?.addEventListener('click', resetScreen);
     $('btnNew')?.addEventListener('click', async () => {
         const ok = await confirmDialog('بدء توزيع جديد؟ سيتم فقدان البيانات الحالية إن لم تُحفظ.', {
@@ -1300,9 +1307,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         if (!ok) return;
         window.location.href = window.location.pathname;
-    });
-    $('btnHistory')?.addEventListener('click', () => {
-    window.open('/operation/purchases/distribution/history', '_blank');
     });
 
     async function resetScreen() {
@@ -1320,7 +1324,6 @@ document.addEventListener('DOMContentLoaded', () => {
         state.modalInvoiceId  = null;
         updateModeBadge();
         if ($('distributionNotes')) $('distributionNotes').value = '';
-        if ($('alertArea'))         $('alertArea').innerHTML     = '';
         if ($('itemsSearch'))       $('itemsSearch').value       = '';
         renderTabs();
         renderItems();

@@ -1,4 +1,4 @@
-// resources/js/pages/purchase-distribution/customer-invoices.js
+// resources/js/pages/customer-invoices.js
 
 let BootstrapModal = null;
 async function ensureBootstrap() {
@@ -11,15 +11,21 @@ async function ensureBootstrap() {
 document.addEventListener('DOMContentLoaded', () => {
 
     const ROUTES = {
-        customers:             '/operation/purchases/distribution/customers',
-        customerDistributions: (id) => `/operation/purchases/distribution/customer/${id}/distributions`,
-        issueInvoice:          '/operation/purchases/distribution/issue-invoice',
+        distributions:          '/operation/purchases/distribution/distributions-for-invoice',
+        distCustomers:          (id) => `/operation/purchases/distribution/distribution/${id}/customers`,
+        distCustomerDetails:    (id, cid) => `/operation/purchases/distribution/distribution/${id}/customer/${cid}/details`,
+        issueInvoice:           '/operation/purchases/distribution/issue-invoice',
     };
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
     const state = {
-        customer:      null,   // { id, name, phone, code }
-        distributions: [],     // [{ id, code, date, details:[], selected:bool }]
+        distribution:     null,
+        customer:         null,
+        details:          [],
+        // ✅ قيم SalesInvoice::PAYMENT_*
+        // 1 = آجل، 2 = نقدي (صندوق)، 3 = بنك
+        paymentMethod:    2,   // نقدي افتراضيًا
+        paymentAccountId: null,
     };
 
     const $   = (id) => document.getElementById(id);
@@ -43,24 +49,26 @@ document.addEventListener('DOMContentLoaded', () => {
         let data;
         try { data = text ? JSON.parse(text) : {}; }
         catch { data = { message: text || `HTTP ${res.status}` }; }
-        if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+
+        if (!res.ok) {
+            let msg = data.message || `HTTP ${res.status}`;
+            if (data.errors && typeof data.errors === 'object') {
+                const details = Object.entries(data.errors)
+                    .map(([field, msgs]) => `• ${field}: ${Array.isArray(msgs) ? msgs.join(' / ') : msgs}`)
+                    .join('\n');
+                msg += '\n\n' + details;
+            }
+            throw new Error(msg);
+        }
         return data;
     }
 
     function showToast(msg, type = 'info') {
         if (typeof window.showSystemToast === 'function') {
-            window.showSystemToast(msg, type); return;
+            window.showSystemToast(msg, type);
+            return;
         }
-        const icons = { success:'check-circle', danger:'exclamation-triangle', warning:'exclamation-circle', info:'info-circle' };
-        const cls = { success:'alert-success', danger:'alert-danger', warning:'alert-warning', info:'alert-info' };
-        const area = $('alertArea');
-        if (!area) { console.log(`[${type}] ${msg}`); return; }
-        area.innerHTML = `
-            <div class="alert ${cls[type] || 'alert-info'} border-0 alert-dismissible fade show py-2 d-flex align-items-center gap-2">
-                <i class="bi bi-${icons[type] || 'info-circle'}"></i>
-                <span>${escapeHtml(msg)}</span>
-                <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
-            </div>`;
+        console.log(`[issue:${type}] ${msg}`);
     }
     const toastSuccess = (m) => showToast(m, 'success');
     const toastError   = (m) => showToast(m, 'danger');
@@ -76,49 +84,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ============================================================
-    // Customer Picker
+    // اختيار التوزيع
     // ============================================================
-    let accountPickerInstance = null;
+    let distPickerInstance = null;
+    let distListData = [];
+    let distSearchTerm = '';
 
-    async function openCustomerPicker() {
-        const modalEl = $('AccountPickerModal');
-        if (!modalEl) { toastError('مودال اختيار الحساب غير محمّل.'); return; }
+    $('btnPickDistribution')?.addEventListener('click', openDistPicker);
+
+    async function openDistPicker() {
+        const modalEl = $('distributionPickerModal');
+        if (!modalEl) { toastError('مودال التوزيعات غير محمّل.'); return; }
 
         const Modal = await ensureBootstrap();
         if (Modal) {
-            if (!accountPickerInstance) accountPickerInstance = new Modal(modalEl);
-            accountPickerInstance.show();
+            if (!distPickerInstance) distPickerInstance = new Modal(modalEl);
+            distPickerInstance.show();
         } else {
             modalEl.style.display = 'block';
             modalEl.classList.add('show');
             document.body.classList.add('modal-open');
         }
 
-        // تبويب العملاء فقط
-        document.querySelectorAll('#AccountPickerTabs .nav-link').forEach(tab => {
-            if (tab.dataset.type === 'customer') {
-                tab.classList.remove('d-none'); tab.classList.add('active');
-            } else {
-                tab.classList.add('d-none'); tab.classList.remove('active');
-            }
-        });
-        const balanceCol = $('AccountPickerColBalance');
-        if (balanceCol) balanceCol.classList.add('d-none');
+        if ($('distSearchInput')) $('distSearchInput').value = '';
+        distSearchTerm = '';
 
-        if ($('AccountPickerSearch')) $('AccountPickerSearch').value = '';
-        if ($('AccountPickerResults')) {
-            $('AccountPickerResults').innerHTML = `
-                <tr><td colspan="5" class="text-center text-muted py-4">ابدأ البحث</td></tr>`;
-        }
-        if ($('AccountPickerTitle')) $('AccountPickerTitle').textContent = 'اختيار عميل';
-        if ($('AccountPickerSearch')) $('AccountPickerSearch').focus();
-
-        loadAccounts();
+        loadDistributions();
     }
 
-    function closeCustomerPicker() {
-        const modalEl = $('AccountPickerModal');
-        if (accountPickerInstance) accountPickerInstance.hide();
+    function closeDistPicker() {
+        const modalEl = $('distributionPickerModal');
+        if (distPickerInstance) distPickerInstance.hide();
         else if (modalEl) {
             modalEl.style.display = 'none';
             modalEl.classList.remove('show');
@@ -127,282 +123,431 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    $('customerPickerTrigger')?.addEventListener('click', openCustomerPicker);
-    document.querySelectorAll('#AccountPickerModal [data-bs-dismiss="modal"]').forEach(btn =>
-        btn.addEventListener('click', closeCustomerPicker));
+    document.querySelectorAll('#distributionPickerModal [data-bs-dismiss="modal"]').forEach(btn =>
+        btn.addEventListener('click', closeDistPicker));
 
-    $('AccountPickerSearch')?.addEventListener('input', debounce(loadAccounts, 400));
-    $('AccountPickerClearBtn')?.addEventListener('click', () => {
-        if ($('AccountPickerSearch')) $('AccountPickerSearch').value = '';
-        loadAccounts();
+    $('distSearchInput')?.addEventListener('input', debounce((e) => {
+        distSearchTerm = e.target.value.trim().toLowerCase();
+        renderDistList();
+    }, 300));
+
+    $('distSearchClearBtn')?.addEventListener('click', () => {
+        if ($('distSearchInput')) $('distSearchInput').value = '';
+        distSearchTerm = '';
+        renderDistList();
     });
 
-    async function loadAccounts() {
-        const term = ($('AccountPickerSearch')?.value || '').trim();
-        const results = $('AccountPickerResults');
-        if (!results) return;
+    async function loadDistributions() {
+        $('distLoading')?.classList.remove('d-none');
+        $('distEmpty')?.classList.add('d-none');
+        $('distError')?.classList.add('d-none');
 
-        if (term.length > 0 && term.length < 2) {
-            results.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">اكتب حرفين على الأقل للبحث.</td></tr>`;
+        try {
+            const res = await api(ROUTES.distributions);
+            distListData = res.data || [];
+            renderDistList();
+        } catch (e) {
+            if ($('distError')) {
+                $('distError').textContent = 'فشل تحميل التوزيعات: ' + e.message;
+                $('distError').classList.remove('d-none');
+            }
+        } finally {
+            $('distLoading')?.classList.add('d-none');
+        }
+    }
+
+    function renderDistList() {
+        const tbody = $('distTbodyForInvoice');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+
+        let rows = distListData;
+        if (distSearchTerm) {
+            rows = distListData.filter(d =>
+                (d.code || '').toLowerCase().includes(distSearchTerm) ||
+                (d.date || '').toLowerCase().includes(distSearchTerm)
+            );
+        }
+
+        if (!rows.length) {
+            if ($('distEmpty')) {
+                $('distEmpty').textContent = distSearchTerm
+                    ? 'لا توجد نتائج مطابقة.'
+                    : 'لا توجد توزيعات غير مفوترة.';
+                $('distEmpty').classList.remove('d-none');
+            }
             return;
         }
 
-        results.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-primary"></div> <span class="ms-2">جارٍ التحميل...</span></td></tr>`;
+        rows.forEach((d, i) => {
+            const tr = document.createElement('tr');
+            tr.style.cursor = 'pointer';
+            tr.innerHTML = `
+                <td class="text-muted">${i + 1}</td>
+                <td class="fw-semibold">${escapeHtml(d.code)}</td>
+                <td class="text-muted">${escapeHtml(d.date)}</td>
+                <td class="text-center">${d.details_count}</td>
+                <td class="text-center">${d.customers_count}</td>
+                <td class="text-end text-success fw-semibold">${fmt(d.total_sale)}</td>
+            `;
+            tr.addEventListener('click', () => {
+                closeDistPicker();
+                selectDistribution(d);
+            });
+            tbody.appendChild(tr);
+        });
+    }
+
+    function selectDistribution(d) {
+        state.distribution = { id: d.id, code: d.code, date: d.date };
+        state.customer = null;
+        state.details  = [];
+
+        resetCustomerSection();
+        if ($('btnPickCustomer')) $('btnPickCustomer').disabled = false;
+
+        if ($('selectedDistributionLabel')) {
+            $('selectedDistributionLabel').innerHTML = `
+                <span class="text-primary">${escapeHtml(d.code)}</span>
+                <span class="text-muted small"> · ${escapeHtml(d.date)}</span>
+            `;
+        }
+        if ($('selectedCustomerLabel')) {
+            $('selectedCustomerLabel').textContent = 'اختر عميلًا من هذا التوزيع';
+        }
+
+        toastSuccess(`تم اختيار التوزيع ${d.code}.`);
+    }
+
+    // ============================================================
+    // اختيار العميل
+    // ============================================================
+    let custPickerInstance = null;
+    let custListData = [];
+    let custSearchTerm = '';
+
+    $('btnPickCustomer')?.addEventListener('click', openCustPicker);
+
+    async function openCustPicker() {
+        if (!state.distribution) {
+            toastError('اختر توزيعًا أولًا.');
+            return;
+        }
+        const modalEl = $('customerPickerModal');
+        if (!modalEl) { toastError('مودال العملاء غير محمّل.'); return; }
+
+        const Modal = await ensureBootstrap();
+        if (Modal) {
+            if (!custPickerInstance) custPickerInstance = new Modal(modalEl);
+            custPickerInstance.show();
+        } else {
+            modalEl.style.display = 'block';
+            modalEl.classList.add('show');
+            document.body.classList.add('modal-open');
+        }
+
+        if ($('custSearchInput')) $('custSearchInput').value = '';
+        custSearchTerm = '';
+
+        loadCustomers();
+    }
+
+    function closeCustPicker() {
+        const modalEl = $('customerPickerModal');
+        if (custPickerInstance) custPickerInstance.hide();
+        else if (modalEl) {
+            modalEl.style.display = 'none';
+            modalEl.classList.remove('show');
+            document.body.classList.remove('modal-open');
+            document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+        }
+    }
+
+    document.querySelectorAll('#customerPickerModal [data-bs-dismiss="modal"]').forEach(btn =>
+        btn.addEventListener('click', closeCustPicker));
+
+    $('custSearchInput')?.addEventListener('input', debounce((e) => {
+        custSearchTerm = e.target.value.trim().toLowerCase();
+        renderCustList();
+    }, 300));
+
+    $('custSearchClearBtn')?.addEventListener('click', () => {
+        if ($('custSearchInput')) $('custSearchInput').value = '';
+        custSearchTerm = '';
+        renderCustList();
+    });
+
+    async function loadCustomers() {
+        $('custLoading')?.classList.remove('d-none');
+        $('custEmpty')?.classList.add('d-none');
+        $('custError')?.classList.add('d-none');
 
         try {
-            const res = await api(`${ROUTES.customers}?q=${encodeURIComponent(term)}`);
-            const rows = res.data || [];
-            if (!rows.length) {
-                results.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">لا نتائج مطابقة.</td></tr>`;
+            const res = await api(ROUTES.distCustomers(state.distribution.id));
+            custListData = res.data || [];
+            renderCustList();
+        } catch (e) {
+            if ($('custError')) {
+                $('custError').textContent = 'فشل تحميل العملاء: ' + e.message;
+                $('custError').classList.remove('d-none');
+            }
+        } finally {
+            $('custLoading')?.classList.add('d-none');
+        }
+    }
+
+    function renderCustList() {
+        const tbody = $('custTbodyForInvoice');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+
+        let rows = custListData;
+        if (custSearchTerm) {
+            rows = custListData.filter(c =>
+                (c.customer_name  || '').toLowerCase().includes(custSearchTerm) ||
+                (c.customer_phone || '').toLowerCase().includes(custSearchTerm) ||
+                (c.customer_code  || '').toLowerCase().includes(custSearchTerm)
+            );
+        }
+
+        if (!rows.length) {
+            if ($('custEmpty')) {
+                $('custEmpty').textContent = custSearchTerm
+                    ? 'لا توجد نتائج مطابقة.'
+                    : 'لا يوجد عملاء في هذا التوزيع.';
+                $('custEmpty').classList.remove('d-none');
+            }
+            return;
+        }
+
+        rows.forEach((c, i) => {
+            const tr = document.createElement('tr');
+            tr.style.cursor = 'pointer';
+            tr.innerHTML = `
+                <td class="text-muted">${i + 1}</td>
+                <td>
+                    <div class="fw-semibold">
+                        ${escapeHtml(c.customer_name)}
+                        ${c.customer_code ? `<span class="text-muted small">(${escapeHtml(c.customer_code)})</span>` : ''}
+                    </div>
+                    ${c.customer_phone ? `<div class="text-muted small">${escapeHtml(c.customer_phone)}</div>` : ''}
+                </td>
+                <td class="text-center">${c.details_count}</td>
+                <td class="text-end text-success fw-semibold">${fmt(c.total_sale)}</td>
+            `;
+            tr.addEventListener('click', () => {
+                closeCustPicker();
+                selectCustomer(c);
+            });
+            tbody.appendChild(tr);
+        });
+    }
+
+    async function selectCustomer(c) {
+        state.customer = c;
+
+        if ($('selectedCustomerLabel')) {
+            $('selectedCustomerLabel').innerHTML = `
+                <span class="text-success">${escapeHtml(c.customer_name)}</span>
+                ${c.customer_phone ? `<span class="text-muted small">· ${escapeHtml(c.customer_phone)}</span>` : ''}
+            `;
+        }
+
+        try {
+            const res = await api(ROUTES.distCustomerDetails(state.distribution.id, c.customer_id));
+            if (!res.success) {
+                toastError(res.message || 'لا توجد تفاصيل.');
                 return;
             }
-
-            results.innerHTML = '';
-            rows.forEach(c => {
-                const tr = document.createElement('tr');
-                tr.style.cursor = 'pointer';
-                tr.innerHTML = `
-                    <td class="text-center text-muted">${escapeHtml(c.code ?? c.id)}</td>
-                    <td>
-                        <div class="d-flex align-items-center gap-2">
-                            <i class="bi bi-person-circle text-success"></i>
-                            <span class="fw-semibold">${escapeHtml(c.name)}</span>
-                        </div>
-                    </td>
-                    <td class="d-none"></td>
-                    <td>${escapeHtml(c.phone || '—')}</td>
-                `;
-                tr.addEventListener('click', () => {
-                    selectCustomer(c);
-                    closeCustomerPicker();
-                });
-                results.appendChild(tr);
-            });
+            state.details = res.data || [];
+            renderDetails(res.summary);
+            updateSummaryAndIssueButton();
+            toastSuccess(`تم اختيار العميل «${c.customer_name}».`);
         } catch (e) {
-            results.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-4">فشل: ${escapeHtml(e.message)}</td></tr>`;
+            toastError('فشل تحميل تفاصيل العميل: ' + e.message);
         }
     }
 
-    // ============================================================
-    // Selection & Loading
-    // ============================================================
-    function selectCustomer(c) {
-        state.customer = {
-            id:    c.id,
-            name:  c.name,
-            phone: c.phone || '',
-            code:  c.code || '',
-        };
-        updateCustomerLabel();
-        loadCustomerDistributions(c.id);
-    }
+    function renderDetails(summary) {
+        const tbody = $('invDetailsTbody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
 
-    function updateCustomerLabel() {
-        if (!state.customer) {
-            if ($('customerPickerLabel')) $('customerPickerLabel').textContent = 'اضغط لاختيار عميل...';
-            if ($('btnClearCustomer'))    $('btnClearCustomer').disabled = true;
-            if ($('contentArea'))         $('contentArea').classList.add('d-none');
-            return;
-        }
-        if ($('customerPickerLabel')) {
-            $('customerPickerLabel').innerHTML = `
-                <i class="bi bi-person-circle text-success"></i>
-                <span class="fw-bold text-dark">${escapeHtml(state.customer.name)}</span>
-                ${state.customer.code ? `<span class="text-muted small">(${escapeHtml(state.customer.code)})</span>` : ''}
-                ${state.customer.phone ? `<span class="text-muted small">· ${escapeHtml(state.customer.phone)}</span>` : ''}
-            `;
-        }
-        if ($('btnClearCustomer')) $('btnClearCustomer').disabled = false;
-        if ($('contentArea'))      $('contentArea').classList.remove('d-none');
-    }
-
-    async function loadCustomerDistributions(customerId) {
-        const container = $('distributionsList');
-        if (container) {
-            container.innerHTML = `<div class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-primary"></div> جارٍ التحميل...</div>`;
-        }
-
-        try {
-            const res = await api(ROUTES.customerDistributions(customerId));
-
-            // ضبط بيانات العميل إن لم تكن موجودة (عند التحميل المباشر من URL)
-            if (!state.customer && res.customer) {
-                state.customer = {
-                    id:    res.customer.id,
-                    name:  res.customer.name,
-                    phone: res.customer.phone || '',
-                    code:  '',
-                };
-                updateCustomerLabel();
-            }
-
-            state.distributions = (res.data || []).map(d => ({
-                id:       d.id,
-                code:     d.code,
-                date:     d.distribution_date,
-                details:  d.details || [],
-                selected: true,
-            }));
-
-            renderDistributions();
-            updateSummary();
-        } catch (e) {
-            if (container) {
-                container.innerHTML = `<div class="text-center text-danger py-4">فشل التحميل: ${escapeHtml(e.message)}</div>`;
-            }
-            toastError('فشل تحميل التوزيعات: ' + e.message);
-        }
-    }
-
-    // ============================================================
-    // Render
-    // ============================================================
-    function renderDistributions() {
-        const container = $('distributionsList');
-        if (!container) return;
-
-        if (!state.distributions.length) {
-            container.innerHTML = `
-                <div class="text-center text-muted py-5">
-                    <i class="bi bi-check2-circle fs-1 d-block mb-2 text-success opacity-75"></i>
-                    <div>لا توجد توزيعات غير مفوترة لهذا العميل.</div>
-                </div>`;
+        if (!state.details.length) {
+            tbody.innerHTML = `
+                <tr><td colspan="9" class="text-center text-muted py-4">
+                    <i class="bi bi-inbox fs-3 d-block mb-1 opacity-50"></i>
+                    لا توجد تفاصيل غير مفوترة.
+                </td></tr>`;
             return;
         }
 
-        container.innerHTML = '';
-
-        state.distributions.forEach(dist => {
-            const card = document.createElement('div');
-            card.className = 'border-bottom p-3';
-
-            let totalCost = 0, totalSale = 0;
-            dist.details.forEach(d => {
-                totalCost += num(d.quantity) * num(d.unit_cost);
-                totalSale += num(d.quantity) * num(d.sale_price);
-            });
-
-            const detailsHtml = dist.details.map(d => `
-                <tr>
-                    <td class="fw-semibold small">${escapeHtml(d.item_name)}</td>
-                    <td class="text-muted small">${escapeHtml(d.invoice_number || '—')}</td>
-                    <td class="text-end fw-semibold text-success">${fmt(d.quantity, 3)}</td>
-                    <td class="text-center small text-muted">${escapeHtml(d.unit_name || '—')}</td>
-                    <td class="text-end text-muted">${fmt(d.unit_cost)}</td>
-                    <td class="text-end text-muted">${fmt(d.sale_price)}</td>
-                    <td class="text-end">${fmt(num(d.quantity) * num(d.unit_cost))} ر.ي</td>
-                    <td class="text-end">${fmt(num(d.quantity) * num(d.sale_price))} ر.ي</td>
-                </tr>
-            `).join('');
-
-            card.innerHTML = `
-                <div class="d-flex justify-content-between align-items-start mb-2 flex-wrap gap-2">
-                    <div class="form-check">
-                        <input type="checkbox" class="form-check-input dist-checkbox" 
-                               id="dist-check-${dist.id}" ${dist.selected ? 'checked' : ''}>
-                        <label class="form-check-label fw-bold" for="dist-check-${dist.id}">
-                            ${escapeHtml(dist.code)}
-                            <span class="text-muted small fw-normal">· ${escapeHtml(dist.date)}</span>
-                            <span class="badge bg-secondary-subtle text-secondary ms-1">${dist.details.length} صف</span>
-                        </label>
-                    </div>
-                    <div class="text-end small">
-                        <span class="text-muted">تكلفة:</span>
-                        <span class="text-danger fw-bold">${fmt(totalCost)} ر.ي</span>
-                        <span class="text-muted mx-1">|</span>
-                        <span class="text-muted">بيع:</span>
-                        <span class="text-success fw-bold">${fmt(totalSale)} ر.ي</span>
-                    </div>
-                </div>
-                <div class="table-responsive border rounded-3" style="max-height:220px; overflow-y:auto;">
-                    <table class="table table-sm table-hover align-middle mb-0">
-                        <thead class="table-light sticky-top">
-                            <tr class="small text-muted">
-                                <th>الصنف</th>
-                                <th>الفاتورة</th>
-                                <th class="text-end">الكمية</th>
-                                <th class="text-center">الوحدة</th>
-                                <th class="text-end">تكلفة الوحدة</th>
-                                <th class="text-end">سعر البيع</th>
-                                <th class="text-end">إجمالي التكلفة</th>
-                                <th class="text-end">إجمالي البيع</th>
-                            </tr>
-                        </thead>
-                        <tbody>${detailsHtml}</tbody>
-                    </table>
-                </div>
+        state.details.forEach(d => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="fw-semibold small">${escapeHtml(d.item_name)}</td>
+                <td class="small text-muted">${escapeHtml(d.type_name || '—')}</td>
+                <td class="text-muted small">${escapeHtml(d.invoice_number || '—')}</td>
+                <td class="text-end fw-semibold text-success">${fmt(d.quantity, 3)}</td>
+                <td class="text-center small text-muted">${escapeHtml(d.unit_name || '—')}</td>
+                <td class="text-end text-muted">${fmt(d.unit_cost)}</td>
+                <td class="text-end text-muted">${fmt(d.sale_price)}</td>
+                <td class="text-end text-muted">${fmt(d.total_cost)} ر.ي</td>
+                <td class="text-end text-muted">${fmt(d.total_sale)} ر.ي</td>
             `;
-
-            card.querySelector('.dist-checkbox').addEventListener('change', (e) => {
-                dist.selected = e.target.checked;
-                updateSummary();
-            });
-
-            container.appendChild(card);
-        });
-    }
-
-    // ============================================================
-    // Summary
-    // ============================================================
-    function updateSummary() {
-        const selected = state.distributions.filter(d => d.selected);
-        let totalQty = 0, totalCost = 0, totalSale = 0;
-
-        selected.forEach(dist => {
-            dist.details.forEach(d => {
-                totalQty  += num(d.quantity);
-                totalCost += num(d.quantity) * num(d.unit_cost);
-                totalSale += num(d.quantity) * num(d.sale_price);
-            });
+            tbody.appendChild(tr);
         });
 
-        if ($('sumDistributions')) $('sumDistributions').textContent = selected.length;
-        if ($('sumQty'))           $('sumQty').textContent           = fmt(totalQty, 3);
-        if ($('sumCost'))          $('sumCost').textContent          = fmt(totalCost);
-        if ($('sumSale'))          $('sumSale').textContent          = fmt(totalSale);
+        if ($('invItemsCount')) $('invItemsCount').textContent = summary?.rows_count ?? state.details.length;
 
-        if ($('btnIssue')) $('btnIssue').disabled = selected.length === 0;
+        const qtyParts = Object.entries(summary?.qty_by_unit || {})
+            .map(([u, q]) => `${fmt(q, 3)} ${u}`).join(' + ');
+        if ($('invQty')) $('invQty').textContent = qtyParts || '—';
+
+        if ($('invTotalCost')) $('invTotalCost').textContent = `${fmt(summary?.total_cost || 0)} ر.ي`;
+        if ($('invTotalSale')) $('invTotalSale').textContent = `${fmt(summary?.total_sale || 0)} ر.ي`;
     }
 
-    // ============================================================
-    // Actions
-    // ============================================================
-    $('btnSelectAll')?.addEventListener('click', () => {
-        state.distributions.forEach(d => d.selected = true);
-        renderDistributions();
-        updateSummary();
-    });
+    function updateSummaryAndIssueButton() {
+        const hasDetails = state.details.length > 0;
+        if ($('btnIssue')) $('btnIssue').disabled = !hasDetails;
+    }
 
-    $('btnDeselectAll')?.addEventListener('click', () => {
-        state.distributions.forEach(d => d.selected = false);
-        renderDistributions();
-        updateSummary();
-    });
-
-    function resetScreen() {
-        if (state.distributions.length && !confirm('سيتم إلغاء التحديد والعودة للبداية. متابعة؟')) return;
+    function resetCustomerSection() {
         state.customer = null;
-        state.distributions = [];
-        updateCustomerLabel();
-        if ($('distributionsList')) $('distributionsList').innerHTML = '';
-        if ($('alertArea'))         $('alertArea').innerHTML = '';
-        updateSummary();
+        state.details  = [];
+
+        if ($('selectedCustomerLabel')) $('selectedCustomerLabel').textContent = 'اختر عميلًا من هذا التوزيع';
+
+        const tbody = $('invDetailsTbody');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="9" class="text-center text-muted py-4">
+                        اختر عميلًا من التوزيع لعرض تفاصيله.
+                    </td>
+                </tr>`;
+        }
+
+        if ($('invItemsCount')) $('invItemsCount').textContent = 0;
+        if ($('invQty'))        $('invQty').textContent = '—';
+        if ($('invTotalCost'))  $('invTotalCost').textContent = '0.00';
+        if ($('invTotalSale'))  $('invTotalSale').textContent = '0.00';
+        if ($('btnIssue'))      $('btnIssue').disabled = true;
     }
 
-    $('btnClearCustomer')?.addEventListener('click', resetScreen);
-    $('btnCancel')?.addEventListener('click', resetScreen);
+    // ============================================================
+    // إلغاء العملية
+    // ============================================================
+    $('btnCancel')?.addEventListener('click', async () => {
+        const ok = await confirmDialog('إلغاء العملية والعودة للبداية؟', {
+            title: 'إلغاء', okText: 'متابعة', cancelText: 'تراجع', danger: true,
+        });
+        if (!ok) return;
 
+        state.distribution = null;
+        state.customer     = null;
+        state.details      = [];
+        state.paymentAccountId = null;
+
+        if ($('selectedDistributionLabel')) $('selectedDistributionLabel').textContent = 'لم يتم اختيار توزيع';
+
+        // ✅ تفريغ حقل الحساب
+        const accountInput = $('paymentAccountTrigger');
+        if (accountInput) accountInput.value = '';
+
+        resetCustomerSection();
+        if ($('btnPickCustomer')) $('btnPickCustomer').disabled = true;
+
+        toastInfo('تم إلغاء العملية.');
+    });
+
+    // ============================================================
+    // حساب الدفع — عبر window.AccountPicker الموحد
+    // ============================================================
+    $('paymentAccountTrigger')?.addEventListener('click', () => {
+        // ✅ آجل = 1 (SalesInvoice::PAYMENT_CREDIT)
+        if (state.paymentMethod === 1) {
+            toastWarning('الآجل لا يحتاج حساب دفع.');
+            return;
+        }
+
+        if (typeof window.AccountPicker === 'undefined') {
+            toastError('مكوّن AccountPicker غير محمّل.');
+            return;
+        }
+
+        // ✅ وسم السياق لمنع تعارض purchase-distribution.js
+        window.__accountPickerOwner = 'payment';
+
+        // ✅ بنك = 3 (SalesInvoice::PAYMENT_BANK)، نقدي = 2 (CASH)
+        const type = state.paymentMethod === 3 ? 'bank' : 'cash';
+
+        window.AccountPicker.open(type, (account) => {
+            state.paymentAccountId = account.id;
+
+            // ✅ ضع القيمة داخل input
+            const input = $('paymentAccountTrigger');
+            if (input) {
+                input.value = account.code
+                    ? `${account.name} (${account.code})`
+                    : account.name;
+            }
+
+            toastSuccess(`تم اختيار: ${account.name}`);
+        }, {
+            allowedTypes: [type],   // ✅ يعرض التبويب المحدد فقط (صناديق أو بنوك)
+        });
+    });
+
+    document.querySelectorAll('input[name="paymentMethod"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            state.paymentMethod = parseInt(e.target.value);
+            state.paymentAccountId = null;
+
+            // ✅ تفريغ حقل الحساب
+            const input = $('paymentAccountTrigger');
+            if (input) input.value = '';
+
+            updatePaymentAccountVisibility();
+        });
+    });
+
+    function updatePaymentAccountVisibility() {
+        // ✅ آجل = 1
+        const isCredit = state.paymentMethod === 1;
+        if ($('paymentAccountWrapper')) {
+            $('paymentAccountWrapper').style.display = isCredit ? 'none' : '';
+        }
+    }
+
+    // ============================================================
+    // إصدار الفاتورة
+    // ============================================================
     $('btnIssue')?.addEventListener('click', issueInvoice);
 
     async function issueInvoice() {
-        if (!state.customer) { toastError('اختر عميلًا أولًا.'); return; }
-        const selected = state.distributions.filter(d => d.selected);
-        if (!selected.length) { toastError('حدد توزيعًا واحدًا على الأقل.'); return; }
+        if (!state.distribution) {
+            toastError('اختر توزيعًا أولًا.');
+            return;
+        }
+        if (!state.customer) {
+            toastError('اختر عميلًا أولًا.');
+            return;
+        }
+        if (!state.details.length) {
+            toastError('لا توجد تفاصيل قابلة للفوترة.');
+            return;
+        }
 
-        const totalDetails = selected.reduce((s, d) => s + d.details.length, 0);
+        // ✅ آجل = 1
+        if (state.paymentMethod !== 1 && !state.paymentAccountId) {
+            toastError('اختر حساب الدفع أولًا (نقدي/بنك).');
+            return;
+        }
+
         const ok = await confirmDialog(
-            `سيتم إصدار فاتورة للعميل «${state.customer.name}» تشمل ${selected.length} توزيع و ${totalDetails} صف. متابعة؟`,
+            `سيتم إصدار فاتورة للعميل «${state.customer.customer_name}» من التوزيع «${state.distribution.code}» تشمل ${state.details.length} صف. متابعة؟`,
             { title: 'إصدار فاتورة', okText: 'إصدار', cancelText: 'إلغاء' }
         );
         if (!ok) return;
@@ -410,42 +555,49 @@ document.addEventListener('DOMContentLoaded', () => {
         if ($('btnIssue')) $('btnIssue').disabled = true;
 
         try {
+            const payload = {
+                customer_id:        state.customer.customer_id,
+                distribution_ids:   [state.distribution.id],
+                payment_method:     state.paymentMethod,
+                // ✅ آجل = 1
+                payment_account_id: state.paymentMethod === 1 ? null : state.paymentAccountId,
+            };
+
             const res = await api(ROUTES.issueInvoice, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    customer_id:      state.customer.id,
-                    distribution_ids: selected.map(d => d.id),
-                }),
+                body: JSON.stringify(payload),
             });
 
             toastSuccess(res.message || 'تم إصدار الفاتورة.');
-
-            // عرض رقم فاتورة البيع الناتجة بشكل واضح
-            if (res.sales_invoice_number) {
-                setTimeout(() => {
-                    toastSuccess(`فاتورة البيع: ${res.sales_invoice_number} — إجمالي: ${(res.sales_invoice_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-                }, 500);
+            if (res.invoice_number) {
+                setTimeout(() => toastSuccess(`فاتورة البيع رقم: ${res.invoice_number}`), 500);
             }
 
-            // إعادة تحميل التوزيعات (المفوترة ستختفي تلقائيًا)
-            await loadCustomerDistributions(state.customer.id);
+            // إعادة تعيين قسم العميل
+            state.customer = null;
+            state.details  = [];
+            if ($('selectedCustomerLabel')) $('selectedCustomerLabel').textContent = 'اختر عميلًا آخر';
+            if ($('invDetailsTbody')) {
+                $('invDetailsTbody').innerHTML = `
+                    <tr><td colspan="9" class="text-center text-muted py-4">
+                        تمت الفوترة. اختر عميلًا جديدًا لعرض تفاصيله.
+                    </td></tr>`;
+            }
+            if ($('invItemsCount')) $('invItemsCount').textContent = 0;
+            if ($('invQty'))        $('invQty').textContent = '—';
+            if ($('invTotalCost'))  $('invTotalCost').textContent = '0.00';
+            if ($('invTotalSale'))  $('invTotalSale').textContent = '0.00';
+
         } catch (e) {
             toastError('فشل إصدار الفاتورة: ' + e.message);
         } finally {
-            if ($('btnIssue')) $('btnIssue').disabled = state.distributions.filter(d => d.selected).length === 0;
+            if ($('btnIssue')) $('btnIssue').disabled = !state.details.length;
         }
     }
 
     // ============================================================
-    // Init
+    // التهيئة
     // ============================================================
-    const urlParams = new URLSearchParams(window.location.search);
-    const preCustomerId = urlParams.get('customer_id');
-    if (preCustomerId) {
-        loadCustomerDistributions(preCustomerId);
-    }
-
-    updateCustomerLabel();
-    updateSummary();
+    updatePaymentAccountVisibility();
 });

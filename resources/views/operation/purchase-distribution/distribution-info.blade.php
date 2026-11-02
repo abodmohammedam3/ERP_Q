@@ -7,6 +7,9 @@
                 </span>
                 <h6 class="mb-0 fw-semibold">الفواتير المضافة</h6>
             </div>
+            <button class="btn btn-sm btn-primary" id="btnAddInvoice">
+                <i class="bi bi-plus-lg"></i> إضافة فاتورة
+            </button>
         </div>
 
         {{-- شريط التبويبات --}}

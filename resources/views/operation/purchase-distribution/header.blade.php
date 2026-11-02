@@ -15,10 +15,6 @@
         </div>
     </div>
     <div class="d-flex gap-2">
-        <button class="btn btn-outline-secondary btn-sm" id="btnHistory">
-            <i class="bi bi-clock-history"></i>
-            <span class="d-none d-sm-inline">سجل التوزيعات</span>
-        </button>
         <button class="btn btn-outline-primary btn-sm" id="btnNew">
             <i class="bi bi-plus-circle"></i>
             <span class="d-none d-sm-inline">توزيع جديد</span>

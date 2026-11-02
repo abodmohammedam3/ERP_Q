@@ -1,5 +1,5 @@
 <div class="card border-0 shadow-sm">
-    <div class="card-header bg-white border-0 py-2 d-flex justify-content-between align-items-center">
+    <div class="card-header bg-white border-0 py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
             <span class="bg-info-subtle text-info rounded-2 px-2 py-1">
                 <i class="bi bi-list-ul"></i>
@@ -8,14 +8,25 @@
                 أصناف الفاتورة: <span class="text-primary" id="activeInvoiceLabel">—</span>
             </h6>
         </div>
-        <div class="input-group input-group-sm" style="max-width:220px;">
-            <span class="input-group-text bg-white border-end-0">
-                <i class="bi bi-search text-muted"></i>
-            </span>
-            <input type="text" class="form-control border-start-0 ps-0"
-                   id="itemsSearch" placeholder="بحث في الأصناف...">
+
+        {{-- بحث + تفريغ --}}
+        <div class="d-flex gap-1" style="min-width:280px;">
+            <div class="input-group input-group-sm flex-fill">
+                <span class="input-group-text bg-white border-end-0">
+                    <i class="bi bi-search text-muted"></i>
+                </span>
+                <input type="text"
+                       class="form-control border-start-0 ps-0"
+                       id="itemsSearch"
+                       placeholder="بحث في الأصناف...">
+            </div>
+           <button type="button" class="btn btn-sm btn-outline-secondary"
+        id="itemsClearBtn">
+    <i class="bi bi-x-lg"></i> 
+</button>
         </div>
     </div>
+
     <div class="card-body p-0">
         <div id="itemsEmpty" class="text-center text-muted py-4">
             <i class="bi bi-inbox fs-3 d-block mb-1 opacity-50"></i>

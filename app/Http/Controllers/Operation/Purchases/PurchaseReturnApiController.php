@@ -96,6 +96,16 @@ class PurchaseReturnApiController extends Controller
             });
         }
 
+        /* ✅ مسار مجمّع (Feature Flag — افتراضياً OFF):
+           فلتر خشن مُبرهَن (superset) + cursor fetch-until-full + حساب دفعات.
+           النتيجة مطابقة للمسار القديم؛ الفرق فقط في عدد الاستعلامات. */
+        if (config('features.purchase_return_batch_queries')) {
+            return response()->json([
+                'data' => $this->invoicePickerBatched(clone $query, $search),
+            ]);
+        }
+
+        /* ============ المسار الأصلي (كما هو حرفياً) ============ */
         $invoices = $query->limit(100)->get()
             ->map(function ($inv) {
                 $remaining = 0.0;
@@ -130,6 +140,104 @@ class PurchaseReturnApiController extends Controller
             ->values();
 
         return response()->json(['data' => $invoices]);
+    }
+
+    /**
+     * ✅ المسار المجمّع لـ invoicePicker.
+     *
+     * 1) فلتر خشن مُبرهَن (superset): يبقي أي فاتورة يوجد بها سطر
+     *    quantity > مجموع مرتجعاته بوحدة الفاتورة نفسها (حد أدنى للمستهلك —
+     *    كل صف بوحدة أخرى يُحتسب ≥ 0 في quotaEquivalent، فالفلتر لا يسقط
+     *    إلا فواتير كان الحساب الدقيق سيسقطها). حالة unit_id NULL تُترك
+     *    تمرّ دائماً (متساهل = آمن).
+     * 2) cursor على purchase_invoice_id (وليس offset — لأن الترتيب DESC
+     *    والفلترة تجعل offset غير مستقر).
+     * 3) الحساب الدقيق (تحويل الوحدات + قصّ المخزن) على الدفعة المجلوبة.
+     *
+     * @return \Illuminate\Support\Collection
+     */
+    protected function invoicePickerBatched($baseQuery, string $search)
+    {
+        $targetCount = 100;
+        $batchSize   = 200;
+        $maxRounds   = 30;   // سقف أمان: 30 × 200 = 6000 فاتورة كحد أقصى للمسح
+        $results     = collect();
+        $cursor      = null;
+
+        for ($round = 0; $round < $maxRounds; $round++) {
+            $query = clone $baseQuery;
+
+            /* الفلتر الخشن المُبرهَن — قبل أي limit */
+            $query->whereExists(function ($q) {
+                $q->selectRaw(1)
+                  ->from('purchase_invoice_details as pid')
+                  ->whereColumn('pid.purchase_invoice_id', 'purchase_invoices.purchase_invoice_id')
+                  ->whereRaw('pid.quantity > COALESCE((
+                        SELECT SUM(rd.quantity)
+                        FROM purchase_return_details rd
+                        WHERE rd.purchase_invoice_detail_id = pid.purchase_invoice_detail_id
+                          AND rd.unit_id <=> pid.unit_id
+                  ), 0)')
+                  /* حالة unit_id NULL: تحويل الوحدات غير قابل للتعبئة SQL — تُترك تمرّ */
+                  ->orWhereNull('pid.unit_id');
+            });
+
+            if ($cursor !== null) {
+                $query->where('purchase_invoices.purchase_invoice_id', '<', $cursor);
+            }
+
+            $invoices = $query->with(['supplierAccount', 'coin', 'details'])
+                ->orderByDesc('purchase_invoice_id')
+                ->limit($batchSize)
+                ->get();
+
+            if ($invoices->isEmpty()) {
+                break;
+            }
+
+            $cursor = $invoices->last()->purchase_invoice_id;
+
+            /* الحساب الدقيق المجمّع — استدعاء واحد لكل جولة بدل استعلام لكل سطر */
+            $detailIdsByInvoice = $invoices->mapWithKeys(function ($inv) {
+                return [$inv->purchase_invoice_id
+                    => $inv->details->pluck('purchase_invoice_detail_id')->all()];
+            })->all();
+
+            $availableMap = $this->service->availableForReturnMany(
+                array_merge(...array_values($detailIdsByInvoice ?: [[]]))
+            );
+
+            foreach ($invoices as $inv) {
+                $remaining = 0.0;
+
+                foreach ($detailIdsByInvoice[$inv->purchase_invoice_id] as $detailId) {
+                    $remaining += max(0.0, (float) ($availableMap[$detailId] ?? 0.0));
+                }
+
+                if ($remaining <= 0.000001) {
+                    continue;
+                }
+
+                $results->push([
+                    'purchase_invoice_id' => $inv->purchase_invoice_id,
+                    'invoice_number'      => $inv->invoice_number,
+                    'invoice_date'        => optional($inv->invoice_date)->format('Y-m-d'),
+                    'supplier_name'       => $inv->supplierAccount->accName ?? '',
+                    'coin_name'           => $inv->coin->coinsName ?? '',
+                    'payment_method'      => $inv->payment_method,
+                    'total'               => $inv->total_in_invoice_currency,
+                    'is_posted'           => (bool) $inv->is_posted,
+                    'remaining_quantity'  => (float) $remaining,
+                    'is_fully_returned'   => false,
+                ]);
+
+                if ($results->count() >= $targetCount) {
+                    return $results->take($targetCount);
+                }
+            }
+        }
+
+        return $results;
     }
 
     /**
@@ -194,10 +302,30 @@ class PurchaseReturnApiController extends Controller
                ومقصوصة بالرصيد الفعلي للمخزن داخل availableForReturn.
                الطريقة القديمة كانت تُرجع الكمية الأصلية كاملة لأنها تستثني
                كل المرتجعات ثم تعيد إضافة كمية هذا المرتجع. */
-            $availableForDisplay = $this->service->availableForReturn(
-                $d->purchase_invoice_detail_id,
-                (int) $purchaseReturn->purchase_return_id
-            ) + (float) $d->quantity;   // ✅ نفس نمط مرتجع البيع (SalesReturnApiController::show)
+
+            /* ✅ المسار المجمّع (Feature Flag — افتراضياً OFF):
+               نفس ناتج availableForReturn() لكل السطور بعدد استعلامات مجمّعة. */
+            if (config('features.purchase_return_batch_queries')) {
+                static $batchCache = null, $batchReturnId = null;
+
+                if ($batchCache === null || $batchReturnId !== (int) $purchaseReturn->purchase_return_id) {
+                    $batchCache = $this->service->availableForReturnMany(
+                        $purchaseReturn->details->pluck('purchase_invoice_detail_id')->all(),
+                        (int) $purchaseReturn->purchase_return_id
+                    );
+                    $batchReturnId = (int) $purchaseReturn->purchase_return_id;
+                }
+
+                $availableForDisplay = (float) (
+                        $batchCache[$d->purchase_invoice_detail_id] ?? 0.0
+                    ) + (float) $d->quantity;
+            } else {
+                /* ============ المسار الأصلي (كما هو حرفياً) ============ */
+                $availableForDisplay = $this->service->availableForReturn(
+                    $d->purchase_invoice_detail_id,
+                    (int) $purchaseReturn->purchase_return_id
+                ) + (float) $d->quantity;   // ✅ نفس نمط مرتجع البيع (SalesReturnApiController::show)
+            }
 
                 return [
                     'purchase_return_detail_id'  => $d->purchase_return_detail_id,

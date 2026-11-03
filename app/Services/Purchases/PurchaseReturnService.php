@@ -571,6 +571,268 @@ class PurchaseReturnService
     }
 
     // =========================================================
+    // AVAILABLE FOR RETURN — BATCH (تجميع دفعات)
+    // نسخة موازية لـ availableForReturn() بنفس المعادلات حرفياً:
+    //   min( invoiceLimit, max(0, stock) )
+    // لكن المدخلات تُجلب باستعلامات مجمّعة بدل استعلام لكل سطر.
+    // لا تُعدّل الدالة الفردية؛ هذه تُستخدم فقط عبر
+    // config('features.purchase_return_batch_queries').
+    // =========================================================
+
+    /** سقف الـ memoization (عدد مداخل) — تجاوزه = تفريغ كامل (يمس الأداء لا الصحة) */
+    protected const MEMO_CAP = 2000;
+
+    /** @var array<string, ?float> نسب تحويل الفرز — key: "{invoiceId}|{sortedUnitId}" */
+    protected array $sortedRatioMemo = [];
+
+    /**
+     * نفس ناتج availableForReturn() لكل سطر، لكن بعدد استعلامات مجمّعة.
+     *
+     * @param  array<int, int> $invoiceDetailIds
+     * @param  int|null        $exceptReturnId  مرتجع تُستثنى كمياته (نفس دلالة الفرع الفردي)
+     * @return array<int, float>  key = purchase_invoice_detail_id
+     */
+    public function availableForReturnMany(array $invoiceDetailIds, ?int $exceptReturnId = null): array
+    {
+        $invoiceDetailIds = array_values(array_unique(array_map('intval', $invoiceDetailIds)));
+
+        if (empty($invoiceDetailIds)) {
+            return [];
+        }
+
+        /* الخطوة A — السطر الأصلي + رأس الفاتورة (استعلام 1 بدل N + lazy loads) */
+        $details = PurchaseInvoiceDetail::query()
+            ->with('purchaseInvoice')
+            ->whereIn('purchase_invoice_detail_id', $invoiceDetailIds)
+            ->get()
+            ->keyBy('purchase_invoice_detail_id');
+
+        /* الخطوة B — المستهلك من المرتجعات لكل السطور (استعلام 1 بدل N).
+           الصفوف تُحوَّل لاحقاً في PHP بنفس quotaEquivalent — نفس الحساب حرفياً. */
+        $consumedRows = PurchaseReturnDetail::query()
+            ->whereIn('purchase_invoice_detail_id', $invoiceDetailIds)
+            ->when($exceptReturnId, function ($q, $exceptId) {
+                $q->where('purchase_return_id', '!=', $exceptId);
+            })
+            ->get(['purchase_invoice_detail_id', 'quantity', 'unit_id'])
+            ->groupBy('purchase_invoice_detail_id');
+
+        /* الخطوة D-1 — فرّز المفاتيح المميزة (صنف، مخزن، وحدة) المطلوبة لقصّ المخزن.
+           نفس مصادر availableForReturn: item_id من السطر، warehouse_id من رأس الفاتورة. */
+        $stockKeys = [];   // "item|warehouse" => [unitIds...]، null-unit = مجموع كل الوحدات
+        $itemIds = [];
+        $warehouseIds = [];
+
+        foreach ($invoiceDetailIds as $id) {
+            $detail = $details->get($id);
+
+            if (!$detail) {
+                continue; // نفس دلالة الفردي: سطر غير موجود ⇒ 0.0
+            }
+
+            $warehouseId = optional($detail->purchaseInvoice)->warehouse_id;
+
+            if (!$warehouseId) {
+                continue; // الفردي يرجع invoiceLimit قبل الوصول للمخزن
+            }
+
+            $itemId = (int) $detail->item_id;
+            $stockKeys["{$itemId}|{$warehouseId}"] ??= [];
+            $stockKeys["{$itemId}|{$warehouseId}"][] =
+                $detail->unit_id !== null ? (int) $detail->unit_id : null;
+
+            $itemIds[$itemId] = true;
+            $warehouseIds[(int) $warehouseId] = true;
+        }
+
+        /* الخطوة D-2 — رصيد المخزن مجمّعاً (استعلامان بدل 2N).
+           ⚠️ دلالة NULL (InventoryService::availableQuantity سطر 90-92):
+           unitId = null ⇒ يُحذف شرط الوحدة ⇒ المجموع عبر كل الوحدات.
+           التجميع هنا ينقسم بالوحدة ثم تُجمع المجموعات في PHP — المكافئ التام. */
+        $stockMap = $this->stockQuantitiesGrouped(
+            array_keys($itemIds),
+            array_keys($warehouseIds)
+        );
+
+        /* الخطوة E — كميات المرتجع المستثنى مجمّعة (فرع سطر 468-478 في الفردي).
+           استعلام 1 مجمّع بدل SUM لكل سطر — بنفس الشروط: item/warehouse (+unit عند وجوده). */
+        $exceptQtyMap = [];
+
+        if ($exceptReturnId && !empty($itemIds)) {
+            $exceptRows = PurchaseReturnDetail::query()
+                ->where('purchase_return_id', $exceptReturnId)
+                ->whereIn('item_id', array_keys($itemIds))
+                ->whereIn('warehouse_id', array_keys($warehouseIds))
+                ->get(['item_id', 'warehouse_id', 'unit_id', 'quantity']);
+
+            foreach ($exceptRows as $row) {
+                $key = ((int) $row->item_id) . '|' . ((int) $row->warehouse_id) . '|'
+                    . ($row->unit_id !== null ? (int) $row->unit_id : 'ALL');
+                $exceptQtyMap[$key] = ($exceptQtyMap[$key] ?? 0.0) + (float) $row->quantity;
+            }
+        }
+
+        /* الخطوة النهائية — نفس معادلة الفردي سطر 446-480 حرفياً، لكل سطر */
+        $result = [];
+
+        foreach ($invoiceDetailIds as $id) {
+            $detail = $details->get($id);
+
+            if (!$detail) {
+                $result[$id] = 0.0;
+                continue;
+            }
+
+            /* المستهلك: نفس حلقة الفردي (سطر 440-444) عبر quotaEquivalent المعاد استخدامها */
+            $consumed = 0.0;
+
+            foreach ($consumedRows->get($id, collect()) as $row) {
+                $consumed += $this->quotaEquivalentMemoized(
+                    $detail,
+                    (int) $row->unit_id,
+                    (float) $row->quantity
+                );
+            }
+
+            $invoiceLimit = max(0.0, (float) $detail->quantity - $consumed);
+
+            if ($invoiceLimit <= 0) {
+                $result[$id] = 0.0;
+                continue;
+            }
+
+            $warehouseId = optional($detail->purchaseInvoice)->warehouse_id;
+
+            if (!$warehouseId) {
+                $result[$id] = $invoiceLimit; // نفس الفردي سطر 458-459
+                continue;
+            }
+
+            $stock = $this->stockFromMap(
+                $stockMap,
+                (int) $detail->item_id,
+                (int) $warehouseId,
+                $detail->unit_id !== null ? (int) $detail->unit_id : null
+            );
+
+            /* فرع الاستثناء — نفس شروط الفردي سطر 468-478 */
+            if ($exceptReturnId) {
+                $key = ((int) $detail->item_id) . '|' . ((int) $warehouseId) . '|'
+                    . ($detail->unit_id !== null ? (int) $detail->unit_id : 'ALL');
+                $stock += (float) ($exceptQtyMap[$key] ?? 0.0);
+            }
+
+            $result[$id] = min($invoiceLimit, max(0.0, $stock));
+        }
+
+        return $result;
+    }
+
+    /**
+     * Σ(in) − Σ(out) مجمّعاً لكل (item, warehouse, unit) — نفس معادلة
+     * InventoryService::availableQuantity (سطر 81-111) لكن GROUP BY بدل SUM لكل مفتاح.
+     *
+     * @return array<string, float> key: "item|warehouse" و "item|warehouse|unit"
+     */
+    protected function stockQuantitiesGrouped(array $itemIds, array $warehouseIds): array
+    {
+        $map = [];
+
+        if (empty($itemIds) || empty($warehouseIds)) {
+            return $map;
+        }
+
+        $rows = InventoryMovementDetail::query()
+            ->join(
+                'inventory_movements',
+                'inventory_movements.movement_id',
+                '=',
+                'inventory_movement_details.movement_id'
+            )
+            ->whereIn('inventory_movement_details.item_id', $itemIds)
+            ->whereIn('inventory_movement_details.warehouse_id', $warehouseIds)
+            ->groupBy(
+                'inventory_movement_details.item_id',
+                'inventory_movement_details.warehouse_id',
+                'inventory_movement_details.unit_id',
+                'inventory_movements.direction'
+            )
+            ->select([
+                'inventory_movement_details.item_id as item_id',
+                'inventory_movement_details.warehouse_id as warehouse_id',
+                'inventory_movement_details.unit_id as unit_id',
+                'inventory_movements.direction as direction',
+                DB::raw('SUM(inventory_movement_details.quantity) as qty'),
+            ])
+            ->get();
+
+        foreach ($rows as $row) {
+            $netKey = ((int) $row->item_id) . '|' . ((int) $row->warehouse_id);
+            $unitKey = $row->unit_id !== null
+                ? $netKey . '|' . ((int) $row->unit_id)
+                : null;
+
+            $signed = $row->direction === 'in' ? (float) $row->qty : -(float) $row->qty;
+
+            $map['__net__' . $netKey] = ($map['__net__' . $netKey] ?? 0.0) + $signed;
+
+            if ($unitKey !== null) {
+                $map['__unit__' . $unitKey] = ($map['__unit__' . $unitKey] ?? 0.0) + $signed;
+            }
+        }
+
+        return $map;
+    }
+
+    /** قراءة الرصيد من خريطة التجميع — بنفس دلالة الفردي:
+     *  unitId = null ⇒ مجموع كل الوحدات (شرط الوحدة محذوف)، وإلا مجموع الوحدة المحددة. */
+    protected function stockFromMap(array $map, int $itemId, int $warehouseId, ?int $unitId): float
+    {
+        if ($unitId === null) {
+            return (float) ($map['__net__' . $itemId . '|' . $warehouseId] ?? 0.0);
+        }
+
+        return (float) ($map['__unit__' . $itemId . '|' . $warehouseId . '|' . $unitId] ?? 0.0);
+    }
+
+    /**
+     * sortedBatchRatio + memoization على مستوى الطلب (instance، ليس static —
+     * حتى لا تعيش النسب القديمة عبر الطلبات في Octane/workers).
+     * الناتج مطابق للدالة الأصلية لأنها نفسها تُستدعى — فقط مُخزّنة.
+     */
+    protected function sortedBatchRatioMemoized(PurchaseInvoiceDetail $invoiceDetail, int $sortedUnitId): ?float
+    {
+        if (count($this->sortedRatioMemo) >= self::MEMO_CAP) {
+            $this->sortedRatioMemo = []; // تفريغ كامل عند بلوغ السقف
+        }
+
+        $key = ((int) $invoiceDetail->purchase_invoice_id) . '|' . $sortedUnitId;
+
+        if (!array_key_exists($key, $this->sortedRatioMemo)) {
+            $this->sortedRatioMemo[$key] = $this->sortedBatchRatio($invoiceDetail, $sortedUnitId);
+        }
+
+        return $this->sortedRatioMemo[$key];
+    }
+
+    /**
+     * مكافئ quotaEquivalent لكن عبر النسبة المُخزّنة — نفس المنطق حرفياً
+     * (سطر 490-501 في الدالة الفردية) دون أي تغيير على الدالة الأصلية.
+     */
+    protected function quotaEquivalentMemoized(PurchaseInvoiceDetail $invoiceDetail, int $rowUnitId, float $qty): float
+    {
+        $invoiceUnitId = $invoiceDetail->unit_id !== null ? (int) $invoiceDetail->unit_id : 0;
+
+        if ($rowUnitId === $invoiceUnitId || $rowUnitId <= 0) {
+            return $qty;
+        }
+
+        $ratio = $this->sortedBatchRatioMemoized($invoiceDetail, $rowUnitId);
+
+        return $ratio !== null ? $qty * $ratio : $qty;
+    }
+
+    // =========================================================
     // VALIDATION
     // =========================================================
     protected function lockAndValidateInvoice(

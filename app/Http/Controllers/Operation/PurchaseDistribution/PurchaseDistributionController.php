@@ -255,8 +255,7 @@ class PurchaseDistributionController extends Controller
             }
         }
 
-        DB::beginTransaction();
-        try {
+        $distribution = DB::transaction(function () use ($existing, $validated, $movementDetails) {
             if ($existing) {
                 $distribution = $existing;
 
@@ -300,11 +299,8 @@ class PurchaseDistributionController extends Controller
                 ]);
             }
 
-            DB::commit();
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
-        }
+            return $distribution;
+        });
 
         return response()->json([
             'success' => true,
@@ -420,8 +416,8 @@ class PurchaseDistributionController extends Controller
     // ============================================================
     public function list(Request $request)
     {
-        $q = Distribution::query()
-            ->with(['details:id,distribution_id,customer_id,quantity,unit_cost,sale_price']);
+        /* ✅ بلا eager details — الإجماليات تُحسب مجمّعة في SQL أدناه */
+        $q = Distribution::query();
 
         if ($request->filled('status')) {
             $q->where('status', $request->input('status'));
@@ -441,33 +437,47 @@ class PurchaseDistributionController extends Controller
 
         $rows = $q->orderByDesc('id')
             ->limit(300)
-            ->get()
-            ->map(function ($d) {
-                $customersCount = $d->details->pluck('customer_id')->unique()->count();
-                $totalCost = 0.0;
-                $totalSale = 0.0;
-                foreach ($d->details as $r) {
-                    $totalCost += (float)$r->quantity * (float)$r->unit_cost;
-                    $totalSale += (float)$r->quantity * (float)$r->sale_price;
-                }
+            ->get();
 
-                return [
-                    'id'                => $d->id,
-                    'code'              => $d->code,
-                    'distribution_date' => optional($d->distribution_date)->format('Y-m-d'),
-                    'status'            => $d->status,
-                    'status_label'      => $d->isDraft() ? 'مسودة' : 'مفوتر',
-                    'details_count'     => $d->details->count(),
-                    'customers_count'   => $customersCount,
-                    'total_cost'        => $totalCost,
-                    'total_sale'        => $totalSale,
-                ];
-            });
+        /* ✅ إجماليات مجمّعة في SQL بدل تحميل كل التفاصيل وحسابها في PHP */
+        $aggregates = \App\Models\Purchases\DistributionDetail::query()
+            ->whereIn('distribution_id', $rows->pluck('id')->all())
+            ->groupBy('distribution_id')
+            ->selectRaw('distribution_id')
+            ->selectRaw('COUNT(*) as details_count')
+            ->selectRaw('COUNT(DISTINCT customer_id) as customers_count')
+            ->selectRaw('COALESCE(SUM(quantity * unit_cost), 0) as total_cost')
+            ->selectRaw('COALESCE(SUM(quantity * sale_price), 0) as total_sale')
+            ->get()
+            ->keyBy('distribution_id');
+
+        $rows = $rows->map(function ($d) use ($aggregates) {
+            $agg = $aggregates->get($d->id);
+
+            return [
+                'id'                => $d->id,
+                'code'              => $d->code,
+                'distribution_date' => optional($d->distribution_date)->format('Y-m-d'),
+                'status'            => $d->status,
+                'status_label'      => $d->isDraft() ? 'مسودة' : 'مفوتر',
+                'details_count'     => (int) ($agg->details_count ?? 0),
+                'customers_count'   => (int) ($agg->customers_count ?? 0),
+                'total_cost'        => (float) ($agg->total_cost ?? 0),
+                'total_sale'        => (float) ($agg->total_sale ?? 0),
+            ];
+        });
+
+        /* ✅ الإحصائيات في استعلام واحد بدل ثلاثة */
+        $statsRow = Distribution::query()
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw("SUM(status = 'draft') as draft")
+            ->selectRaw("SUM(status = 'invoiced') as invoiced")
+            ->first();
 
         $stats = [
-            'total'    => Distribution::count(),
-            'draft'    => Distribution::where('status', 'draft')->count(),
-            'invoiced' => Distribution::where('status', 'invoiced')->count(),
+            'total'    => (int) ($statsRow->total ?? 0),
+            'draft'    => (int) ($statsRow->draft ?? 0),
+            'invoiced' => (int) ($statsRow->invoiced ?? 0),
         ];
 
         return response()->json([
@@ -482,12 +492,19 @@ class PurchaseDistributionController extends Controller
     // ============================================================
     public function stats()
     {
+        /* ✅ استعلام واحد بدل ثلاثة */
+        $row = Distribution::query()
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw("SUM(status = 'draft') as draft")
+            ->selectRaw("SUM(status = 'invoiced') as invoiced")
+            ->first();
+
         return response()->json([
             'success' => true,
             'data'    => [
-                'total'    => Distribution::count(),
-                'draft'    => Distribution::where('status', 'draft')->count(),
-                'invoiced' => Distribution::where('status', 'invoiced')->count(),
+                'total'    => (int) ($row->total ?? 0),
+                'draft'    => (int) ($row->draft ?? 0),
+                'invoiced' => (int) ($row->invoiced ?? 0),
             ],
         ]);
     }

@@ -18,21 +18,11 @@ class PurchaseInvoiceObserver
             );
         }
 
-        $movements = InventoryMovement::where(
-                'source_type',
-                InventoryMovement::SOURCE_PURCHASE_INVOICE
-            )
-            ->where('source_id', $invoice->purchase_invoice_id)
-            ->with('details')
-            ->get();
-
-        foreach ($movements as $movement) {
-            // ✅ توحيد السلوك مع SalesInvoiceObserver: عكس الرصيد أولًا
-            app(\App\Services\Inventory\InventoryService::class)
-                ->reverseMovement($movement);
-
-            $movement->details()->delete();
-            $movement->delete();
-        }
+        /* ✅ توحيد السلوك مع SalesInvoiceObserver: حذف مجمّع — منطق موحد في
+           InventoryService (عكس hook + حذف تفاصيل/رؤوس + إبطال كاش) */
+        app(\App\Services\Inventory\InventoryService::class)->deleteMovementsBySource(
+            InventoryMovement::SOURCE_PURCHASE_INVOICE,
+            (int) $invoice->purchase_invoice_id
+        );
     }
 }

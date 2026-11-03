@@ -369,6 +369,18 @@ class DashboardService
             SalesReturn::class, 'sales_return_id', $idsBySource[InventoryMovement::SOURCE_SALES_RETURN]
         );
 
+        /* ✅ أسماء كل الأطراف دفعة واحدة (3 استعلامات whereIn ثابتة
+           بدل 3 استعلامات لكل حساب فريد) — نفس أولوية الاسم: مورد → عميل → حساب */
+        $uniqueAccountIds = [];
+
+        foreach ($accountBySource as $map) {
+            foreach ($map as $accountId) {
+                $uniqueAccountIds[(int) $accountId] = true;
+            }
+        }
+
+        $nameMap = $this->partyNamesForAccounts(array_keys($uniqueAccountIds));
+
         $map = [];
 
         foreach ($sourceIds as $movementId => $sourceId) {
@@ -381,11 +393,57 @@ class DashboardService
 
             $accountId = $accountBySource[$type][(int) $sourceId] ?? null;
             $map[$movementId] = $accountId
-                ? $this->partyNameForAccount((int) $accountId)
+                ? ($nameMap[(int) $accountId] ?? '')
                 : '';
         }
 
         return $map;
+    }
+
+    /**
+     * أسماء أطراف لعدة حسابات دفعة واحدة — 3 استعلامات ثابتة بغض النظر عن عدد الحسابات.
+     * نفس أولوية partyNameForAccount: اسم المورد، ثم العميل، ثم اسم الحساب.
+     *
+     * @param array<int,int> $accountIds
+     * @return array<int,string> accountID => name
+     */
+    private function partyNamesForAccounts(array $accountIds): array
+    {
+        $accountIds = array_values(array_unique(array_filter(array_map('intval', $accountIds))));
+
+        if (empty($accountIds)) {
+            return [];
+        }
+
+        $suppliers = Supplier::query()
+            ->whereIn('accountID', $accountIds)
+            ->get(['accountID', 'supName']);
+
+        $customers = Customer::query()
+            ->whereIn('accountID', $accountIds)
+            ->get(['accountID', 'CustomersName2']);
+
+        $accounts = CharAccount::query()
+            ->whereIn('accountID', $accountIds)
+            ->get(['accountID', 'accName']);
+
+        $names = [];
+
+        foreach ($accountIds as $accountId) {
+            $name = trim((string) optional($suppliers->firstWhere('accountID', $accountId))->supName);
+
+            if ($name === '') {
+                $name = trim((string) optional($customers->firstWhere('accountID', $accountId))->CustomersName2);
+            }
+
+            if ($name === '') {
+                $name = trim((string) optional($accounts->firstWhere('accountID', $accountId))->accName);
+            }
+
+            $names[$accountId] = $name;
+        }
+
+        return $names;
     }
 
     /**
@@ -423,25 +481,18 @@ class DashboardService
      *
      * الاستعلامات تُنفَّذ مرة واحدة وتُحفظ بالذاكرة (يخدم ≤ RECENT_LIMIT حسابًا).
      */
+    /**
+     * اسم الطرف لحساب واحد — يفوّض للنسخة المجمّعة مع كاش داخل الطلب (للتوافق).
+     */
     private function partyNameForAccount(int $accountId): string
     {
         if (!isset($this->partyNameCache[$accountId])) {
-            $supplier = Supplier::query()->where('accountID', $accountId)->value('supName');
-            $customer = Customer::query()->where('accountID', $accountId)->value('CustomersName2');
-            $account  = CharAccount::query()->where('accountID', $accountId)->value('accName');
-
-            $name = trim((string) ($supplier ?? ''));
-            if ($name === '') {
-                $name = trim((string) ($customer ?? ''));
-            }
-            if ($name === '') {
-                $name = trim((string) ($account ?? ''));
-            }
-
-            $this->partyNameCache[$accountId] = $name;
+            $this->partyNameCache = $this->partyNamesForAccounts(
+                array_merge(array_keys($this->partyNameCache), [$accountId])
+            ) + $this->partyNameCache;
         }
 
-        return $this->partyNameCache[$accountId];
+        return $this->partyNameCache[$accountId] ?? '';
     }
 
     private function dayName($date): string

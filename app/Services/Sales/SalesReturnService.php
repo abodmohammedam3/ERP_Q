@@ -397,19 +397,8 @@ class SalesReturnService
 
         ksort($pairs);
 
-        foreach ($pairs as $pair) {
-            $query = DB::table('inventory_movement_details')
-                ->where('item_id', $pair['item_id'])
-                ->where('warehouse_id', $pair['warehouse_id']);
-
-            if ($pair['unit_id']) {
-                $query->where('unit_id', $pair['unit_id']);
-            }
-
-            $query->select('movement_detail_id')
-                  ->lockForUpdate()
-                  ->get();
-        }
+        /* ✅ قفل مجمّع: استعلام lockForUpdate واحد بدل استعلام لكل تركيبة */
+        $this->inventoryService->lockRowsForPairs(array_values($pairs));
     }
 
     // =========================================================
@@ -550,20 +539,11 @@ class SalesReturnService
 
     public function deleteInventoryMovement(SalesReturn $salesReturn): void
     {
-        $movements = InventoryMovement::where(
-                'source_type',
-                InventoryMovement::SOURCE_SALES_RETURN
-            )
-            ->where('source_id', $salesReturn->sales_return_id)
-            ->with('details')
-            ->get();
-
-        foreach ($movements as $movement) {
-            $this->inventoryService->reverseMovement($movement);
-
-            $movement->details()->delete();
-            $movement->delete();
-        }
+        /* ✅ حذف مجمّع (استعلامان بدل 2N) — منطق موحد في InventoryService */
+        $this->inventoryService->deleteMovementsBySource(
+            InventoryMovement::SOURCE_SALES_RETURN,
+            (int) $salesReturn->sales_return_id
+        );
     }
 
     // =========================================================

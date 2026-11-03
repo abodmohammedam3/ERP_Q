@@ -343,6 +343,16 @@ class PurchaseReturnService
             return [];
         }
 
+        /* تتبّع مجمّع لكل السلاسل (CTE RECURSIVE واحد) — يشذّب المرشحين المستبعدين أعلاه */
+        $tracedLotIds = $this->lotsTracingToInvoice(
+            array_filter(array_map(fn ($row) => $row->lot_source_detail_id, $candidates)),
+            (int) $invoice->purchase_invoice_id
+        );
+
+        $candidates = array_values(array_filter($candidates,
+            fn ($row) => in_array((int) $row->lot_source_detail_id, $tracedLotIds, true)
+        ));
+
         /* أسماء الأصناف والوحدات باستعلامين مجمّعين (تفادي N+1) */
         $itemNames = \App\Models\Inventory\Item::query()
             ->whereIn('itemID', array_keys($candidateItemIds))
@@ -354,13 +364,26 @@ class PurchaseReturnService
 
         $batches = [];
 
+        /* ✅ قراءة رصيد كل الدفعات المرشحة دفعة واحدة (استعلام GROUP BY واحد
+           بدل استعلامين SUM لكل دفعة) — دلالة مطابقة للفردي */
+        $batchCombos = [];
+
         foreach ($candidates as $row) {
-            $available = $this->inventoryService->availableQuantityForSupplier(
-                (int) $row->item_id,
-                $warehouseId,
-                $row->unit_id !== null ? (int) $row->unit_id : null,
-                $supplierId
-            );
+            $batchCombos[] = [
+                'item_id'             => (int) $row->item_id,
+                'warehouse_id'        => $warehouseId,
+                'unit_id'             => $row->unit_id !== null ? (int) $row->unit_id : null,
+                'supplier_account_id' => $supplierId,
+            ];
+        }
+
+        $batchAvailability = $this->inventoryService->availableQuantityBatch($batchCombos);
+
+        foreach ($candidates as $row) {
+            $availKey = ((int) $row->item_id) . '|' . $warehouseId . '|'
+                . ($row->unit_id !== null ? (int) $row->unit_id : 0) . '|' . $supplierId;
+
+            $available = (float) ($batchAvailability[$availKey] ?? 0);
 
             if ($available <= 0) {
                 continue;
@@ -411,6 +434,95 @@ class PurchaseReturnService
         }
 
         return $this->traceLotToInvoice($ancestor->lot_source_detail_id, $invoiceId, $depth + 1);
+    }
+
+    /**
+     * ✅ نسخة مجمّعة من traceLotToInvoice: CTE RECURSIVE واحد يتبع كل سلاسل
+     * lot_source_detail_id حتى عمق 5 (نفس حد الفردي) ويعرف أي دفعة تصل
+     * إلى فاتورة الشراء المطلوبة.
+     *
+     * دلالة مطابقة للفردي:
+     *  - عقدة العمق 0 = الدفعة نفسها (فحص source_type/source_id لحركتها)
+     *  - العقد المفحوصة: العمق 0..4 (خمس عقد) — نفس سلوك الفردي
+     *  - null lot_source_detail_id = لا تتبّع
+     *
+     * عند فشل CTE (قاعدة بلا دعم recursive) يهبط للفردي مع تسجيل تحذيري واضح —
+     * النتيجة مطابقة، يتأثر الأداء فقط (لا فشل صامت).
+     *
+     * @param array<int,int> $startIds
+     * @return array<int,int> معرفات الدفعات التي تصل للفاتورة
+     */
+    protected function lotsTracingToInvoice(array $startIds, int $invoiceId): array
+    {
+        $startIds = array_values(array_unique(array_filter(array_map('intval', $startIds))));
+
+        if (empty($startIds)) {
+            return [];
+        }
+
+        try {
+            $placeholders = implode(',', array_fill(0, count($startIds), '?'));
+
+            $rows = DB::select("
+                WITH RECURSIVE lot_tree AS (
+                    SELECT imd.movement_detail_id AS start_id,
+                           imd.movement_detail_id,
+                           imd.lot_source_detail_id,
+                           im.source_type,
+                           im.source_id,
+                           0 AS depth
+                      FROM inventory_movement_details imd
+                      JOIN inventory_movements im
+                        ON im.movement_id = imd.movement_id
+                     WHERE imd.movement_detail_id IN ({$placeholders})
+
+                    UNION ALL
+
+                    SELECT t.start_id,
+                           imd.movement_detail_id,
+                           imd.lot_source_detail_id,
+                           im.source_type,
+                           im.source_id,
+                           t.depth + 1
+                      FROM inventory_movement_details imd
+                      JOIN inventory_movements im
+                        ON im.movement_id = imd.movement_id
+                      JOIN lot_tree t
+                        ON imd.movement_detail_id = t.lot_source_detail_id
+                     WHERE t.lot_source_detail_id IS NOT NULL
+                       AND t.depth < 4
+                )
+                SELECT DISTINCT start_id, source_type, source_id FROM lot_tree
+            ", $startIds);
+
+            $ok = [];
+
+            foreach ($rows as $r) {
+                if ($r->source_type === InventoryMovement::SOURCE_PURCHASE_INVOICE
+                    && (int) $r->source_id === $invoiceId) {
+                    $ok[(int) $r->start_id] = true;
+                }
+            }
+
+            return array_keys($ok);
+
+        } catch (\Throwable $e) {
+            Log::warning('[PurchaseReturnService] CTE lot tracing unavailable — falling back to per-lot tracing.', [
+                'invoice_id' => $invoiceId,
+                'lots'       => count($startIds),
+                'error'      => $e->getMessage(),
+            ]);
+
+            $ok = [];
+
+            foreach ($startIds as $id) {
+                if ($this->traceLotToInvoice($id, $invoiceId)) {
+                    $ok[] = $id;
+                }
+            }
+
+            return $ok;
+        }
     }
 
     // =========================================================
@@ -1050,26 +1162,16 @@ class PurchaseReturnService
 
             $key = $detail->item_id . '|' . ($rowUnitId ?? 0);
             $pairs[$key] = [
-                'item_id' => (int) $detail->item_id,
-                'unit_id' => $rowUnitId,
+                'item_id'      => (int) $detail->item_id,
+                'warehouse_id' => (int) $warehouseId, /* ✅ كان يُضاف خارجياً في الحلقة القديمة */
+                'unit_id'      => $rowUnitId,
             ];
         }
 
         ksort($pairs);
 
-        foreach ($pairs as $pair) {
-            $query = DB::table('inventory_movement_details')
-                ->where('item_id', $pair['item_id'])
-                ->where('warehouse_id', (int) $warehouseId);
-
-            if ($pair['unit_id']) {
-                $query->where('unit_id', $pair['unit_id']);
-            }
-
-            $query->select('movement_detail_id')
-                  ->lockForUpdate()
-                  ->get();
-        }
+        /* ✅ قفل مجمّع: استعلام lockForUpdate واحد بدل استعلام لكل تركيبة */
+        $this->inventoryService->lockRowsForPairs(array_values($pairs));
     }
 
     // =========================================================
@@ -1109,16 +1211,39 @@ class PurchaseReturnService
             $stockNeeds[$key] = ($stockNeeds[$key] ?? 0) + $qty;
         }
 
+        /* ✅ قراءة الأرصدة دفعة واحدة (استعلام GROUP BY واحد بدل استعلامين SUM لكل مفتاح)
+           — دلالة مطابقة لـ InventoryService::availableQuantity حرفياً */
+        $stockCombos = [];
+
+        foreach (array_keys($stockNeeds) as $needKey) {
+            [$nItemId, $nUnitId] = explode('|', $needKey);
+
+            $stockCombos[] = [
+                'item_id'      => (int) $nItemId,
+                'warehouse_id' => (int) $warehouseId,
+                'unit_id'      => ((int) $nUnitId) > 0 ? (int) $nUnitId : null,
+            ];
+        }
+
+        $stockMapRaw = $this->inventoryService->availableQuantityBatch($stockCombos);
+
+        /* إعادة تعيين المفاتيح إلى شكل "item|unit" المستخدم في stockNeeds */
+        $stockMap = [];
+
+        foreach ($stockCombos as $idx => $combo) {
+            $needKey = array_keys($stockNeeds)[$idx];
+            $stockMap[$needKey] = $stockMapRaw[
+                $combo['item_id'] . '|' . $combo['warehouse_id'] . '|'
+                . ($combo['unit_id'] ?? 0) . '|x'
+            ] ?? 0.0;
+        }
+
         foreach ($stockNeeds as $key => $neededQty) {
             [$itemId, $unitId] = explode('|', $key);
             $itemId = (int) $itemId;
             $unitId = (int) $unitId;
 
-            $stock = $this->inventoryService->availableQuantity(
-                $itemId,
-                (int) $warehouseId,
-                $unitId > 0 ? $unitId : null
-            );
+            $stock = (float) ($stockMap[$key] ?? 0);
 
             if ($exceptReturnId) {
                 $currentReturnedQty = PurchaseReturnDetail::where('purchase_return_id', $exceptReturnId)
@@ -1234,20 +1359,11 @@ class PurchaseReturnService
 
     public function deleteInventoryMovement(PurchaseReturn $purchaseReturn): void
     {
-        $movements = InventoryMovement::where(
-                'source_type',
-                InventoryMovement::SOURCE_PURCHASE_RETURN
-            )
-            ->where('source_id', $purchaseReturn->purchase_return_id)
-            ->with('details')
-            ->get();
-
-        foreach ($movements as $movement) {
-            $this->inventoryService->reverseMovement($movement);
-
-            $movement->details()->delete();
-            $movement->delete();
-        }
+        /* ✅ حذف مجمّع (استعلامان بدل 2N) — منطق موحد في InventoryService */
+        $this->inventoryService->deleteMovementsBySource(
+            InventoryMovement::SOURCE_PURCHASE_RETURN,
+            (int) $purchaseReturn->purchase_return_id
+        );
     }
 
     // =========================================================

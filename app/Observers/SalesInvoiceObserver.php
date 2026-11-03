@@ -32,21 +32,10 @@ class SalesInvoiceObserver
             );
         }
 
-        $movements = InventoryMovement::where(
-                'source_type',
-                InventoryMovement::SOURCE_SALES_INVOICE
-            )
-            ->where('source_id', $invoice->sales_invoice_id)
-            ->with('details')
-            ->get();
-
-        foreach ($movements as $movement) {
-            // عكس الرصيد
-            $this->inventoryService->reverseMovement($movement);
-
-            // حذف التفاصيل والرأس
-            $movement->details()->delete();
-            $movement->delete();
-        }
+        /* ✅ حذف مجمّع — منطق موحد في InventoryService (عكس hook + حذف تفاصيل/رؤوس + إبطال كاش) */
+        $this->inventoryService->deleteMovementsBySource(
+            InventoryMovement::SOURCE_SALES_INVOICE,
+            (int) $invoice->sales_invoice_id
+        );
     }
 }

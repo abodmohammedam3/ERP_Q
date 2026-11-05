@@ -12,8 +12,12 @@
                         <th class="fw-semibold">الصنف</th>
                         <th class="fw-semibold">النوع</th>
                         <th class="text-muted small">الفاتورة</th>
-                        <th class="text-end fw-semibold">الكمية</th>
+                        <th class="text-end fw-semibold">كمية العميل</th>
                         <th class="text-center fw-semibold">الوحدة</th>
+                        <th class="text-end fw-semibold text-primary">إجمالي الدفعة</th>
+                        <th class="text-end fw-semibold text-info">المفرزة</th>
+                        <th class="text-end fw-semibold text-warning">الموزّعة</th>
+                        <th class="text-end fw-semibold text-danger">غير الموزّعة</th>
                         <th class="text-end fw-semibold">تكلفة الوحدة</th>
                         <th class="text-end fw-semibold">سعر البيع</th>
                         <th class="text-end fw-semibold">إجمالي التكلفة</th>
@@ -22,7 +26,7 @@
                 </thead>
                 <tbody id="invDetailsTbody">
                     <tr>
-                        <td colspan="9" class="text-center text-muted py-4">
+                        <td colspan="13" class="text-center text-muted py-4">
                             اختر توزيعًا ثم عميلًا لعرض التفاصيل.
                         </td>
                     </tr>

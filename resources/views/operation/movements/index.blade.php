@@ -15,7 +15,7 @@
 
         <div class="btn-group" role="group">
 
-            <button
+            {{-- <button
                 type="button"
                 id="btnAddSupplyMovement"
                 class="btn btn-success"
@@ -33,7 +33,9 @@
             >
                 <i class="bi bi-box-arrow-up"></i>
                 أمر صرف مخزني
-            </button>
+            </button> --}}
+
+           
 
             <button
                 type="button"

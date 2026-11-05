@@ -15,10 +15,6 @@ use Illuminate\Support\Facades\Log;
 
 class PurchaseInvoiceService
 {
-    // =========================================================
-    // CONSTANTS
-    // =========================================================
-
     private const LOCK_KEY = 'purchase_invoice_write_lock';
     private const LOCK_TTL = 15;
 
@@ -29,7 +25,7 @@ class PurchaseInvoiceService
     private const INVENTORY_ACCOUNT_CACHE_TTL = 3600;
 
     // =========================================================
-    // CREATE — حفظ + ترحيل تلقائي
+    // CREATE
     // =========================================================
     public function create(array $data): PurchaseInvoice
     {
@@ -48,89 +44,77 @@ class PurchaseInvoiceService
                 $this->saveDetails($invoice, $details);
                 $this->recalculateTotals($invoice);
 
-                // ✅ ترحيل تلقائي
                 $this->postInternal($invoice);
 
                 return $invoice->fresh(['details', 'supplierAccount']);
             });
         });
     }
-// =========================================================
-// UPDATE — يمنع تعديل المرحّلة أو التي لها مرتجعات
-// =========================================================
-public function update(int $id, array $data): PurchaseInvoice
-{
-    return $this->withWriteLock(function () use ($id, $data) {
-        return DB::transaction(function () use ($id, $data) {
-            $invoice = PurchaseInvoice::lockForUpdate()->findOrFail($id);
-
-            if ($invoice->isPosted()) {
-                throw new \RuntimeException(
-                    'لا يمكن تعديل فاتورة مرحّلة. قم بإلغاء الترحيل أولًا.'
-                );
-            }
-
-            // ✅ منع التعديل إذا كان لها مرتجعات
-            if ($invoice->returns()->exists()) {
-                throw new \RuntimeException(
-                    'لا يمكن تعديل فاتورة لها مرتجعات. احذف المرتجعات أولًا.'
-                );
-            }
-
-            $details = $data['details'] ?? [];
-
-            $this->lockStockRows($details, (int) ($data['warehouse_id'] ?? 0));
-
-            $header = $this->headerData($data);
-            unset($header['invoice_number']);
-            unset($header['created_by']);
-            $header['updated_by'] = auth()->id();
-
-            $invoice->update($header);
-
-            $invoice->details()->delete();
-            $this->saveDetails($invoice, $details);
-            $this->recalculateTotals($invoice);
-
-            return $invoice->fresh(['details', 'supplierAccount']);
-        });
-    });
-}
-
-// =========================================================
-// DELETE — يمنع حذف المرحّلة أو التي لها مرتجعات
-// =========================================================
-public function delete(int $id): void
-{
-    $this->withWriteLock(function () use ($id) {
-        DB::transaction(function () use ($id) {
-            $invoice = PurchaseInvoice::lockForUpdate()->findOrFail($id);
-
-            // ✅ منع حذف الفاتورة المرحّلة قبل إلغاء الترحيل
-            if ($invoice->isPosted()) {
-                throw new \RuntimeException(
-                    'لا يمكن حذف فاتورة مرحّلة. قم بإلغاء الترحيل أولًا.'
-                );
-            }
-
-            // ✅ منع الحذف إذا كان لها مرتجعات
-            if ($invoice->returns()->exists()) {
-                throw new \RuntimeException(
-                    'لا يمكن حذف فاتورة لها مرتجعات. احذف المرتجعات أولًا.'
-                );
-            }
-
-            $this->deleteAccountingEntry($invoice);
-            $this->deleteInventoryMovement($invoice);
-
-            $invoice->details()->delete();
-            $invoice->delete();
-        });
-    });
-}
 
     // =========================================================
-    // POST (يدوي)
+    // UPDATE
+    // =========================================================
+    public function update(int $id, array $data): PurchaseInvoice
+    {
+        return $this->withWriteLock(function () use ($id, $data) {
+            return DB::transaction(function () use ($id, $data) {
+                $invoice = PurchaseInvoice::lockForUpdate()->findOrFail($id);
+
+                if ($invoice->isPosted()) {
+                    throw new \RuntimeException('لا يمكن تعديل فاتورة مرحّلة. قم بإلغاء الترحيل أولًا.');
+                }
+
+                if ($invoice->returns()->exists()) {
+                    throw new \RuntimeException('لا يمكن تعديل فاتورة لها مرتجعات. احذف المرتجعات أولًا.');
+                }
+
+                $details = $data['details'] ?? [];
+                $this->lockStockRows($details, (int) ($data['warehouse_id'] ?? 0));
+
+                $header = $this->headerData($data);
+                unset($header['invoice_number'], $header['created_by']);
+                $header['updated_by'] = auth()->id();
+
+                $invoice->update($header);
+                $invoice->details()->delete();
+                $this->saveDetails($invoice, $details);
+                $this->recalculateTotals($invoice);
+
+                return $invoice->fresh(['details', 'supplierAccount']);
+            });
+        });
+    }
+
+    // =========================================================
+    // DELETE — مع الحماية
+    // =========================================================
+    public function delete(int $id): void
+    {
+        $this->withWriteLock(function () use ($id) {
+            DB::transaction(function () use ($id) {
+                $invoice = PurchaseInvoice::lockForUpdate()->findOrFail($id);
+
+                if ($invoice->isPosted()) {
+                    throw new \RuntimeException('لا يمكن حذف فاتورة مرحّلة. قم بإلغاء الترحيل أولًا.');
+                }
+
+                if ($invoice->returns()->exists()) {
+                    throw new \RuntimeException('لا يمكن حذف فاتورة لها مرتجعات. احذف المرتجعات أولًا.');
+                }
+
+                $this->assertNoDownstreamDependencies($invoice);
+
+                $this->deleteAccountingEntry($invoice);
+                $this->deleteInventoryMovement($invoice);
+
+                $invoice->details()->delete();
+                $invoice->delete();
+            });
+        });
+    }
+
+    // =========================================================
+    // POST
     // =========================================================
     public function post(int $id): PurchaseInvoice
     {
@@ -150,7 +134,7 @@ public function delete(int $id): void
     }
 
     // =========================================================
-    // UNPOST (يدوي)
+    // UNPOST — مع الحماية
     // =========================================================
     public function unpost(int $id): PurchaseInvoice
     {
@@ -162,14 +146,11 @@ public function delete(int $id): void
                     throw new \RuntimeException('الفاتورة غير مرحّلة');
                 }
 
-                /* ✅ لا يمكن إلغاء ترحيل فاتورة لها مرتجعات —
-                   قيود/harakat المرتجعات تعتمد على القيد وحركة الشراء الأصلية
-                   (getLandedCostFromMovement) ولذلك تبقى الفاتورة مرحّلة. */
                 if ($invoice->returns()->exists()) {
-                    throw new \RuntimeException(
-                        'لا يمكن إلغاء ترحيل فاتورة لها مرتجعات. احذف المرتجعات أولًا.'
-                    );
+                    throw new \RuntimeException('لا يمكن إلغاء ترحيل فاتورة لها مرتجعات. احذف المرتجعات أولًا.');
                 }
+
+                $this->assertNoDownstreamDependencies($invoice);
 
                 $this->unpostInternal($invoice);
 
@@ -179,18 +160,15 @@ public function delete(int $id): void
     }
 
     // =========================================================
-    // POST / UNPOST INTERNAL
+    // INTERNAL
     // =========================================================
     private function postInternal(PurchaseInvoice $invoice): void
     {
         $invoice->loadMissing(['details', 'supplierAccount']);
 
         $this->syncInventoryMovement($invoice);
-
-        // ✅ استلام entryID بدون حفظ داخلي
         $entryId = $this->syncAccountingEntry($invoice);
 
-        // ✅ حفظ واحد فقط لكل التغييرات
         $invoice->entryID    = $entryId;
         $invoice->is_posted  = true;
         $invoice->posted_at  = now();
@@ -212,6 +190,105 @@ public function delete(int $id): void
     }
 
     // =========================================================
+    // جمع الدفعات + الفرزات (مع maxDepth)
+    // =========================================================
+    private function collectAllBatchIds(PurchaseInvoice $invoice): array
+    {
+        $batchIds = InventoryMovementDetail::query()
+            ->whereHas('movement', function ($q) use ($invoice) {
+                $q->where('source_type', InventoryMovement::SOURCE_PURCHASE_INVOICE)
+                  ->where('source_id', $invoice->purchase_invoice_id);
+            })
+            ->pluck('movement_detail_id')
+            ->toArray();
+
+        if (empty($batchIds)) return [];
+
+        $allIds   = $batchIds;
+        $visited  = $batchIds;
+        $maxDepth = 10;
+        $depth    = 0;
+
+        do {
+            if ($depth++ > $maxDepth) {
+                throw new \RuntimeException(
+                    'تجاوز عمق تتبع الفرزات الحد الأقصى (' . $maxDepth . '). '
+                    . 'قد تكون هناك بيانات تالفة أو حلقة دائرية.'
+                );
+            }
+
+            $newIds = DB::table('inventory_movement_details as imd')
+                ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
+                ->whereIn('imd.lot_source_detail_id', $allIds)
+                ->whereIn('im.movement_type', [
+                    InventoryMovement::TYPE_SORTING_IN,
+                    InventoryMovement::TYPE_SORTING_OUT,
+                ])
+                ->whereNotIn('imd.movement_detail_id', $visited)
+                ->pluck('imd.movement_detail_id')
+                ->toArray();
+
+            if (!empty($newIds)) {
+                $allIds  = array_merge($allIds, $newIds);
+                $visited = array_merge($visited, $newIds);
+            }
+        } while (!empty($newIds));
+
+        return $allIds;
+    }
+
+    // =========================================================
+    // ✅ الحماية — بدون Audit Log (المشروع صغير)
+    // =========================================================
+    private function assertNoDownstreamDependencies(PurchaseInvoice $invoice): void
+    {
+        $allBatchIds = $this->collectAllBatchIds($invoice);
+        if (empty($allBatchIds)) return;
+
+        // مبيعات مرحّلة
+        $hasSales = DB::table('distribution_details')
+            ->whereIn('movement_detail_id', $allBatchIds)
+            ->whereNotNull('sales_invoice_id')
+            ->exists();
+
+        if ($hasSales) {
+            throw new \RuntimeException(
+                'لا يمكن إلغاء ترحيل/حذف الفاتورة — توجد فواتير مبيعات مرحّلة تعتمد عليها. '
+                . 'ألغِ ترحيل فواتير المبيعات أولاً (من شاشة فواتير البيع).'
+            );
+        }
+
+        // توزيعات
+        $hasDistributions = DB::table('distribution_details')
+            ->whereIn('movement_detail_id', $allBatchIds)
+            ->exists();
+
+        if ($hasDistributions) {
+            throw new \RuntimeException(
+                'لا يمكن إلغاء ترحيل/حذف الفاتورة — توجد توزيعات مسجّلة تعتمد عليها. '
+                . 'احذف التوزيعات أولاً (من شاشة سجل التوزيعات).'
+            );
+        }
+
+        // فرزات
+        $hasSortings = DB::table('inventory_movement_details as imd')
+            ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
+            ->whereIn('imd.lot_source_detail_id', $allBatchIds)
+            ->whereIn('im.movement_type', [
+                InventoryMovement::TYPE_SORTING_IN,
+                InventoryMovement::TYPE_SORTING_OUT,
+            ])
+            ->exists();
+
+        if ($hasSortings) {
+            throw new \RuntimeException(
+                'لا يمكن إلغاء ترحيل/حذف الفاتورة — توجد عمليات فرز تعتمد عليها. '
+                . 'اعكس عمليات الفرز أولاً (من شاشة حركات المخزون).'
+            );
+        }
+    }
+
+    // =========================================================
     // WRITE LOCK
     // =========================================================
     private function withWriteLock(callable $callback)
@@ -219,9 +296,7 @@ public function delete(int $id): void
         $lock = Cache::lock(self::LOCK_KEY, self::LOCK_TTL);
 
         if (!$lock->get()) {
-            throw new \RuntimeException(
-                'عملية أخرى على فواتير الشراء قيد التنفيذ، حاول بعد قليل'
-            );
+            throw new \RuntimeException('عملية أخرى على فواتير الشراء قيد التنفيذ، حاول بعد قليل');
         }
 
         try {
@@ -239,22 +314,18 @@ public function delete(int $id): void
     }
 
     // =========================================================
-    // LOCK STOCK ROWS
+    // LOCK STOCK ROWS — محسّن (استعلام واحد)
     // =========================================================
     protected function lockStockRows(array $details, int $defaultWarehouseId): void
     {
         $pairs = [];
-
         foreach ($details as $row) {
             $itemId      = (int) ($row['item_id'] ?? 0);
             $warehouseId = (int) ($row['warehouse_id'] ?? $defaultWarehouseId);
             $unitId      = isset($row['unit_id']) && $row['unit_id'] !== null
-                ? (int) $row['unit_id']
-                : null;
+                ? (int) $row['unit_id'] : null;
 
-            if (!$itemId || !$warehouseId) {
-                continue;
-            }
+            if (!$itemId || !$warehouseId) continue;
 
             $key = $itemId . '|' . $warehouseId . '|' . ($unitId ?? 0);
             $pairs[$key] = [
@@ -264,21 +335,25 @@ public function delete(int $id): void
             ];
         }
 
+        if (empty($pairs)) return;
+
         ksort($pairs);
 
-        foreach ($pairs as $pair) {
-            $query = DB::table('inventory_movement_details')
-                ->where('item_id', $pair['item_id'])
-                ->where('warehouse_id', $pair['warehouse_id']);
-
-            if ($pair['unit_id']) {
-                $query->where('unit_id', $pair['unit_id']);
-            }
-
-            $query->select('movement_detail_id')
-                  ->lockForUpdate()
-                  ->get();
-        }
+        // ✅ قفل في استعلام واحد
+        DB::table('inventory_movement_details')
+            ->where(function ($q) use ($pairs) {
+                foreach ($pairs as $pair) {
+                    $q->orWhere(function ($sub) use ($pair) {
+                        $sub->where('item_id', $pair['item_id'])
+                            ->where('warehouse_id', $pair['warehouse_id']);
+                        if ($pair['unit_id']) {
+                            $sub->where('unit_id', $pair['unit_id']);
+                        }
+                    });
+                }
+            })
+            ->lockForUpdate()
+            ->pluck('movement_detail_id');
     }
 
     // =========================================================
@@ -286,21 +361,15 @@ public function delete(int $id): void
     // =========================================================
     public function syncInventoryMovement(PurchaseInvoice $invoice): void
     {
-        /* ✅ علاقة المورد مطلوبة للبيان */
         $invoice->loadMissing('supplierAccount');
 
         $this->deleteInventoryMovement($invoice);
 
         $lastMovement = InventoryMovement::lockForUpdate()
-            ->orderBy('movement_id', 'desc')
-            ->first();
+            ->orderBy('movement_id', 'desc')->first();
 
-        $nextNumber = $lastMovement
-            ? ((int) $lastMovement->display_id + 1)
-            : 1;
+        $nextNumber = $lastMovement ? ((int) $lastMovement->display_id + 1) : 1;
 
-        /* ✅ البيان: أولوية لبيان المستخدم، وإلا البيان التلقائي،
-           ثم يُلحق اسم المورد دائمًا (سواء كان البيان يدويًا أو تلقائيًا). */
         $supplierName = trim((string) optional($invoice->supplierAccount)->accName);
 
         $purchaseStatement = trim((string) ($invoice->statement ?? ''));
@@ -314,9 +383,7 @@ public function delete(int $id): void
         $movement = InventoryMovement::create([
             'display_id'      => (string) $nextNumber,
             'movement_type'   => InventoryMovement::TYPE_PURCHASE,
-            'direction'       => InventoryMovement::directionForType(
-                                    InventoryMovement::TYPE_PURCHASE
-                                 ),
+            'direction'       => InventoryMovement::directionForType(InventoryMovement::TYPE_PURCHASE),
             'movement_date'   => $invoice->invoice_date,
             'document_number' => $invoice->invoice_number,
             'warehouse_id'    => $invoice->warehouse_id,
@@ -327,7 +394,6 @@ public function delete(int $id): void
         ]);
 
         $rate = (float) ($invoice->exchange_rate ?: 1);
-
         $extraCostsFC = (float) $invoice->expenses
                       + (float) $invoice->tax_cost
                       + (float) $invoice->transportation
@@ -374,7 +440,7 @@ public function delete(int $id): void
                 'unit_id'      => $detail->unit_id,
                 'code'         => $detail->code,
                 'warehouse_id' => $invoice->warehouse_id,
-                'supplier_account_id' => $invoice->account_id, /* ✅ دفعة موردية */
+                'supplier_account_id' => $invoice->account_id,
                 'quantity'     => $quantity,
                 'unit_cost'    => $unitCostBC,
                 'min_price'    => $minPrice,
@@ -393,10 +459,7 @@ public function delete(int $id): void
 
     public function deleteInventoryMovement(PurchaseInvoice $invoice): void
     {
-        $movements = InventoryMovement::where(
-                'source_type',
-                InventoryMovement::SOURCE_PURCHASE_INVOICE
-            )
+        $movements = InventoryMovement::where('source_type', InventoryMovement::SOURCE_PURCHASE_INVOICE)
             ->where('source_id', $invoice->purchase_invoice_id)
             ->get();
 
@@ -407,14 +470,12 @@ public function delete(int $id): void
     }
 
     // =========================================================
-    // ACCOUNTING ENTRY
-    // ✅ ترجع entryID بدل حفظ الفاتورة داخليًا
+    // ACCOUNTING
     // =========================================================
     protected function syncAccountingEntry(PurchaseInvoice $invoice): int
     {
         $this->deleteAccountingEntry($invoice);
 
-        // 1) الحساب المالي
         $rate       = (float) ($invoice->exchange_rate ?: 1);
         $itemsNet   = (float) $invoice->items_total - (float) $invoice->discount_total;
         $extraCosts = (float) $invoice->expenses
@@ -426,66 +487,51 @@ public function delete(int $id): void
         $totalBC = round($totalFC * $rate, 6);
 
         if ($totalBC <= 0) {
-            throw new \RuntimeException(
-                'إجمالي فاتورة الشراء يجب أن يكون أكبر من صفر لإنشاء القيد'
-            );
+            throw new \RuntimeException('إجمالي فاتورة الشراء يجب أن يكون أكبر من صفر لإنشاء القيد');
         }
 
-        // 2) حساب المخزون (مدين)
         $warehouseId        = (int) $invoice->warehouse_id;
         $inventoryAccountId = $this->getInventoryAccountIdFromWarehouse($warehouseId);
 
         if ($inventoryAccountId <= 0) {
-            throw new \RuntimeException(
-                'حساب المخزون غير مُعرّف للمخزن رقم ' . $warehouseId
-            );
+            throw new \RuntimeException('حساب المخزون غير مُعرّف للمخزن رقم ' . $warehouseId);
         }
 
-        // 3) حساب الدائن
         $paymentMethod   = (int) $invoice->payment_method;
         $creditAccountId = $paymentMethod === PurchaseInvoice::PAYMENT_CREDIT
             ? (int) $invoice->account_id
             : (int) $invoice->payment_account_id;
 
         if ($creditAccountId <= 0) {
-            throw new \RuntimeException(
-                'حساب الدفع غير محدد للفاتورة رقم ' . $invoice->invoice_number
-            );
+            throw new \RuntimeException('حساب الدفع غير محدد للفاتورة رقم ' . $invoice->invoice_number);
         }
 
-        // 4) حساب المصاريف المستحقة
         $accruedCostsAccountId = 0;
         if ($extraCosts > 0) {
             $accruedCostsAccountId = $this->getAccruedCostsAccountId();
-
             if ($accruedCostsAccountId <= 0) {
                 throw new \RuntimeException(
-                    'حساب المصاريف المستحقة (' . self::ACCRUED_COSTS_SYSTEM_KEY
-                    . ') غير موجود في دليل الحسابات'
+                    'حساب المصاريف المستحقة (' . self::ACCRUED_COSTS_SYSTEM_KEY . ') غير موجود في دليل الحسابات'
                 );
             }
         }
 
-        // 5) فصل المبالغ
         $extraFC = round($extraCosts, 6);
         $extraBC = round($extraCosts * $rate, 6);
         $itemsFC = round($totalFC - $extraFC, 6);
         $itemsBC = round($totalBC - $extraBC, 6);
 
-        // 6) التاريخ والوصف
         $entryDate = $invoice->invoice_date instanceof \DateTimeInterface
             ? $invoice->invoice_date->format('Y-m-d')
             : (string) ($invoice->invoice_date ?: now()->toDateString());
 
         $docType = $invoice->journal_doc_type_label;
-
         $supplierName = $invoice->supplierAccount->accName ?? '';
 
         $description = $invoice->journal_doc_type_label
             . ' رقم ' . $invoice->invoice_number
             . ($supplierName !== '' ? ' - ' . $supplierName : '');
 
-        // 7) السطور
         $lines = [
             [
                 'accountID'    => $inventoryAccountId,
@@ -522,7 +568,6 @@ public function delete(int $id): void
             ];
         }
 
-        // 8) إنشاء القيد
         $entryId = JournalEntryService::create([
             'entryDate'   => $entryDate,
             'docType'     => $docType,
@@ -532,12 +577,9 @@ public function delete(int $id): void
         ]);
 
         if (!$entryId) {
-            throw new \RuntimeException(
-                'فشل إنشاء القيد المحاسبي لفاتورة الشراء رقم ' . $invoice->invoice_number
-            );
+            throw new \RuntimeException('فشل إنشاء القيد المحاسبي لفاتورة الشراء رقم ' . $invoice->invoice_number);
         }
 
-        // ✅ نُرجع entryID — الحفظ يتم من postInternal
         return (int) $entryId;
     }
 
@@ -545,50 +587,38 @@ public function delete(int $id): void
     {
         if (!empty($invoice->entryID)) {
             JournalEntryService::delete((int) $invoice->entryID);
-
             $invoice->entryID = null;
             $invoice->saveQuietly();
-
             return;
         }
 
         if (!empty($invoice->invoice_number)) {
-            JournalEntryService::deleteByDocNumber(
-                (string) $invoice->invoice_number
-            );
+            JournalEntryService::deleteByDocNumber((string) $invoice->invoice_number);
         }
     }
 
     // =========================================================
-    // ACCOUNT RESOLVERS (Cache)
+    // CACHE RESOLVERS
     // =========================================================
     private function getAccruedCostsAccountId(): int
     {
         return (int) Cache::remember(
             self::ACCRUED_COSTS_CACHE_KEY,
             self::ACCRUED_COSTS_CACHE_TTL,
-            function () {
-                return (int) CharAccount::query()
-                    ->where('system_key', self::ACCRUED_COSTS_SYSTEM_KEY)
-                    ->value('accountID');
-            }
+            fn() => (int) CharAccount::query()
+                ->where('system_key', self::ACCRUED_COSTS_SYSTEM_KEY)
+                ->value('accountID')
         );
     }
 
     private function getInventoryAccountIdFromWarehouse(int $warehouseId): int
     {
-        if ($warehouseId <= 0) {
-            return 0;
-        }
+        if ($warehouseId <= 0) return 0;
 
         return (int) Cache::remember(
             "warehouse.inventory_account.{$warehouseId}",
             self::INVENTORY_ACCOUNT_CACHE_TTL,
-            function () use ($warehouseId) {
-                return (int) Stock::query()
-                    ->where('StockID', $warehouseId)
-                    ->value('accountID');
-            }
+            fn() => (int) Stock::query()->where('StockID', $warehouseId)->value('accountID')
         );
     }
 
@@ -598,8 +628,7 @@ public function delete(int $id): void
     private function nextInvoiceNumber(): int
     {
         $last = PurchaseInvoice::lockForUpdate()
-            ->orderBy('purchase_invoice_id', 'desc')
-            ->first();
+            ->orderBy('purchase_invoice_id', 'desc')->first();
 
         return $last ? ((int) $last->invoice_number + 1) : 1;
     }
@@ -621,9 +650,7 @@ public function delete(int $id): void
             'tax_cost'               => $data['tax_cost'] ?? 0,
             'transportation'         => $data['transportation'] ?? 0,
             'other_cost'             => $otherCost,
-            'other_cost_description' => $otherCost > 0
-                ? ($data['other_cost_description'] ?? null)
-                : null,
+            'other_cost_description' => $otherCost > 0 ? ($data['other_cost_description'] ?? null) : null,
             'statement'              => $data['statement'] ?? null,
             'reference'              => $data['reference'] ?? null,
         ];
@@ -664,12 +691,10 @@ public function delete(int $id): void
         }
 
         $net = max(0, $itemsTotal - $discountTotal);
+        $rate = (float) ($invoice->exchange_rate ?: 1);
 
         $invoice->items_total    = $itemsTotal;
         $invoice->discount_total = $discountTotal;
-
-        $rate = (float) ($invoice->exchange_rate ?: 1);
-
         $invoice->total_in_base_currency = $net * $rate;
         $invoice->save();
     }

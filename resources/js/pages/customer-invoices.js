@@ -1,4 +1,5 @@
 // resources/js/pages/customer-invoices.js
+import '../receipt/accountPicker.js';
 
 let BootstrapModal = null;
 async function ensureBootstrap() {
@@ -22,8 +23,6 @@ document.addEventListener('DOMContentLoaded', () => {
         distribution:     null,
         customer:         null,
         details:          [],
-        // ✅ قيم SalesInvoice::PAYMENT_*
-        // 1 = آجل، 2 = نقدي (صندوق)، 3 = بنك
         paymentMethod:    2,   // نقدي افتراضيًا
         paymentAccountId: null,
     };
@@ -84,7 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ============================================================
-    // اختيار التوزيع
+    // 1. اختيار التوزيع
     // ============================================================
     let distPickerInstance = null;
     let distListData = [];
@@ -158,7 +157,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderDistList() {
         const tbody = $('distTbodyForInvoice');
-        if (!tbody) return;
+        if (!tbody) {
+            console.warn('[inv] لم أجد #distTbodyForInvoice');
+            return;
+        }
+
         tbody.innerHTML = '';
 
         let rows = distListData;
@@ -169,25 +172,27 @@ document.addEventListener('DOMContentLoaded', () => {
             );
         }
 
-        if (!rows.length) {
-            if ($('distEmpty')) {
+        if ($('distEmpty')) {
+            if (!rows.length) {
                 $('distEmpty').textContent = distSearchTerm
                     ? 'لا توجد نتائج مطابقة.'
                     : 'لا توجد توزيعات غير مفوترة.';
                 $('distEmpty').classList.remove('d-none');
+            } else {
+                $('distEmpty').classList.add('d-none');
             }
-            return;
         }
 
         rows.forEach((d, i) => {
             const tr = document.createElement('tr');
             tr.style.cursor = 'pointer';
+            // ✅ 6 خلايا تطابق رأس الجدول
             tr.innerHTML = `
                 <td class="text-muted">${i + 1}</td>
-                <td class="fw-semibold">${escapeHtml(d.code)}</td>
-                <td class="text-muted">${escapeHtml(d.date)}</td>
-                <td class="text-center">${d.details_count}</td>
-                <td class="text-center">${d.customers_count}</td>
+                <td class="fw-semibold text-primary">${escapeHtml(d.code)}</td>
+                <td class="text-muted small">${escapeHtml(d.date || '—')}</td>
+                <td class="text-center">${d.details_count ?? 0}</td>
+                <td class="text-center">${d.customers_count ?? 0}</td>
                 <td class="text-end text-success fw-semibold">${fmt(d.total_sale)}</td>
             `;
             tr.addEventListener('click', () => {
@@ -220,7 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ============================================================
-    // اختيار العميل
+    // 2. اختيار العميل
     // ============================================================
     let custPickerInstance = null;
     let custListData = [];
@@ -368,6 +373,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ============================================================
+    // 3. رسم التفاصيل (13 عمود)
+    // ============================================================
     function renderDetails(summary) {
         const tbody = $('invDetailsTbody');
         if (!tbody) return;
@@ -375,7 +383,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!state.details.length) {
             tbody.innerHTML = `
-                <tr><td colspan="9" class="text-center text-muted py-4">
+                <tr><td colspan="13" class="text-center text-muted py-4">
                     <i class="bi bi-inbox fs-3 d-block mb-1 opacity-50"></i>
                     لا توجد تفاصيل غير مفوترة.
                 </td></tr>`;
@@ -390,6 +398,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="text-muted small">${escapeHtml(d.invoice_number || '—')}</td>
                 <td class="text-end fw-semibold text-success">${fmt(d.quantity, 3)}</td>
                 <td class="text-center small text-muted">${escapeHtml(d.unit_name || '—')}</td>
+                <td class="text-end fw-semibold text-primary">${fmt(d.batch_quantity, 3)}</td>
+                <td class="text-end fw-semibold text-info">${fmt(d.converted_quantity, 3)}</td>
+                <td class="text-end fw-semibold text-warning">${fmt(d.sorted_quantity, 3)}</td>
+                <td class="text-end fw-semibold text-danger">${fmt(d.remaining_quantity, 3)}</td>
                 <td class="text-end text-muted">${fmt(d.unit_cost)}</td>
                 <td class="text-end text-muted">${fmt(d.sale_price)}</td>
                 <td class="text-end text-muted">${fmt(d.total_cost)} ر.ي</td>
@@ -423,7 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tbody) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="9" class="text-center text-muted py-4">
+                    <td colspan="13" class="text-center text-muted py-4">
                         اختر عميلًا من التوزيع لعرض تفاصيله.
                     </td>
                 </tr>`;
@@ -437,7 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ============================================================
-    // إلغاء العملية
+    // 4. إلغاء العملية
     // ============================================================
     $('btnCancel')?.addEventListener('click', async () => {
         const ok = await confirmDialog('إلغاء العملية والعودة للبداية؟', {
@@ -451,8 +463,6 @@ document.addEventListener('DOMContentLoaded', () => {
         state.paymentAccountId = null;
 
         if ($('selectedDistributionLabel')) $('selectedDistributionLabel').textContent = 'لم يتم اختيار توزيع';
-
-        // ✅ تفريغ حقل الحساب
         const accountInput = $('paymentAccountTrigger');
         if (accountInput) accountInput.value = '';
 
@@ -463,10 +473,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ============================================================
-    // حساب الدفع — عبر window.AccountPicker الموحد
+    // 5. حساب الدفع
     // ============================================================
     $('paymentAccountTrigger')?.addEventListener('click', () => {
-        // ✅ آجل = 1 (SalesInvoice::PAYMENT_CREDIT)
         if (state.paymentMethod === 1) {
             toastWarning('الآجل لا يحتاج حساب دفع.');
             return;
@@ -477,26 +486,18 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // ✅ وسم السياق لمنع تعارض purchase-distribution.js
         window.__accountPickerOwner = 'payment';
-
-        // ✅ بنك = 3 (SalesInvoice::PAYMENT_BANK)، نقدي = 2 (CASH)
         const type = state.paymentMethod === 3 ? 'bank' : 'cash';
 
         window.AccountPicker.open(type, (account) => {
             state.paymentAccountId = account.id;
-
-            // ✅ ضع القيمة داخل input
             const input = $('paymentAccountTrigger');
             if (input) {
-                input.value = account.code
-                    ? `${account.name} (${account.code})`
-                    : account.name;
+                input.value = account.code ? `${account.name} (${account.code})` : account.name;
             }
-
             toastSuccess(`تم اختيار: ${account.name}`);
         }, {
-            allowedTypes: [type],   // ✅ يعرض التبويب المحدد فقط (صناديق أو بنوك)
+            allowedTypes: [type],
         });
     });
 
@@ -504,17 +505,13 @@ document.addEventListener('DOMContentLoaded', () => {
         radio.addEventListener('change', (e) => {
             state.paymentMethod = parseInt(e.target.value);
             state.paymentAccountId = null;
-
-            // ✅ تفريغ حقل الحساب
             const input = $('paymentAccountTrigger');
             if (input) input.value = '';
-
             updatePaymentAccountVisibility();
         });
     });
 
     function updatePaymentAccountVisibility() {
-        // ✅ آجل = 1
         const isCredit = state.paymentMethod === 1;
         if ($('paymentAccountWrapper')) {
             $('paymentAccountWrapper').style.display = isCredit ? 'none' : '';
@@ -522,25 +519,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ============================================================
-    // إصدار الفاتورة
+    // 6. إصدار الفاتورة
     // ============================================================
     $('btnIssue')?.addEventListener('click', issueInvoice);
 
     async function issueInvoice() {
-        if (!state.distribution) {
-            toastError('اختر توزيعًا أولًا.');
-            return;
-        }
-        if (!state.customer) {
-            toastError('اختر عميلًا أولًا.');
-            return;
-        }
-        if (!state.details.length) {
-            toastError('لا توجد تفاصيل قابلة للفوترة.');
-            return;
-        }
-
-        // ✅ آجل = 1
+        if (!state.distribution) { toastError('اختر توزيعًا أولًا.'); return; }
+        if (!state.customer) { toastError('اختر عميلًا أولًا.'); return; }
+        if (!state.details.length) { toastError('لا توجد تفاصيل قابلة للفوترة.'); return; }
         if (state.paymentMethod !== 1 && !state.paymentAccountId) {
             toastError('اختر حساب الدفع أولًا (نقدي/بنك).');
             return;
@@ -559,7 +545,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 customer_id:        state.customer.customer_id,
                 distribution_ids:   [state.distribution.id],
                 payment_method:     state.paymentMethod,
-                // ✅ آجل = 1
                 payment_account_id: state.paymentMethod === 1 ? null : state.paymentAccountId,
             };
 
@@ -574,13 +559,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 setTimeout(() => toastSuccess(`فاتورة البيع رقم: ${res.invoice_number}`), 500);
             }
 
-            // إعادة تعيين قسم العميل
             state.customer = null;
             state.details  = [];
             if ($('selectedCustomerLabel')) $('selectedCustomerLabel').textContent = 'اختر عميلًا آخر';
             if ($('invDetailsTbody')) {
                 $('invDetailsTbody').innerHTML = `
-                    <tr><td colspan="9" class="text-center text-muted py-4">
+                    <tr><td colspan="13" class="text-center text-muted py-4">
                         تمت الفوترة. اختر عميلًا جديدًا لعرض تفاصيله.
                     </td></tr>`;
             }

@@ -26,7 +26,7 @@ class ItemStoreRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'itemName2' => ['required', 'string', 'max:255', 'unique:Items,itemName2'],
+            'itemName2' => ['required', 'string', 'max:255', 'unique:items,itemName2'],
         ];
     }
 

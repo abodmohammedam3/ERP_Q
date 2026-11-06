@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class JournalEntry extends Model
 {
-    protected $table      = 'Journal_Entries';
+    protected $table      = 'journal_entries';
     protected $primaryKey = 'entryID';
     public    $timestamps = false;
 

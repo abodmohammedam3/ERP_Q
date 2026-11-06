@@ -23,7 +23,7 @@ return new class extends Migration
     private const TABLES = [
         'units',
         'type',
-        'items',
+        'Items',
         'coins',
         'stocks',
         'boxes',

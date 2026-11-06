@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class OpeningBalance extends Model
 {
-    protected $table      = 'openingBalances';
+    protected $table      = 'openingbalances';
     protected $primaryKey = 'openingBalancesID';
     public    $incrementing = true;
     protected $keyType    = 'int';

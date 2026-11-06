@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Item extends Model
 {
-    protected $table = 'Items';
+    protected $table = 'items';
     protected $primaryKey = 'itemID';
     public $incrementing = true;
     protected $keyType = 'int';

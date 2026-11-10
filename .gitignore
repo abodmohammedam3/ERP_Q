@@ -30,3 +30,4 @@ yarn-error.log
 /.vscode
 /.zed
 /storage/framework/views/*.php
+/.deploy_hashes.json

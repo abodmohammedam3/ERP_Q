@@ -12,36 +12,54 @@ param(
 $ErrorActionPreference = "Stop"
 $Source = Split-Path -Parent $PSScriptRoot
 
-# قائمة الملفات المعدلة فقط
+# قائمة ملفات resources المعدلة فقط (تسمية الرعوي + اسم النظام في الناف بار)
+# ملاحظة: ملفا التقارير المعدّلان (PurchaseInvoicesReport / AccountStatementReport)
+# يُرفعان تلقائياً مع مجلد app الكامل أدناه
 $ModifiedFiles = @(
-    "app\Models\Customer.php",
-    "app\Models\Supplier.php",
-    "app\Models\Inventory\Item.php",
-    "app\Models\Accounting\OpeningBalance.php",
-    "app\Models\Accounting\JournalEntry.php",
-    "app\Models\Accounting\JournalEntryLine.php",
-    "app\Reports\Accounting\TrialBalanceReport.php",
-    "app\Reports\Accounting\GeneralLedgerReport.php",
-    "app\Reports\Accounting\AccountStatementReport.php",
-    "app\Http\Requests\Inventory\ItemUpdateRequest.php",
-    "app\Services\Export\Exporters\ItemExporter.php",
-    "app\Services\Export\Exporters\SupplierExporter.php",
-    "app\Http\Requests\Inventory\ItemStoreRequest.php",
-    "app\Http\Requests\Purchases\StorePurchaseInvoiceRequest.php",
-    "app\Http\Requests\Sales\StoreSalesInvoiceRequest.php",
-    "app\Http\Controllers\Operation\Movements\InventoryMovementController.php",
-    "resources\views\operation\accounting\journalEntries\detailsModal.blade.php",
-    "app\Http\Controllers\accounting\JournalEntryController.php",
-    "resources\js\accounting\journalEntries.js",
-    "app\Reports\Inventory\ItemLedgerReport.php"
+    "resources\views\layouts\navbar.blade.php",
+    "resources\views\layouts\sidebar.blade.php",
+    "resources\views\dashboard\SupplyDistribution.blade.php",
+    "resources\views\dashboard\SystemIndicators.blade.php",
+    "resources\views\operation\accounting\paymentVouchers\accountPickerModal.blade.php",
+    "resources\views\operation\model\suppliers.blade.php",
+    "resources\views\operation\models\suppliers.blade.php",
+    "resources\views\operation\movements\balances\modals.blade.php",
+    "resources\views\operation\movements\balances\table.blade.php",
+    "resources\views\operation\movements\models\suppliers.blade.php",
+    "resources\views\operation\purchase-distribution\history\invoice-picker-modal.blade.php",
+    "resources\views\operation\purchase-distribution\accountPickerModal.blade.php",
+    "resources\views\operation\purchase-distribution\invoice-modal.blade.php",
+    "resources\views\operation\purchases\invoicesPurch\haed.blade.php",
+    "resources\views\operation\purchases\invoicesPurch\index.blade.php",
+    "resources\views\operation\purchases\returns\header.blade.php",
+    "resources\views\operation\purchases\returns\index.blade.php",
+    "resources\views\operation\sales\invoices\detalis.blade.php",
+    "resources\views\print\purchase-invoice.blade.php",
+    "resources\views\print\purchase-return.blade.php",
+    "resources\views\setting\accounting\openingBalances\accountPicker.blade.php",
+    "resources\views\setting\accounting\openingBalances\index.blade.php",
+    "resources\views\setting\accounting\openingBalances\tabs.blade.php",
+    "resources\views\setting\suppliers\addUpdate.blade.php",
+    "resources\views\setting\suppliers\deletModel.blade.php",
+    "resources\views\setting\suppliers\index.blade.php",
+    "resources\views\setting\suppliers\print.blade.php",
+    "resources\views\setting\suppliers\search.blade.php",
+    "resources\views\setting\suppliers\table.blade.php",
+    "resources\views\shared\lookup-modal.blade.php",
+    "resources\js\accounting\chartOfAccounts.js",
+    "resources\js\accounting\openingBalances.js",
+    "resources\js\invoice\sales_invoice.js",
+    "resources\js\returns\purchase_return.js",
+    "resources\js\purchases.js",
+    "resources\js\shared\lookup.js",
+    "resources\js\shared\supplier.js",
+    "resources\js\supplier.js"
 )
 
 # إضافة كل ملفات مجلد public/build
 $BuildFiles = Get-ChildItem "$Source\public\build" -Recurse -File | ForEach-Object {
     $_.FullName.Substring($Source.Length + 1)
 }
-
-$FilesToUpload = $ModifiedFiles + $BuildFiles
 
 # الملفات التي يجب حذفها من السيرفر
 $FilesToDelete = @(
@@ -77,7 +95,7 @@ function New-RemoteDirectory([string]$relDir) {
             $req = New-FtpRequest "ftp://$FtpHost$cur" ([System.Net.WebRequestMethods+Ftp]::MakeDirectory)
             $resp = $req.GetResponse(); $resp.Close()
         }
-        catch { } 
+        catch { }
     }
 }
 
@@ -85,7 +103,7 @@ function New-RemoteDirectory([string]$relDir) {
 function Send-FtpFile([string]$rel) {
     $localPath = Join-Path $Source $rel
     if (-not (Test-Path $localPath)) { Write-Host "Not found: $rel" -ForegroundColor Red; return }
-    
+
     $remotePath = "$RemoteRoot/" + ($rel -replace '\\', '/')
     $remoteDir = $remotePath -replace '/[^/]+$', ''
     New-RemoteDirectory ($remoteDir.Substring($RemoteRoot.Length).TrimStart('/'))
@@ -120,7 +138,7 @@ function Remove-FtpFile([string]$rel) {
 }
 
 # ═══════════════════════════════
-# رفع مجلد app بالكامل (كل الملفات والمجلدات الفرعية)
+# رفع مجلد app بالكامل + ملفات resources المعدلة + مجلد public/build
 # مع استبدال أي ملفات قديمة على السيرفر
 # ═══════════════════════════════
 
@@ -129,11 +147,11 @@ $AllAppFiles = Get-ChildItem $AppDir -Recurse -File | ForEach-Object {
     $_.FullName.Substring($Source.Length + 1)
 }
 
-$FilesToUpload = $AllAppFiles + $BuildFiles
+$FilesToUpload = $AllAppFiles + $BuildFiles + $ModifiedFiles
 
-Write-Host "Found $($FilesToUpload.Count) files in app folder (full upload)." -ForegroundColor Cyan
+Write-Host "Found $($FilesToUpload.Count) files (app full + public/build + modified resources)." -ForegroundColor Cyan
 
-Write-Host "=== Starting Upload of app Folder (FULL) ===" -ForegroundColor Cyan
+Write-Host "=== Starting Upload (app FULL + build + modified resources) ===" -ForegroundColor Cyan
 foreach ($f in $FilesToUpload) {
     Send-FtpFile $f
 }

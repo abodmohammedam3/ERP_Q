@@ -13,7 +13,7 @@
                 <span class="d-flex align-items-center justify-content-center bg-success rounded-2 p-2 shadow-sm">
                     <i class="bi bi-grid-1x2-fill"></i>
                 </span>
-                <span class="d-none d-sm-inline">نظام ERP</span>
+                <span class="d-none d-sm-inline">وكالة هاشم عبده فارع البراق</span>
             </a>
         </div>
 

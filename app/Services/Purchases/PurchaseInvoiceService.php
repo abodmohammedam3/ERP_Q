@@ -8,7 +8,6 @@ use App\Models\Inventory\InventoryMovementDetail;
 use App\Models\Inventory\Stock;
 use App\Models\Purchases\PurchaseInvoice;
 use App\Models\Purchases\PurchaseInvoiceDetail;
-use App\Services\Inventory\InventoryService;
 use App\Services\JournalEntryService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -267,8 +266,19 @@ public function delete(int $id): void
 
         ksort($pairs);
 
-        /* ✅ قفل مجمّع: استعلام lockForUpdate واحد بدل استعلام لكل تركيبة */
-        app(InventoryService::class)->lockRowsForPairs(array_values($pairs));
+        foreach ($pairs as $pair) {
+            $query = DB::table('inventory_movement_details')
+                ->where('item_id', $pair['item_id'])
+                ->where('warehouse_id', $pair['warehouse_id']);
+
+            if ($pair['unit_id']) {
+                $query->where('unit_id', $pair['unit_id']);
+            }
+
+            $query->select('movement_detail_id')
+                  ->lockForUpdate()
+                  ->get();
+        }
     }
 
     // =========================================================
@@ -383,11 +393,17 @@ public function delete(int $id): void
 
     public function deleteInventoryMovement(PurchaseInvoice $invoice): void
     {
-        /* ✅ حذف مجمّع (استعلامان بدل 2N) — منطق موحد في InventoryService */
-        app(InventoryService::class)->deleteMovementsBySource(
-            InventoryMovement::SOURCE_PURCHASE_INVOICE,
-            (int) $invoice->purchase_invoice_id
-        );
+        $movements = InventoryMovement::where(
+                'source_type',
+                InventoryMovement::SOURCE_PURCHASE_INVOICE
+            )
+            ->where('source_id', $invoice->purchase_invoice_id)
+            ->get();
+
+        foreach ($movements as $movement) {
+            $movement->details()->delete();
+            $movement->delete();
+        }
     }
 
     // =========================================================

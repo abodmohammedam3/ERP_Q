@@ -278,9 +278,24 @@ class SalesInvoiceService
 
         ksort($pairs);
 
-        /* ✅ قفل مجمّع: استعلام lockForUpdate واحد بدل استعلام لكل تركيبة
-           (نفس التركيبات ونفس الترتيب — تم نشر المنطق إلى InventoryService) */
-        $this->inventoryService->lockRowsForPairs(array_values($pairs));
+        foreach ($pairs as $pair) {
+            $query = DB::table('inventory_movement_details')
+                ->where('item_id', $pair['item_id'])
+                ->where('warehouse_id', $pair['warehouse_id']);
+
+            if ($pair['unit_id']) {
+                $query->where('unit_id', $pair['unit_id']);
+            }
+
+            /* ✅ القفل على دفعة المورد المختار تحديداً */
+            if ($pair['supplier_account_id'] !== null) {
+                $query->where('supplier_account_id', $pair['supplier_account_id']);
+            }
+
+            $query->select('movement_detail_id')
+                  ->lockForUpdate()
+                  ->get();
+        }
     }
 
     // =========================================================
@@ -289,10 +304,6 @@ class SalesInvoiceService
     protected function validateStockAvailability(array $details): void
     {
         $errors = [];
-
-        /* ✅ تجميع التركيبات أولاً ثم قراءة الأرصدة دفعة واحدة
-           (استعلام GROUP BY واحد بدل استعلامين SUM لكل سطر) */
-        $combos = [];
 
         foreach ($details as $i => $row) {
             $itemId      = $row['item_id'] ?? null;
@@ -305,33 +316,18 @@ class SalesInvoiceService
 
             if (!$itemId || !$warehouseId || $qty <= 0) continue;
 
-            $combos[] = [
-                'index'               => $i,
-                'item_id'             => (int) $itemId,
-                'warehouse_id'        => (int) $warehouseId,
-                'unit_id'             => $unitId !== null ? (int) $unitId : null,
-                'supplier_account_id' => $supplierId,
-                'quantity'            => $qty,
-            ];
-        }
+            /* ✅ الفحص على دفعة المورد المختار تحديداً —
+               null = رصيد التوريد العام (بدون مورد) */
+            $available = $this->inventoryService->availableQuantityForSupplier(
+                (int) $itemId,
+                (int) $warehouseId,
+                $unitId !== null ? (int) $unitId : null,
+                $supplierId
+            );
 
-        if (empty($combos)) {
-            return;
-        }
-
-        /* ✅ الفحص على دفعة المورد المختار تحديداً —
-           null = رصيد التوريد العام (بدون مورد) — دلالة مطابقة للفردي */
-        $availableMap = $this->inventoryService->availableQuantityBatch($combos);
-
-        foreach ($combos as $combo) {
-            $key = $combo['item_id'] . '|' . $combo['warehouse_id'] . '|'
-                 . ($combo['unit_id'] ?? 0) . '|' . ($combo['supplier_account_id'] ?? 0);
-
-            $available = (float) ($availableMap[$key] ?? 0);
-
-            if ($available < $combo['quantity']) {
-                $errors["details.{$combo['index']}.quantity"] =
-                    "الكمية المتوفرة من هذه الدفعة {$available} أقل من المطلوب {$combo['quantity']}";
+            if ($available < $qty) {
+                $errors["details.{$i}.quantity"] =
+                    "الكمية المتوفرة من هذه الدفعة {$available} أقل من المطلوب {$qty}";
             }
         }
 
@@ -438,11 +434,20 @@ class SalesInvoiceService
 
     public function deleteInventoryMovement(SalesInvoice $invoice): void
     {
-        /* ✅ حذف مجمّع (استعلامان بدل 2N) — منطق موحد في InventoryService */
-        $this->inventoryService->deleteMovementsBySource(
-            InventoryMovement::SOURCE_SALES_INVOICE,
-            (int) $invoice->sales_invoice_id
-        );
+        $movements = InventoryMovement::where(
+                'source_type',
+                InventoryMovement::SOURCE_SALES_INVOICE
+            )
+            ->where('source_id', $invoice->sales_invoice_id)
+            ->with('details')
+            ->get();
+
+        foreach ($movements as $movement) {
+            $this->inventoryService->reverseMovement($movement);
+
+            $movement->details()->delete();
+            $movement->delete();
+        }
     }
 
     // =========================================================

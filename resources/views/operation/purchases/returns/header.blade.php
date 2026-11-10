@@ -86,9 +86,9 @@
                 >
             </div>
 
-            <!-- المورد -->
+            <!-- الرعوي -->
             <div class="col-md-4">
-                <label for="purchaseReturnSupplierName" class="form-label">المورد</label>
+                <label for="purchaseReturnSupplierName" class="form-label">الرعوي</label>
                 <input type="hidden" id="purchaseReturnSupplierID" name="purchaseReturnSupplierID">
                 <input
                     type="text"

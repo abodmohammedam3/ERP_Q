@@ -1,6 +1,6 @@
 /**
- * Supplier Module - إدارة الموردين (بحث، اختيار، مودال)
- * يمكن استخدامها في أي صفحة تحتاج إلى اختيار مورد
+ * Supplier Module - إدارة الرعويين (بحث، اختيار، مودال)
+ * يمكن استخدامها في أي صفحة تحتاج إلى اختيار رعوي
  */
 
 window.Supplier = {
@@ -23,12 +23,12 @@ window.Supplier = {
         return this;
     },
 
-    // فتح مودال المورد
+    // فتح مودال الرعوي
     openModal() {
         const modalId = 'SupplierModal';
         const modal = Modals.get(modalId);
         if (!modal) {
-            alert('مودال المورد غير متوفر');
+            alert('مودال الرعوي غير متوفر');
             return;
         }
 
@@ -46,7 +46,7 @@ window.Supplier = {
         }, 300);
     },
 
-    // البحث عن الموردين
+    // البحث عن الرعويين
     search() {
         const searchValue = document.getElementById('SupplierSearchInput')?.value.trim() || '';
         const tbody = document.getElementById('SupplierResults');
@@ -54,8 +54,8 @@ window.Supplier = {
 
         // بيانات وهمية (يمكن استبدالها بـ AJAX)
         const suppliers = [
-            { id: 1, name: 'مورد تجريبي 1', account: '401001' },
-            { id: 2, name: 'مورد تجريبي 2', account: '401002' },
+            { id: 1, name: 'رعوي تجريبي 1', account: '401001' },
+            { id: 2, name: 'رعوي تجريبي 2', account: '401002' },
             { id: 3, name: 'مؤسسة التوريدات', account: '401003' }
         ];
 
@@ -86,7 +86,7 @@ window.Supplier = {
         });
     },
 
-    // اختيار مورد
+    // اختيار رعوي
     select(id, name, account) {
         document.getElementById(this.targetHiddenId).value = id;
         document.getElementById(this.targetFieldId).value = name;

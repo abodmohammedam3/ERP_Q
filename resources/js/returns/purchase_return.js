@@ -375,7 +375,7 @@ function removePurchaseReturnRow(btn) {
 
 /**
  * ✅ تفريغ اختيار الفاتورة الأصلية فقط:
- * الحقول المخفية للمعرّفات + أسماء المورد/العملة/المخزن + سعر الصرف،
+ * الحقول المخفية للمعرّفات + أسماء الرعوي/العملة/المخزن + سعر الصرف،
  * ولا يلمس رقم المرتجع (PurchaseReturnNo) ولا تاريخه.
  */
 function clearOriginalInvoiceSelection() {
@@ -1245,7 +1245,7 @@ async function savePurchaseReturn() {
     if (!invoiceId) return purchaseReturnNotify('يجب اختيار الفاتورة الأصلية', 'warning');
 
     const supplierId = purchaseReturnGetValue('purchaseReturnSupplierID');
-    if (!supplierId) return purchaseReturnNotify('يجب اختيار المورد', 'warning');
+    if (!supplierId) return purchaseReturnNotify('يجب اختيار الرعوي', 'warning');
 
     const coinId = purchaseReturnGetValue('purchaseReturnCoinsID');
     if (!coinId) return purchaseReturnNotify('يجب اختيار العملة', 'warning');

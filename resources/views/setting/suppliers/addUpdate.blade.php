@@ -1,5 +1,5 @@
 {{-- ================================================================
-     مودال إضافة / تعديل مورد
+     مودال إضافة / تعديل رعوي
 ================================================================ --}}
 <div class="modal fade"
      id="supplierModal"
@@ -18,7 +18,7 @@
 
                 <h5 class="modal-title">
                     <i class="bi bi-truck"></i>
-                    <span id="supplierModalLabel">إضافة مورد جديد</span>
+                    <span id="supplierModalLabel">إضافة رعوي جديد</span>
                 </h5>
 
                 <button type="button"
@@ -38,17 +38,17 @@
 
                     @csrf
 
-                    {{-- معرف المورد المخفي --}}
+                    {{-- معرف الرعوي المخفي --}}
                     <input type="hidden"
                            name="suplierID"
                            id="supplierID">
 
                     <div class="row g-3">
 
-                        {{-- 1 - اسم المورد --}}
+                        {{-- 1 - اسم الرعوي --}}
                         <div class="col-md-6">
                             <label for="supName" class="form-label">
-                                اسم المورد
+                                اسم الرعوي
                                 <span class="text-danger">*</span>
                             </label>
 
@@ -60,7 +60,7 @@
                                    required>
 
                             <div class="invalid-feedback">
-                                يرجى إدخال اسم المورد
+                                يرجى إدخال اسم الرعوي
                             </div>
                         </div>
 

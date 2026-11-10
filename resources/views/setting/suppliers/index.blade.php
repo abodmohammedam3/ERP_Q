@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'الموردون')
+@section('title', 'الرعويون')
 
 @section('content')
 <div class="container-fluid py-3">
@@ -8,9 +8,9 @@
     <header class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h4 class="mb-1">
-                <i class="bi bi-truck"></i> الموردون
+                <i class="bi bi-truck"></i> الرعويون
             </h4>
-            <small class="text-muted">إدارة الموردين المسجلين في النظام</small>
+            <small class="text-muted">إدارة الرعويين المسجلين في النظام</small>
         </div>
 
         <div class="d-flex gap-2">
@@ -24,7 +24,7 @@
             <button type="button"
                     class="btn btn-primary"
                     id="addSupplierBtn">
-                <i class="bi bi-plus-lg"></i> إضافة مورد
+                <i class="bi bi-plus-lg"></i> إضافة رعوي
             </button>
         </div>
     </header>

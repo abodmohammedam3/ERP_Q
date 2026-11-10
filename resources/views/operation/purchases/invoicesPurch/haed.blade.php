@@ -71,15 +71,15 @@
                 >
             </div>
 
-            <!-- المورد -->
+            <!-- الرعوي -->
             <div class="col-md-4">
-                <label for="supplierName" class="form-label">المورد</label>
+                <label for="supplierName" class="form-label">الرعوي</label>
                 <input type="hidden" id="suplierID">
                 <input
                     type="text"
                     class="form-control"
                     id="supplierName"
-                    placeholder="اكتب اسم المورد أو رقمه المحاسبي"
+                    placeholder="اكتب اسم الرعوي أو رقمه المحاسبي"
                     autocomplete="off"
                     disabled
                     data-lookup="supplier"

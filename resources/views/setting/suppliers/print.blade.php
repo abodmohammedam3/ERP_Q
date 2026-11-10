@@ -6,7 +6,7 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>تقرير الموردين - {{ $printDate }}</title>
+    <title>تقرير الرعويين - {{ $printDate }}</title>
 
     <style>
 
@@ -170,7 +170,7 @@
 
         <div class="report-header">
 
-            <h2>تقرير الموردين</h2>
+            <h2>تقرير الرعويين</h2>
 
             <div class="date">
                 تاريخ الطباعة: {{ $printDate }}
@@ -189,7 +189,7 @@
 
 
         {{-- ================================
-             جدول الموردين
+             جدول الرعويين
         ================================= --}}
 
         <table>
@@ -197,7 +197,7 @@
             <thead>
                 <tr>
                     <th>#</th>
-                    <th>اسم المورد</th>
+                    <th>اسم الرعوي</th>
                     <th>رقم الهاتف</th>
                     <th>العنوان</th>
                     <th>رقم الحساب التحليلي</th>
@@ -233,7 +233,7 @@
 
                     <tr>
                         <td colspan="6" class="empty">
-                            لا يوجد موردون مطابقون لمعايير البحث
+                            لا يوجد رعويون مطابقون لمعايير البحث
                         </td>
                     </tr>
 
@@ -250,11 +250,11 @@
 
         <div class="report-footer">
 
-            <span>إجمالي الموردين: {{ $totalSuppliers }}</span>
+            <span>إجمالي الرعويين: {{ $totalSuppliers }}</span>
 
-            <span>الموردون النشطون: {{ $activeSuppliers }}</span>
+            <span>الرعويون النشطون: {{ $activeSuppliers }}</span>
 
-            <span>الموردون غير النشطين: {{ $inactiveSuppliers }}</span>
+            <span>الرعويون غير النشطين: {{ $inactiveSuppliers }}</span>
 
         </div>
 

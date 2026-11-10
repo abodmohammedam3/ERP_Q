@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * كشف حساب (عميل / مورد / أي حساب من الدليل).
+ * كشف حساب (عميل / رعوي / أي حساب من الدليل).
  *
  * حركة حساب واحد زمنياً مع رصيد أول المدة والرصيد التراكمي.
  * الرصيد يُحسب حسب طبيعة الحساب (nature): مدينة أو دائنة.
@@ -30,7 +30,7 @@ class AccountStatementReport implements Report
 
     public function description(): string
     {
-        return 'حركة عميل أو مورد مع رصيد أول المدة والرصيد التراكمي';
+        return 'حركة عميل أو رعوي مع رصيد أول المدة والرصيد التراكمي';
     }
 
     public function icon(): string

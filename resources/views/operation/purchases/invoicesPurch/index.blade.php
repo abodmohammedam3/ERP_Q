@@ -11,7 +11,7 @@
 
         <div>
             <h4 class="mb-1">فاتورة شراء</h4>
-            <small class="text-muted">إدارة فواتير المشتريات من الموردين</small>
+            <small class="text-muted">إدارة فواتير المشتريات من الرعويين</small>
         </div>
 
         <div class="btn-group" role="group">
@@ -87,7 +87,7 @@
                                 type="text"
                                 class="form-control"
                                 id="invoiceSearchInput"
-                                placeholder="ابحث برقم الفاتورة، اسم المورد، الصنف، النوع، الرمز، طريقة الدفع..."
+                                placeholder="ابحث برقم الفاتورة، اسم الرعوي، الصنف، النوع، الرمز، طريقة الدفع..."
                                 oninput="debouncedInvoiceSearch()"
                                 autocomplete="off"
                             >
@@ -111,7 +111,7 @@
                                 <th style="width: 50px;">ت</th>
                                 <th>رقم الفاتورة</th>
                                 <th>التاريخ</th>
-                                <th>المورد</th>
+                                <th>الرعوي</th>
                                 <th>العملة</th>
                                 <th>طريقة الدفع</th>
                                 <th>الإجمالي</th>

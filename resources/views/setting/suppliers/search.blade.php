@@ -3,15 +3,15 @@
     <div class="card-body">
         <div class="row g-2 align-items-end">
 
-            {{-- اسم المورد --}}
+            {{-- اسم الرعوي --}}
             <div class="col-12 col-md-4">
-                <label for="searchSupplierName" class="form-label">اسم المورد</label>
+                <label for="searchSupplierName" class="form-label">اسم الرعوي</label>
                 <input
                     type="text"
                     class="form-control"
                     id="searchSupplierName"
                     name="search_name"
-                    placeholder="ابحث باسم المورد..."
+                    placeholder="ابحث باسم الرعوي..."
                     autocomplete="off">
             </div>
 

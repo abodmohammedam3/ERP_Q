@@ -396,7 +396,7 @@
                         type="text"
                         class="form-control"
                         id="stockBalancesSearch"
-                        placeholder="ابحث في: الصنف / النوع / الرمز / المخزن / المورد..."
+                        placeholder="ابحث في: الصنف / النوع / الرمز / المخزن / الرعوي..."
                         autocomplete="off"
                         oninput="filterStockBalances()"
                     >
@@ -410,7 +410,7 @@
                                 <th>النوع</th>
                                 <th>الرمز</th>
                                 <th>المخزن</th>
-                                <th>المورد</th>
+                                <th>الرعوي</th>
                                 <th>الوحدة</th>
                                 <th>الرصيد</th>
                                 <th>التكلفة</th>

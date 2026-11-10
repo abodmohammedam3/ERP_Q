@@ -14,7 +14,7 @@
                 <i class="bi bi-arrow-return-right me-2"></i>
                 مرتجع شراء
             </h4>
-            <small class="text-muted">إدارة فواتير مرتجعات المشتريات للموردين</small>
+            <small class="text-muted">إدارة فواتير مرتجعات المشتريات للرعويين</small>
         </div>
 
         <div class="btn-group" role="group">
@@ -80,7 +80,7 @@
                                 type="text"
                                 class="form-control"
                                 id="originalPurchaseInvoiceSearchInput"
-                                placeholder="أدخل رقم الفاتورة أو اسم المورد..."
+                                placeholder="أدخل رقم الفاتورة أو اسم الرعوي..."
                                 oninput="debouncedOriginalPurchaseInvoiceSearch()"
                                 autocomplete="off"
                             >
@@ -103,7 +103,7 @@
                             <tr class="text-center">
                                 <th>رقم الفاتورة</th>
                                 <th>التاريخ</th>
-                                <th>المورد</th>
+                                <th>الرعوي</th>
                                 <th>العملة</th>
                                 <th>طريقة الدفع</th>
                                 <th>الإجمالي</th>
@@ -155,7 +155,7 @@
                                 type="text"
                                 class="form-control"
                                 id="purchaseReturnSearchInput"
-                                placeholder="أدخل رقم المرتجع أو رقم الفاتورة أو اسم المورد..."
+                                placeholder="أدخل رقم المرتجع أو رقم الفاتورة أو اسم الرعوي..."
                                 oninput="debouncedPurchaseReturnSearch()"
                                 autocomplete="off"
                             >
@@ -179,7 +179,7 @@
                                 <th>رقم المرتجع</th>
                                 <th>التاريخ</th>
                                 <th>الفاتورة الأصلية</th>
-                                <th>المورد</th>
+                                <th>الرعوي</th>
                                 <th>طريقة الدفع</th>
                                 <th>الإجمالي</th>
                                 <th>الحالة</th>

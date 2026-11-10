@@ -319,7 +319,7 @@
 {{-- Info Grid --}}
 <div class="info-grid">
     <div class="info-item">
-        <span class="info-label">المورد</span>
+        <span class="info-label">الرعوي</span>
         <span class="info-value">{{ $invoice->supplierAccount->accName ?? '—' }}</span>
     </div>
     <div class="info-item">

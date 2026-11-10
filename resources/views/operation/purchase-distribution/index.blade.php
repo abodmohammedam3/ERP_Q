@@ -21,7 +21,7 @@
 
 @push('scripts')
     @vite([
-        
+        'resources/js/receipt/accountPicker.js',
         'resources/js/pages/purchase-distribution.js',
         'resources/js/pages/customer-invoices.js',
         'resources/js/pages/history.js',

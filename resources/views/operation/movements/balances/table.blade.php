@@ -55,12 +55,6 @@
 
         {{-- شريط البحث --}}
         <div class="input-group mb-3">
-<<<<<<< HEAD
-            <span class="input-group-text bg-white"><i class="bi bi-search text-primary"></i></span>
-            <input type="text" class="form-control" id="balancesSearchInput"
-                   placeholder="ابحث في: الصنف / النوع / الرمز / المخزن / المورد / الوحدة..."
-                   autocomplete="off" oninput="filterStockBalances()">
-=======
             <span class="input-group-text bg-white">
                 <i class="bi bi-search text-primary"></i>
             </span>
@@ -68,11 +62,10 @@
                 type="text"
                 class="form-control"
                 id="balancesSearchInput"
-                placeholder="ابحث في: الصنف / النوع / الرمز / المخزن / الرعوي / الوحدة..."
+                placeholder="ابحث في: الصنف / النوع / الرمز / المخزن / المورد / الوحدة..."
                 autocomplete="off"
                 oninput="filterStockBalances()"
             >
->>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
         </div>
 
         {{-- الجدول --}}
@@ -84,7 +77,7 @@
                         <th>النوع</th>
                         <th>الرمز</th>
                         <th>المخزن</th>
-                        <th>الرعوي</th>
+                        <th>المورد</th>
                         <th>الوحدة</th>
                         <th>الكمية</th>
                         <th>التكلفة</th>

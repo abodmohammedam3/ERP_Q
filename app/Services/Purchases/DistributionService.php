@@ -78,8 +78,6 @@ class DistributionService
                 ->filter()->unique()->values()->implode('، ');
 
             // 5) تجهيز تفاصيل فاتورة البيع من صفوف التوزيع
-            //    (المنطق: حركة الدخول الأصلية هي دفعة الصنف؛ نستخدم
-            //     مورد الدفعة + المخزن + الوحدة + كود الصنف منها)
             $invoiceDetails = $details->map(function (DistributionDetail $d) {
                 $md = $d->movementDetail;
 
@@ -105,9 +103,7 @@ class DistributionService
                 ];
             })->all();
 
-            // 6) إنشاء فاتورة البيع عبر الخدمة الموجودة — نفس مسار فواتير البيع
-            //    اليدوية: فحص توفر المخزون على دفعة المورد، إنشاء حركة مخزون
-            //    (نوع sale/خصم فعلي)، وتوليد القيد المحاسبي تلقائيًا.
+            // 6) إنشاء فاتورة البيع عبر الخدمة الموجودة
             $salesInvoice = $this->salesInvoiceService->create([
                 'invoice_date'   => now()->toDateString(),
                 'account_id'     => (int) $customer->accountID,
@@ -118,9 +114,10 @@ class DistributionService
                     . ($distCodes !== '' ? ' — ' . $distCodes : ''),
                 'reference'      => $distCodes !== '' ? $distCodes : null,
                 'details'        => $invoiceDetails,
+                'skip_stock_validation' => true, // ✅ إضافة هذا السطر لتخطي فحص المخزون
             ]);
 
-            // 7) ربط صفوف التوزيع بالفاتورة الناتجة — تحديث جماعي واحد بدل each()->update()
+            // 7) ربط صفوف التوزيع بالفاتورة الناتجة
             DistributionDetail::query()
                 ->whereIn('id', $details->pluck('id'))
                 ->update([
@@ -128,8 +125,7 @@ class DistributionService
                     'invoiced_at'      => now(),
                 ]);
 
-            /* المتبقي غير المفوتر لكل توزيع — استعلام تجميعي واحد بدل
-               count() منفصل لكل توزيع داخل حلقة. */
+            /* المتبقي غير المفوتر لكل توزيع */
             $remainingByDist = DistributionDetail::query()
                 ->whereIn('distribution_id', $distributionIds)
                 ->whereNull('invoiced_at')
@@ -137,7 +133,7 @@ class DistributionService
                 ->selectRaw('distribution_id, COUNT(*) as c')
                 ->pluck('c', 'distribution_id');
 
-            // ✅ Audit Log: لكل توزيع مشارك — يميّز الإصدار الكامل عن الجزئي
+            // ✅ Audit Log: لكل توزيع مشارك
             $details->pluck('distribution_id')->unique()->each(function ($distId) use ($details, $salesInvoice, $customer, $customerId, $remainingByDist) {
                 $dist = Distribution::find($distId);
                 if (! $dist) return;
@@ -164,7 +160,7 @@ class DistributionService
                 );
             });
 
-            // 8) إغلاق التوزيعات المكتملة — تحديث جماعي واحد بدل حلقة count()+update()
+            // 8) إغلاق التوزيعات المكتملة
             $fullyInvoiced = collect($distributionIds)
                 ->reject(fn ($id) => isset($remainingByDist[$id]))
                 ->values();

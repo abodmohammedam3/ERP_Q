@@ -22,7 +22,7 @@
                     </div>
                     <div class="col-5">
                         <label class="form-label small text-muted mb-1">
-                            <i class="bi bi-truck"></i> اسم المورد
+                            <i class="bi bi-truck"></i> اسم الرعوي
                         </label>
                         <input type="text" class="form-control form-control-sm"
                                id="invoiceFilterSupplier" placeholder="بحث تلقائي...">
@@ -52,7 +52,7 @@
                                 <th style="width:40px">#</th>
                                 <th class="fw-semibold">رقم الفاتورة</th>
                                 <th class="fw-semibold">التاريخ</th>
-                                <th class="fw-semibold">المورد</th>
+                                <th class="fw-semibold">الرعوي</th>
                                 <th class="text-end fw-semibold">الإجمالي</th>
                             </tr>
                         </thead>

@@ -1,4 +1,4 @@
-<!-- نافذة تأكيد حذف المورد -->
+<!-- نافذة تأكيد حذف الرعوي -->
 <div class="delete-confirm-overlay" id="deleteConfirmModal">
     <div class="delete-confirm-box">
 
@@ -6,10 +6,10 @@
             <i class="bi bi-trash3"></i>
         </div>
 
-        <h3>حذف المورد</h3>
+        <h3>حذف الرعوي</h3>
 
         <p>
-            هل أنت متأكد من حذف هذا المورد؟
+            هل أنت متأكد من حذف هذا الرعوي؟
             <br>
             <span>لا يمكن التراجع عن هذه العملية بعد تنفيذها.</span>
         </p>
@@ -25,7 +25,7 @@
             <button type="button"
                     class="delete-confirm-btn"
                     id="deleteConfirmBtn">
-                حذف المورد
+                حذف الرعوي
             </button>
 
         </div>

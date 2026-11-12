@@ -71,16 +71,16 @@ class TrialBalanceReport implements Report
     public function run(array $filters): array
     {
         $query = JournalEntryLine::query()
-            ->join('Journal_Entries as je', 'je.entryID', '=', 'JournalEntrryLine.entryID')
-            ->join('characcount as ca', 'ca.accountID', '=', 'JournalEntrryLine.accountID')
+            ->join('journal_entries as je', 'je.entryID', '=', 'journalentrryline.entryID')
+            ->join('characcount as ca', 'ca.accountID', '=', 'journalentrryline.accountID')
             ->select([
                 'ca.accountID',
                 'ca.accCode as code',
                 'ca.accName as account',
                 'ca.nature',
             ])
-            ->selectRaw('COALESCE(SUM(JournalEntrryLine.localDebit), 0) as debit')
-            ->selectRaw('COALESCE(SUM(JournalEntrryLine.localCredit), 0) as credit')
+            ->selectRaw('COALESCE(SUM(journalentrryline.localDebit), 0) as debit')
+            ->selectRaw('COALESCE(SUM(journalentrryline.localCredit), 0) as credit')
             ->groupBy('ca.accountID', 'ca.accCode', 'ca.accName', 'ca.nature');
 
         if (!empty($filters['date_from'])) {

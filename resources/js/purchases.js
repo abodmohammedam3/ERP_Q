@@ -1245,7 +1245,7 @@ async function saveInvoice() {
     if (!number) return notify('رقم الفاتورة مطلوب', 'warning');
 
     const accountId = document.getElementById('suplierID').value;
-    if (!accountId) return notify('يجب اختيار المورد', 'warning');
+    if (!accountId) return notify('يجب اختيار الرعوي', 'warning');
 
     const coinId = document.getElementById('coinsID').value;
     if (!coinId) return notify('يجب اختيار العملة', 'warning');

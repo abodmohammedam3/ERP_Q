@@ -501,6 +501,128 @@ function chunkArray(arr, size) {
     return chunks;
 }
 
+// ─────────────────────────────────────────────────────────────────
+//  طباعة القيد الفردي (زر "طباعة القيد" داخل مودل التفاصيل)
+// ─────────────────────────────────────────────────────────────────
+function printCurrentEntry() {
+    const entry = State.currentEntry;
+
+    if (!entry || !Array.isArray(entry.lines) || !entry.lines.length) {
+        toast('لا توجد بيانات لطباعة القيد', 'warning');
+        return;
+    }
+
+    const html = buildEntryPrintHTML(entry);
+    openPrintWindow(html);
+}
+
+function buildEntryPrintHTML(entry) {
+    const now = new Date().toLocaleString('ar-YE', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit',
+    });
+
+    let totalDebit      = 0;
+    let totalCredit     = 0;
+    let totalLocalDebit  = 0;
+    let totalLocalCredit = 0;
+
+    const linesHTML = entry.lines.map((line, i) => {
+        totalDebit       += Number(line.debit)       || 0;
+        totalCredit      += Number(line.credit)      || 0;
+        totalLocalDebit  += Number(line.localDebit)  || 0;
+        totalLocalCredit += Number(line.localCredit) || 0;
+
+        return `
+            <tr>
+                <td>${i + 1}</td>
+                <td>${line.accountCode || ''}</td>
+                <td class="text-start">${line.accountName || ''}</td>
+                <td>${line.currencyCode || '—'}</td>
+                <td>${formatRate(line.exchangRate)}</td>
+                <td class="amount">${formatMoney(line.debit)}</td>
+                <td class="amount">${formatMoney(line.credit)}</td>
+                <td class="amount">${formatMoney(line.localDebit)}</td>
+                <td class="amount">${formatMoney(line.localCredit)}</td>
+                <td class="text-start">${line.description || ''}</td>
+            </tr>
+        `;
+    }).join('');
+
+    return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>قيد رقم ${entry.entryNo}</title>
+    <style>
+        @page { size: A4 landscape; margin: 8mm; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; direction: rtl; margin: 0; padding: 0; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0d6efd; padding-bottom: 6px; margin-bottom: 8px; }
+        .header h1 { font-size: 1rem; margin: 0; color: #0d6efd; }
+        .header .meta { font-size: 0.7rem; color: #6c757d; text-align: left; }
+        .entry-meta { display: flex; gap: 24px; font-size: 0.78rem; margin-bottom: 10px; }
+        .entry-meta span b { color: #0d6efd; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
+        th, td { border: 1px solid #dee2e6; padding: 4px 5px; text-align: center; }
+        th { background: #e7f1ff; color: #0d6efd; }
+        td.amount { font-weight: 600; text-align: right; direction: ltr; font-family: 'Consolas', monospace; }
+        td.text-start { text-align: right; }
+        tfoot td { background: #e7f1ff; font-weight: 700; color: #0d6efd; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1><i>قيود اليومية — تفاصيل القيد</i></h1>
+        <div class="meta">التاريخ: ${now}</div>
+    </div>
+
+    <div class="entry-meta">
+        <span>رقم القيد: <b>#${entry.entryNo}</b></span>
+        <span>التاريخ: <b>${entry.entryDate || '—'}</b></span>
+        <span>نوع المستند: <b>${entry.docType || '—'}</b></span>
+        <span>رقم المستند: <b>${entry.docNumber || '—'}</b></span>
+    </div>
+
+    <div class="entry-meta"><span>البيان: <b>${entry.description || '—'}</b></span></div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>رمز الحساب</th>
+                <th>اسم الحساب</th>
+                <th>العملة</th>
+                <th>سعر الصرف</th>
+                <th>مدين</th>
+                <th>دائن</th>
+                <th>مدين (محلي)</th>
+                <th>دائن (محلي)</th>
+                <th>ملاحظات</th>
+            </tr>
+        </thead>
+        <tbody>${linesHTML}</tbody>
+        <tfoot>
+            <tr>
+                <td colspan="5" class="text-start">الإجماليات:</td>
+                <td class="amount">${formatMoney(totalDebit)}</td>
+                <td class="amount">${formatMoney(totalCredit)}</td>
+                <td class="amount">${formatMoney(totalLocalDebit)}</td>
+                <td class="amount">${formatMoney(totalLocalCredit)}</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <script>
+        window.onload = function () {
+            setTimeout(function () { window.print(); }, 400);
+        };
+    <\/script>
+</body>
+</html>`;
+}
+
 // ─────────────────────────────────────────────────────────────
 //  الفلاتر
 // ─────────────────────────────────────────────────────────────
@@ -598,6 +720,9 @@ function bindGlobalEvents() {
         }
     });
 
+    // طباعة القيد الفردي (داخل مودل التفاصيل)
+    El.btnPrintDetails?.addEventListener('click', printCurrentEntry);
+
     // إغلاق المودل بـ ESC
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
@@ -614,3 +739,4 @@ window.loadList = loadList;
 window.applyFilters = applyFilters;
 window.resetFilters = resetFilters;
 window.showEntryDetails = showEntryDetails;
+window.printCurrentEntry = printCurrentEntry;

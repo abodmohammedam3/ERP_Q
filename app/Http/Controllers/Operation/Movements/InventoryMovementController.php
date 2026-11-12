@@ -80,7 +80,7 @@ class InventoryMovementController extends Controller
         ])->find($id);
 
         if (!$movement) {
-            return response()->json(['message' => 'الحركة غير موجودة'], 404);
+            return response()->json(['message' => 'ط§ظ„ط­ط±ظƒط© ط؛ظٹط± ظ…ظˆط¬ظˆط¯ط©'], 404);
         }
 
         return response()->json([
@@ -136,7 +136,7 @@ class InventoryMovementController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'بيانات غير صحيحة',
+                'message' => 'ط¨ظٹط§ظ†ط§طھ ط؛ظٹط± طµط­ظٹط­ط©',
                 'errors'  => $validator->errors(),
             ], 422);
         }
@@ -147,7 +147,13 @@ class InventoryMovementController extends Controller
                 ->exists();
 
             if ($exists) {
+<<<<<<< HEAD
                 return response()->json(['message' => 'توجد حركة مرتبطة بنفس المصدر مسبقًا'], 409);
+=======
+                return response()->json([
+                    'message' => 'طھظˆط¬ط¯ ط­ط±ظƒط© ظ…ط±طھط¨ط·ط© ط¨ظ†ظپط³ ط§ظ„ظ…طµط¯ط± ظ…ط³ط¨ظ‚ظ‹ط§',
+                ], 409);
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
             }
         }
 
@@ -159,6 +165,13 @@ class InventoryMovementController extends Controller
 
             $type      = $request->input('movement_type');
             $direction = InventoryMovement::directionForType($type);
+<<<<<<< HEAD
+=======
+
+            /* âœ… ط§ظ„ط¨ظٹط§ظ† ط§ظ„طھظ„ظ‚ط§ط¦ظٹ: ظٹظڈط¨ظ†ظ‰ ط¯ط§ط¦ظ…ظ‹ط§ ظ…ظ† ط§ظ„ط­ظ‚ظˆظ„ ط§ظ„ط£ط³ط§ط³ظٹط© (ظˆط«ظˆظ‚ظٹط©)
+               ظˆظ„ط§ ظٹط·ظ…ط³ ط£ظٹ ط¨ظٹط§ظ† ظٹط¯ط®ظ„ظ‡ ط§ظ„ظ…ط³طھط®ط¯ظ… â€” ط§ظ„ط¨ظٹط§ظ†ط§طھ ظ…ظˆط¬ظˆط¯ط© ظپظٹ statement/reference/document_number
+               ط¥ظ† ظƒط§ظ† ط§ظ„ظ…ط³طھط®ط¯ظ… ط£ط¯ط®ظ„ ط¨ظٹط§ظ†ظ‹ط§ ظ†طµظٹظ‹ط§ ط­ط±ظ‹ط§ ظٹظڈط­ظپط¸ ظƒظ…ط§ ظ‡ظˆ. */
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
             $statement = $this->buildMovementStatement($request, $nextNumber);
 
             $movement = InventoryMovement::create([
@@ -180,7 +193,7 @@ class InventoryMovementController extends Controller
             DB::commit();
 
             return response()->json([
-                'message'     => 'تم حفظ الحركة بنجاح',
+                'message'     => 'طھظ… ط­ظپط¸ ط§ظ„ط­ط±ظƒط© ط¨ظ†ط¬ط§ط­',
                 'movement_id' => $movement->movement_id,
                 'display_id'  => $movement->display_id,
             ], 201);
@@ -188,46 +201,68 @@ class InventoryMovementController extends Controller
         } catch (\Throwable $e) {
             DB::rollBack();
             return response()->json([
-                'message' => 'فشل حفظ الحركة',
+                'message' => 'ظپط´ظ„ ط­ظپط¸ ط§ظ„ط­ط±ظƒط©',
                 'error'   => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
     }
 
     // =====================================================
-    // الفرز / التجهيز
+    // ط§ظ„ظپط±ط² / ط§ظ„طھط¬ظ‡ظٹط²
     // =====================================================
 
+<<<<<<< HEAD
+=======
+    /**
+     * âœ… ط§ظ„ط¨ظٹط§ظ† ط§ظ„طھظ„ظ‚ط§ط¦ظٹ ظ„ط­ط±ظƒط© ط§ظ„ظ…ط®ط²ظˆظ†
+     * - ظ†ظˆط¹ ط§ظ„ط­ط±ظƒط© + ط±ظ‚ظ… ط§ظ„ظ…ط³طھظ†ط¯ + ط§ظ„ظ…ط®ط²ظ†
+     * - ط¥ظ† ظƒط§ظ† ط§ظ„ظ…ط³طھط®ط¯ظ… ظƒطھط¨ ط¨ظٹط§ظ†ظ‹ط§ ط­ط±ظ‹ط§ (statement) ظٹظڈط¶ط§ظپ ط¨ط¹ط¯ظ‡ ط¨ط¯ظ„ ط·ظ…ط³ظ‡
+     */
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
     private function buildMovementStatement(Request $request, $displayId): string
     {
         $type      = (string) $request->input('movement_type');
         $typeLabel = InventoryMovement::labelForType($type);
 
-        $parts = ['حركة ' . $typeLabel];
+        $parts = ['ط­ط±ظƒط© ' . $typeLabel];
 
         $docNo = trim((string) $request->input('document_number'));
         if ($docNo !== '') {
-            $parts[] = 'مستند رقم ' . $docNo;
+            $parts[] = 'ظ…ط³طھظ†ط¯ ط±ظ‚ظ… ' . $docNo;
         } else {
-            $parts[] = 'رقم ' . $displayId;
+            $parts[] = 'ط±ظ‚ظ… ' . $displayId;
         }
 
         $warehouseId = $request->input('warehouse_id');
         if ($warehouseId) {
+<<<<<<< HEAD
             $warehouseName = \App\Models\Inventory\Stock::where('StockID', $warehouseId)->value('StockName');
             if ($warehouseName) $parts[] = 'المخزن: ' . $warehouseName;
         }
 
         $userStatement = trim((string) $request->input('statement'));
         if ($userStatement !== '') $parts[] = 'البيان: ' . $userStatement;
+=======
+            $warehouseName = \App\Models\Inventory\Stock::where('StockID', $warehouseId)
+                ->value('StockName');
+            if ($warehouseName) {
+                $parts[] = 'ط§ظ„ظ…ط®ط²ظ†: ' . $warehouseName;
+            }
+        }
 
-        return implode(' — ', $parts);
+        $userStatement = trim((string) $request->input('statement'));
+        if ($userStatement !== '') {
+            $parts[] = 'ط§ظ„ط¨ظٹط§ظ†: ' . $userStatement;
+        }
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
+
+        return implode(' â€” ', $parts);
     }
 
     public function sort(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'item_id'         => ['required', 'exists:Items,itemID'],
+            'item_id'         => ['required', 'exists:items,itemID'],
             'type_id'         => ['nullable', 'exists:type,id'],
             'warehouse_id'    => ['required', 'exists:stocks,StockID'],
             'input_unit_id'   => ['required', 'exists:units,UnitID'],
@@ -242,19 +277,19 @@ class InventoryMovementController extends Controller
             'movement_date'   => ['nullable', 'date'],
             'batch_id'        => ['nullable', 'integer', 'exists:inventory_movement_details,movement_detail_id'],
         ], [
-            'item_id.required'         => 'يجب اختيار الصنف',
-            'item_id.exists'           => 'الصنف المحدد غير موجود',
-            'warehouse_id.required'    => 'يجب اختيار المخزن',
-            'warehouse_id.exists'      => 'المخزن المحدد غير موجود',
-            'input_unit_id.required'   => 'يجب تحديد الوحدة الأصلية',
-            'input_unit_id.exists'     => 'الوحدة الأصلية غير موجودة',
-            'output_unit_id.required'  => 'يجب تحديد الوحدة الناتجة',
-            'output_unit_id.exists'    => 'الوحدة الناتجة غير موجودة',
-            'output_unit_id.different' => 'الوحدة الناتجة يجب أن تختلف عن الأصلية',
-            'input_quantity.required'  => 'يجب إدخال الكمية المفرزة',
-            'input_quantity.gt'        => 'الكمية المفرزة يجب أن تكون أكبر من صفر',
-            'output_quantity.required' => 'يجب إدخال عدد الوحدات الناتجة',
-            'output_quantity.gt'       => 'عدد الوحدات الناتجة يجب أن يكون أكبر من صفر',
+            'item_id.required'         => 'ظٹط¬ط¨ ط§ط®طھظٹط§ط± ط§ظ„طµظ†ظپ',
+            'item_id.exists'           => 'ط§ظ„طµظ†ظپ ط§ظ„ظ…ط­ط¯ط¯ ط؛ظٹط± ظ…ظˆط¬ظˆط¯',
+            'warehouse_id.required'    => 'ظٹط¬ط¨ ط§ط®طھظٹط§ط± ط§ظ„ظ…ط®ط²ظ†',
+            'warehouse_id.exists'      => 'ط§ظ„ظ…ط®ط²ظ† ط§ظ„ظ…ط­ط¯ط¯ ط؛ظٹط± ظ…ظˆط¬ظˆط¯',
+            'input_unit_id.required'   => 'ظٹط¬ط¨ طھط­ط¯ظٹط¯ ط§ظ„ظˆط­ط¯ط© ط§ظ„ط£طµظ„ظٹط©',
+            'input_unit_id.exists'     => 'ط§ظ„ظˆط­ط¯ط© ط§ظ„ط£طµظ„ظٹط© ط؛ظٹط± ظ…ظˆط¬ظˆط¯ط©',
+            'output_unit_id.required'  => 'ظٹط¬ط¨ طھط­ط¯ظٹط¯ ط§ظ„ظˆط­ط¯ط© ط§ظ„ظ†ط§طھط¬ط©',
+            'output_unit_id.exists'    => 'ط§ظ„ظˆط­ط¯ط© ط§ظ„ظ†ط§طھط¬ط© ط؛ظٹط± ظ…ظˆط¬ظˆط¯ط©',
+            'output_unit_id.different' => 'ط§ظ„ظˆط­ط¯ط© ط§ظ„ظ†ط§طھط¬ط© ظٹط¬ط¨ ط£ظ† طھط®طھظ„ظپ ط¹ظ† ط§ظ„ط£طµظ„ظٹط©',
+            'input_quantity.required'  => 'ظٹط¬ط¨ ط¥ط¯ط®ط§ظ„ ط§ظ„ظƒظ…ظٹط© ط§ظ„ظ…ظپط±ط²ط©',
+            'input_quantity.gt'        => 'ط§ظ„ظƒظ…ظٹط© ط§ظ„ظ…ظپط±ط²ط© ظٹط¬ط¨ ط£ظ† طھظƒظˆظ† ط£ظƒط¨ط± ظ…ظ† طµظپط±',
+            'output_quantity.required' => 'ظٹط¬ط¨ ط¥ط¯ط®ط§ظ„ ط¹ط¯ط¯ ط§ظ„ظˆط­ط¯ط§طھ ط§ظ„ظ†ط§طھط¬ط©',
+            'output_quantity.gt'       => 'ط¹ط¯ط¯ ط§ظ„ظˆط­ط¯ط§طھ ط§ظ„ظ†ط§طھط¬ط© ظٹط¬ط¨ ط£ظ† ظٹظƒظˆظ† ط£ظƒط¨ط± ظ…ظ† طµظپط±',
         ]);
 
         $validator->after(function ($v) use ($request) {
@@ -266,17 +301,29 @@ class InventoryMovementController extends Controller
             $minF  = ($min  !== null && $min  !== '') ? (float) $min  : null;
             $maxF  = ($max  !== null && $max  !== '') ? (float) $max  : null;
 
+<<<<<<< HEAD
             if ($saleF !== null && $minF !== null && $saleF < $minF)
                 $v->errors()->add('sale_price', 'سعر البيع أقل من الحد الأدنى');
             if ($saleF !== null && $maxF !== null && $saleF > $maxF)
                 $v->errors()->add('sale_price', 'سعر البيع أكبر من الحد الأعلى');
             if ($minF !== null && $maxF !== null && $minF > $maxF)
                 $v->errors()->add('min_price', 'الحد الأدنى أكبر من الحد الأعلى');
+=======
+            if ($saleF !== null && $minF !== null && $saleF < $minF) {
+                $v->errors()->add('sale_price', 'ط³ط¹ط± ط§ظ„ط¨ظٹط¹ ط£ظ‚ظ„ ظ…ظ† ط§ظ„ط­ط¯ ط§ظ„ط£ط¯ظ†ظ‰');
+            }
+            if ($saleF !== null && $maxF !== null && $saleF > $maxF) {
+                $v->errors()->add('sale_price', 'ط³ط¹ط± ط§ظ„ط¨ظٹط¹ ط£ظƒط¨ط± ظ…ظ† ط§ظ„ط­ط¯ ط§ظ„ط£ط¹ظ„ظ‰');
+            }
+            if ($minF !== null && $maxF !== null && $minF > $maxF) {
+                $v->errors()->add('min_price', 'ط§ظ„ط­ط¯ ط§ظ„ط£ط¯ظ†ظ‰ ط£ظƒط¨ط± ظ…ظ† ط§ظ„ط­ط¯ ط§ظ„ط£ط¹ظ„ظ‰');
+            }
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
         });
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'بيانات غير صحيحة',
+                'message' => 'ط¨ظٹط§ظ†ط§طھ ط؛ظٹط± طµط­ظٹط­ط©',
                 'errors'  => $validator->errors(),
             ], 422);
         }
@@ -302,11 +349,12 @@ class InventoryMovementController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'تم الفرز بنجاح',
+                'message' => 'طھظ… ط§ظ„ظپط±ط² ط¨ظ†ط¬ط§ط­',
                 'data'    => $result,
             ], 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
+<<<<<<< HEAD
             return response()->json(['message' => 'بيانات غير صحيحة', 'errors' => $e->errors()], 422);
         } catch (\Throwable $e) {
             Log::error('Inventory sort failed', ['message' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()]);
@@ -314,6 +362,34 @@ class InventoryMovementController extends Controller
         }
     }
 
+=======
+            return response()->json([
+                'message' => 'ط¨ظٹط§ظ†ط§طھ ط؛ظٹط± طµط­ظٹط­ط©',
+                'errors'  => $e->errors(),
+            ], 422);
+
+        } catch (\Throwable $e) {
+            Log::error('Inventory sort failed', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'message' => 'ظپط´ظ„ ط§ظ„ظپط±ط²',
+                'error'   => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
+    }
+
+    /**
+     * ط¹ظƒط³ ط¹ظ…ظ„ظٹط© ظپط±ط²
+     *
+     * âœ… ط§ظ„ط¥طµظ„ط§ط­ط§طھ:
+     *  1. ظپط­طµ ط§ظ„ط±طµظٹط¯ ط£طµط¨ط­ ط¯ط§ط®ظ„ ط§ظ„ظ€ Transaction
+     *  2. ظ‚ظپظ„ طµظپظˆظپ ط§ظ„ظ…ط®ط²ظˆظ† ظ‚ط¨ظ„ ط§ظ„ظپط­طµ
+     */
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
     public function reverseSort(Request $request, string $documentNumber)
 {
     try {
@@ -325,9 +401,17 @@ class InventoryMovementController extends Controller
                 ->orderBy('movement_id')
                 ->get();
 
+<<<<<<< HEAD
             if ($movements->count() < 2) {
                 return response()->json(['message' => 'لم يتم العثور على عملية فرز صالحة بهذا الرقم'], 404);
             }
+=======
+                if ($movements->count() < 2) {
+                    return response()->json([
+                        'message' => 'ظ„ظ… ظٹطھظ… ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ط¹ظ…ظ„ظٹط© ظپط±ط² طµط§ظ„ط­ط© ط¨ظ‡ط°ط§ ط§ظ„ط±ظ‚ظ…',
+                    ], 404);
+                }
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
 
             $reversalDoc = 'REV-' . $documentNumber;
             if (InventoryMovement::where('document_number', $reversalDoc)->exists()) {
@@ -340,11 +424,19 @@ class InventoryMovementController extends Controller
                 return response()->json(['message' => 'بيانات عملية الفرز غير مكتملة'], 422);
             }
 
+<<<<<<< HEAD
             $outDetail = $outMovement->details->first();
             $inDetail  = $inMovement->details->first();
             if (!$outDetail || !$inDetail) {
                 return response()->json(['message' => 'تفاصيل عملية الفرز غير مكتملة'], 422);
             }
+=======
+                if ($alreadyReversed) {
+                    return response()->json([
+                        'message' => 'طھظ… ط¹ظƒط³ ظ‡ط°ظ‡ ط§ظ„ط¹ظ…ظ„ظٹط© ظ…ط³ط¨ظ‚ظ‹ط§',
+                    ], 409);
+                }
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
 
             // ✅ فحص رصيد الوحدة الناتجة (لأنها ستُصرف عند العكس)
             $this->inventoryService->lockStockRows([[
@@ -353,15 +445,124 @@ class InventoryMovementController extends Controller
                 'unit_id' => (int) $inDetail->unit_id,
             ]]);
 
+<<<<<<< HEAD
             $availableOutput = $this->inventoryService->availableQuantity(
                 (int) $inDetail->item_id, (int) $inDetail->warehouse_id, (int) $inDetail->unit_id
             );
+=======
+                if (!$outMovement || !$inMovement) {
+                    return response()->json([
+                        'message' => 'ط¨ظٹط§ظ†ط§طھ ط¹ظ…ظ„ظٹط© ط§ظ„ظپط±ط² ط؛ظٹط± ظ…ظƒطھظ…ظ„ط©',
+                    ], 422);
+                }
+
+                $outDetail = $outMovement->details->first();
+                $inDetail  = $inMovement->details->first();
+
+                if (!$outDetail || !$inDetail) {
+                    return response()->json([
+                        'message' => 'طھظپط§طµظٹظ„ ط¹ظ…ظ„ظٹط© ط§ظ„ظپط±ط² ط؛ظٹط± ظ…ظƒطھظ…ظ„ط©',
+                    ], 422);
+                }
+
+                // âœ… 1) ظ‚ظپظ„ طµظپظˆظپ ط§ظ„ظ…ط®ط²ظˆظ† ظ‚ط¨ظ„ ط§ظ„ظپط­طµ
+                $this->inventoryService->lockStockRows([
+                    [
+                        'item_id'      => (int) $inDetail->item_id,
+                        'warehouse_id' => (int) $inDetail->warehouse_id,
+                        'unit_id'      => (int) $inDetail->unit_id,
+                    ],
+                ]);
+
+                // âœ… 2) ط§ظ„ط¢ظ† ظپط­طµ ط§ظ„ط±طµظٹط¯ ظ…ظˆط«ظˆظ‚ (ط¯ط§ط®ظ„ Transaction + ظ…ط¹ ظ‚ظپظ„)
+                $availableOutput = $this->inventoryService->availableQuantity(
+                    (int) $inDetail->item_id,
+                    (int) $inDetail->warehouse_id,
+                    (int) $inDetail->unit_id
+                );
+
+                if ($availableOutput < (float) $inDetail->quantity) {
+                    return response()->json([
+                        'message' => "ظ„ط§ ظٹظ…ظƒظ† ط¹ظƒط³ ط§ظ„ط¹ظ…ظ„ظٹط© â€” ط§ظ„ط±طµظٹط¯ ط§ظ„ط­ط§ظ„ظٹ ({$availableOutput}) ط£ظ‚ظ„ ظ…ظ† ط§ظ„ظ…ط·ظ„ظˆط¨ ({$inDetail->quantity})",
+                    ], 422);
+                }
+
+                $lastMovement = InventoryMovement::lockForUpdate()
+                    ->orderByDesc('movement_id')
+                    ->first();
+
+                $nextDisplayId = $lastMovement ? ((int) $lastMovement->display_id + 1) : 1;
+
+                $reverseOutMovement = InventoryMovement::create([
+                    'display_id'      => (string) $nextDisplayId,
+                    'movement_type'   => InventoryMovement::TYPE_SORTING_OUT,
+                    'direction'       => InventoryMovement::DIRECTION_OUT,
+                    'movement_date'   => now()->format('Y-m-d'),
+                    'document_number' => $reversalDoc,
+                    'warehouse_id'    => $inDetail->warehouse_id,
+                    'statement'       => "ط¹ظƒط³ ظپط±ط² {$documentNumber}",
+                    'source_type'     => InventoryMovement::SOURCE_SORTING,
+                    'source_id'       => $outMovement->movement_id,
+                    'total'           => $inDetail->total,
+                ]);
+
+                InventoryMovementDetail::create([
+                    'movement_id'  => $reverseOutMovement->movement_id,
+                    'item_id'      => $inDetail->item_id,
+                    'type_id'      => $inDetail->type_id,
+                    'unit_id'      => $inDetail->unit_id,
+                    'code'         => $inDetail->code,
+                    'warehouse_id' => $inDetail->warehouse_id,
+                    'quantity'     => $inDetail->quantity,
+                    'unit_cost'    => $inDetail->unit_cost,
+                    'total'        => $inDetail->total,
+                ]);
+
+                $nextDisplayId++;
+
+                $reverseInMovement = InventoryMovement::create([
+                    'display_id'      => (string) $nextDisplayId,
+                    'movement_type'   => InventoryMovement::TYPE_SORTING_IN,
+                    'direction'       => InventoryMovement::DIRECTION_IN,
+                    'movement_date'   => now()->format('Y-m-d'),
+                    'document_number' => $reversalDoc,
+                    'warehouse_id'    => $outDetail->warehouse_id,
+                    'statement'       => "ط¹ظƒط³ ظپط±ط² {$documentNumber}",
+                    'source_type'     => InventoryMovement::SOURCE_SORTING,
+                    'source_id'       => $outMovement->movement_id,
+                    'total'           => $outDetail->total,
+                ]);
+
+                InventoryMovementDetail::create([
+                    'movement_id'  => $reverseInMovement->movement_id,
+                    'item_id'      => $outDetail->item_id,
+                    'type_id'      => $outDetail->type_id,
+                    'unit_id'      => $outDetail->unit_id,
+                    'code'         => $outDetail->code,
+                    'warehouse_id' => $outDetail->warehouse_id,
+                    'quantity'     => $outDetail->quantity,
+                    'unit_cost'    => $outDetail->unit_cost,
+                    'total'        => $outDetail->total,
+                ]);
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
 
             if ($availableOutput < (float) $inDetail->quantity) {
                 return response()->json([
+<<<<<<< HEAD
                     'message' => "لا يمكن عكس العملية — الرصيد الحالي ({$availableOutput}) أقل من المطلوب ({$inDetail->quantity})"
                 ], 422);
             }
+=======
+                    'success' => true,
+                    'message' => 'طھظ… ط¹ظƒط³ ط§ظ„ظپط±ط² ط¨ظ†ط¬ط§ط­',
+                    'data'    => [
+                        'reversal_document_number' => $reversalDoc,
+                        'out_movement_id'          => $reverseOutMovement->movement_id,
+                        'in_movement_id'           => $reverseInMovement->movement_id,
+                    ],
+                ], 201);
+            });
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
 
             $lastMovement = InventoryMovement::lockForUpdate()->orderByDesc('movement_id')->first();
             $nextDisplayId = $lastMovement ? ((int) $lastMovement->display_id + 1) : 1;
@@ -427,6 +628,7 @@ class InventoryMovementController extends Controller
             }
 
             return response()->json([
+<<<<<<< HEAD
                 'success' => true,
                 'message' => 'تم عكس الفرز بنجاح — الحركات الأصلية حُذفت',
                 'data' => [
@@ -447,6 +649,12 @@ class InventoryMovementController extends Controller
             'message' => 'فشل عكس الفرز',
             'error'   => config('app.debug') ? $e->getMessage() : null,
         ], 500);
+=======
+                'message' => 'ظپط´ظ„ ط¹ظƒط³ ط§ظ„ظپط±ط²',
+                'error'   => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
     }
 }
 
@@ -457,19 +665,52 @@ class InventoryMovementController extends Controller
             ->where('source_type', InventoryMovement::SOURCE_SORTING)
             ->orderBy('movement_id')->get();
 
+<<<<<<< HEAD
         if ($movements->count() < 2) abort(404, 'لم يتم العثور على عملية الفرز');
+=======
+        if ($movements->count() < 2) {
+            abort(404, 'ظ„ظ… ظٹطھظ… ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ط¹ظ…ظ„ظٹط© ط§ظ„ظپط±ط²');
+        }
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
 
         $outMovement = $movements->firstWhere('direction', 'out');
         $inMovement  = $movements->firstWhere('direction', 'in');
         if (!$outMovement || !$inMovement) abort(404, 'بيانات عملية الفرز غير مكتملة');
 
+<<<<<<< HEAD
         return view('print.sorting', compact('documentNumber', 'outMovement', 'inMovement'));
+=======
+        if (!$outMovement || !$inMovement) {
+            abort(404, 'ط¨ظٹط§ظ†ط§طھ ط¹ظ…ظ„ظٹط© ط§ظ„ظپط±ط² ط؛ظٹط± ظ…ظƒطھظ…ظ„ط©');
+        }
+
+        return view('print.sorting', compact(
+            'documentNumber',
+            'outMovement',
+            'inMovement'
+        ));
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
     }
 
     public function printMovementPage($id)
     {
+<<<<<<< HEAD
         $movement = InventoryMovement::with(['details.item', 'details.type', 'details.unit', 'details.warehouse', 'warehouse'])->find($id);
         if (!$movement) abort(404, 'الحركة غير موجودة');
+=======
+        $movement = InventoryMovement::with([
+            'details.item',
+            'details.type',
+            'details.unit',
+            'details.warehouse',
+            'warehouse',
+        ])->find($id);
+
+        if (!$movement) {
+            abort(404, 'ط§ظ„ط­ط±ظƒط© ط؛ظٹط± ظ…ظˆط¬ظˆط¯ط©');
+        }
+
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
         return view('print.movement', compact('movement'));
     }
 
@@ -480,13 +721,20 @@ class InventoryMovementController extends Controller
     public function available(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'item_id'      => ['required', 'integer', 'exists:Items,itemID'],
+            'item_id'      => ['required', 'integer', 'exists:items,itemID'],
             'warehouse_id' => ['required', 'integer', 'exists:stocks,StockID'],
             'unit_id'      => ['nullable', 'integer', 'exists:units,UnitID'],
         ]);
 
         if ($validator->fails()) {
+<<<<<<< HEAD
             return response()->json(['message' => 'بيانات غير صحيحة', 'errors' => $validator->errors()], 422);
+=======
+            return response()->json([
+                'message' => 'ط¨ظٹط§ظ†ط§طھ ط؛ظٹط± طµط­ظٹط­ط©',
+                'errors'  => $validator->errors(),
+            ], 422);
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
         }
 
         $itemId      = (int) $request->input('item_id');
@@ -505,13 +753,20 @@ class InventoryMovementController extends Controller
     public function pricing(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'item_id'      => ['required', 'integer', 'exists:Items,itemID'],
+            'item_id'      => ['required', 'integer', 'exists:items,itemID'],
             'warehouse_id' => ['required', 'integer', 'exists:stocks,StockID'],
             'unit_id'      => ['nullable', 'integer', 'exists:units,UnitID'],
         ]);
 
         if ($validator->fails()) {
+<<<<<<< HEAD
             return response()->json(['message' => 'بيانات غير صحيحة', 'errors' => $validator->errors()], 422);
+=======
+            return response()->json([
+                'message' => 'ط¨ظٹط§ظ†ط§طھ ط؛ظٹط± طµط­ظٹط­ط©',
+                'errors'  => $validator->errors(),
+            ], 422);
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
         }
 
         $itemId      = (int) $request->input('item_id');
@@ -527,14 +782,21 @@ class InventoryMovementController extends Controller
     public function stockPricing(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'item_id'      => ['required', 'integer', 'exists:Items,itemID'],
+            'item_id'      => ['required', 'integer', 'exists:items,itemID'],
             'warehouse_id' => ['required', 'integer', 'exists:stocks,StockID'],
             'unit_id'      => ['required', 'integer', 'exists:units,UnitID'],
             'type_id'      => ['nullable', 'integer', 'exists:type,id'],
         ]);
 
         if ($validator->fails()) {
+<<<<<<< HEAD
             return response()->json(['message' => 'بيانات غير صحيحة', 'errors' => $validator->errors()], 422);
+=======
+            return response()->json([
+                'message' => 'ط¨ظٹط§ظ†ط§طھ ط؛ظٹط± طµط­ظٹط­ط©',
+                'errors'  => $validator->errors(),
+            ], 422);
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
         }
 
         $itemId      = (int) $request->input('item_id');
@@ -566,7 +828,7 @@ class InventoryMovementController extends Controller
     public function updatePricing(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'item_id'      => ['required', 'integer', 'exists:Items,itemID'],
+            'item_id'      => ['required', 'integer', 'exists:items,itemID'],
             'warehouse_id' => ['required', 'integer', 'exists:stocks,StockID'],
             'unit_id'      => ['nullable', 'integer', 'exists:units,UnitID'],
             'sale_price'   => ['nullable', 'numeric', 'min:0'],
@@ -586,6 +848,7 @@ class InventoryMovementController extends Controller
         $maxF  = $toNullable($request->input('max_price'));
 
         $validator->after(function ($v) use ($saleF, $minF, $maxF) {
+<<<<<<< HEAD
             if ($minF !== null && $maxF !== null && $minF > $maxF)
                 $v->errors()->add('min_price', 'الحد الأدنى أكبر من الحد الأعلى');
             if ($saleF !== null && $minF !== null && $saleF < $minF)
@@ -596,6 +859,24 @@ class InventoryMovementController extends Controller
 
         if ($validator->fails()) {
             return response()->json(['message' => 'بيانات غير صحيحة', 'errors' => $validator->errors()], 422);
+=======
+            if ($minF !== null && $maxF !== null && $minF > $maxF) {
+                $v->errors()->add('min_price', 'ط§ظ„ط­ط¯ ط§ظ„ط£ط¯ظ†ظ‰ ط£ظƒط¨ط± ظ…ظ† ط§ظ„ط­ط¯ ط§ظ„ط£ط¹ظ„ظ‰');
+            }
+            if ($saleF !== null && $minF !== null && $saleF < $minF) {
+                $v->errors()->add('sale_price', 'ط³ط¹ط± ط§ظ„ط¨ظٹط¹ ط£ظ‚ظ„ ظ…ظ† ط§ظ„ط­ط¯ ط§ظ„ط£ط¯ظ†ظ‰');
+            }
+            if ($saleF !== null && $maxF !== null && $saleF > $maxF) {
+                $v->errors()->add('sale_price', 'ط³ط¹ط± ط§ظ„ط¨ظٹط¹ ط£ظƒط¨ط± ظ…ظ† ط§ظ„ط­ط¯ ط§ظ„ط£ط¹ظ„ظ‰');
+            }
+        });
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'ط¨ظٹط§ظ†ط§طھ ط؛ظٹط± طµط­ظٹط­ط©',
+                'errors'  => $validator->errors(),
+            ], 422);
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
         }
 
         $itemId      = (int) $request->input('item_id');
@@ -608,7 +889,16 @@ class InventoryMovementController extends Controller
             ->whereHas('movement', fn($q) => $q->where('direction', 'in'))
             ->where('item_id', $itemId)
             ->where('warehouse_id', $warehouseId)
+<<<<<<< HEAD
             ->when($unitId !== null, fn($q) => $q->where('unit_id', $unitId), fn($q) => $q->whereNull('unit_id'))
+=======
+            ->when(
+                $unitId !== null,
+                fn($q) => $q->where('unit_id', $unitId),
+                fn($q) => $q->whereNull('unit_id')
+            )
+            /* âœ… ط§ظ„طھط³ط¹ظٹط± ظٹظڈط­ط¯ظژظ‘ط« ظ„ط¢ط®ط± ط¯ظپط¹ط© ط¯ط®ظˆظ„ ظ„ظ†ظپط³ ط§ظ„ظ…ظˆط±ط¯ طھط­ط¯ظٹط¯ط§ظ‹ */
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
             ->when(
                 $supplierId !== null,
                 fn($q) => $q->where('supplier_account_id', $supplierId),
@@ -640,7 +930,13 @@ class InventoryMovementController extends Controller
         $detail = $query->orderByDesc('movement_detail_id')->first();
 
         if (!$detail) {
+<<<<<<< HEAD
             return response()->json(['message' => 'لا يوجد سجل تسعير لهذا الصنف في الوحدة المحددة.'], 404);
+=======
+            return response()->json([
+                'message' => 'ظ„ط§ ظٹظˆط¬ط¯ ط³ط¬ظ„ طھط³ط¹ظٹط± ظ„ظ‡ط°ط§ ط§ظ„طµظ†ظپ ظپظٹ ط§ظ„ظˆط­ط¯ط© ط§ظ„ظ…ط­ط¯ط¯ط©.',
+            ], 404);
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
         }
 
         $detail->sale_price = $saleF;
@@ -650,8 +946,13 @@ class InventoryMovementController extends Controller
 
         return response()->json([
             'success' => true,
+<<<<<<< HEAD
             'message' => 'تم تحديث التسعير بنجاح',
             'data' => [
+=======
+            'message' => 'طھظ… طھط­ط¯ظٹط« ط§ظ„طھط³ط¹ظٹط± ط¨ظ†ط¬ط§ط­',
+            'data'    => [
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
                 'movement_detail_id' => $detail->movement_detail_id,
                 'supplier_account_id'=> $detail->supplier_account_id !== null ? (int) $detail->supplier_account_id : null,
                 'sale_price'         => $detail->sale_price !== null ? (float) $detail->sale_price : 0,
@@ -666,12 +967,52 @@ class InventoryMovementController extends Controller
     // ✅ allStockBalances — مع فلترة اختيارية بـ purchase_invoice_id
     // =====================================================
     public function allStockBalances(Request $request)
+<<<<<<< HEAD
 {
     $invoiceId = $request->input('purchase_invoice_id');
 
     if ($invoiceId) {
         return $this->batchesByInvoice((int) $invoiceId);
     }
+=======
+    {
+        /* âœ… ط§ظ„طھط¬ظ…ظٹط¹ ط®ظ…ط§ط³ظٹ: (طµظ†ظپ + ظ†ظˆط¹ + ظ…ط®ط²ظ† + ظˆط­ط¯ط© + ظ…ظˆط±ط¯)
+           ظƒظ„ ط¯ظپط¹ط© ظ…ظˆط±ط¯ظٹط© ظ„ظ‡ط§ ط³ط·ط± ظ…ط³طھظ‚ظ„ ط¨طھظƒظ„ظپطھظ‡ط§ ظˆط±طµظٹط¯ظ‡ط§ â€”
+           ط´ط±ط§ط، ظ†ظپط³ ط§ظ„طµظ†ظپ ظ…ظ† ظ…ظˆط±ط¯ظٹظ† ظ„ط§ ظٹظڈط¯ظ…ط¬ ط¨ط¹ط¯ ط§ظ„ط¢ظ†.
+           supplier_account_id = NULL â‡’ "طھظˆط±ظٹط¯ ط¹ط§ظ…" (supply/ظٹط¯ظˆظٹ/طھط§ط±ظٹط®ظٹ).
+
+           âœ… ط¥ط¶ط§ظپط©: ط§ط³طھط¨ط¹ط§ط¯ ط§ظ„ط£طµظ†ط§ظپ ط§ظ„ظ…ط¹ط·ظ‘ظ„ط© (is_active = 0) ظ…ظ† ط´ط§ط´ط© ط§ظ„ط£ط±طµط¯ط©.
+           ط§ظ„طµظ†ظپ ط§ظ„ظ…ط¹ط·ظ‘ظ„ ظٹط®طھظپظٹ ظ…ظ† ظ‡ط°ظ‡ ط§ظ„ط´ط§ط´ط© ظپظ‚ط·طŒ ط¨ظٹظ†ظ…ط§ طھط¨ظ‚ظ‰ ظƒظ„ ط§ظ„ط³ط¬ظ„ط§طھ
+           ط§ظ„طھط§ط±ظٹط®ظٹط© (ظپظˆط§طھظٹط±طŒ ظ‚ظٹظˆط¯طŒ ط­ط±ظƒط§طھ) ط³ظ„ظٹظ…ط© ظ„ظ„طھط¯ظ‚ظٹظ‚ ط§ظ„ظ…ط­ط§ط³ط¨ظٹ. */
+        $combinations = DB::table('inventory_movement_details as imd')
+            ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
+            ->leftJoin('characcount as ca', 'ca.accountID', '=', 'imd.supplier_account_id')
+            ->join('items as it', 'it.itemID', '=', 'imd.item_id')
+            ->where('it.is_active', 1)
+            ->select(
+                'imd.item_id',
+                'imd.type_id',
+                'imd.warehouse_id',
+                'imd.unit_id',
+                'imd.supplier_account_id',
+                'ca.accName as supplier_name',
+                DB::raw("SUM(CASE WHEN im.direction = 'in' THEN imd.quantity ELSE 0 END) as total_in"),
+                DB::raw("SUM(CASE WHEN im.direction = 'out' THEN imd.quantity ELSE 0 END) as total_out")
+            )
+            ->groupBy(
+                'imd.item_id',
+                'imd.type_id',
+                'imd.warehouse_id',
+                'imd.unit_id',
+                'imd.supplier_account_id',
+                'ca.accName'
+            )
+            ->get()
+            ->filter(function ($c) {
+                return ((float) $c->total_in - (float) $c->total_out) > 0.000001;
+            })
+            ->values();
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
 
     // ⬇️ أضفنا sub-query يجلب أحدث مستند فرز لكل مجموعة
     $combinations = DB::table('inventory_movement_details as imd')
@@ -819,12 +1160,56 @@ class InventoryMovementController extends Controller
             ->pluck('imd.movement_detail_id')
             ->toArray();
 
+<<<<<<< HEAD
         if (!empty($newIds)) {
             $allBatchIds = array_merge($allBatchIds, $newIds);
             $visited     = array_merge($visited, $newIds);
+=======
+        $latestDetails = InventoryMovementDetail::whereIn('movement_detail_id', $latestIds)
+            ->get()
+            ->keyBy(function ($d) {
+                $typeKey = $d->type_id !== null ? $d->type_id : 'null';
+                $unitKey = $d->unit_id !== null ? $d->unit_id : 'null';
+                $supKey  = $d->supplier_account_id !== null ? $d->supplier_account_id : 'null';
+                return "{$d->item_id}:{$typeKey}:{$d->warehouse_id}:{$unitKey}:{$supKey}";
+            });
+
+        $rows = [];
+
+        foreach ($combinations as $c) {
+            $typeKey = $c->type_id !== null ? $c->type_id : 'null';
+            $unitKey = $c->unit_id !== null ? $c->unit_id : 'null';
+            $supKey  = $c->supplier_account_id !== null ? $c->supplier_account_id : 'null';
+            $lookupKey = "{$c->item_id}:{$typeKey}:{$c->warehouse_id}:{$unitKey}:{$supKey}";
+
+            /** @var InventoryMovementDetail|null $last */
+            $last = $latestDetails->get($lookupKey);
+
+            $rows[] = [
+                'item_id'        => (int) $c->item_id,
+                'item_name'      => $items[$c->item_id] ?? '',
+                'type_id'        => $c->type_id !== null ? (int) $c->type_id : null,
+                'type_name'      => $c->type_id !== null ? ($types[$c->type_id] ?? '') : '',
+                'warehouse_id'   => (int) $c->warehouse_id,
+                'warehouse_name' => $warehouses[$c->warehouse_id] ?? '',
+                'unit_id'        => $c->unit_id !== null ? (int) $c->unit_id : null,
+                'unit_name'      => $c->unit_id !== null ? ($units[$c->unit_id] ?? '') : '',
+                'supplier_account_id' => $c->supplier_account_id !== null ? (int) $c->supplier_account_id : null,
+                'supplier_name'  => $c->supplier_name ?? '',
+                'code'           => $last->code ?? '',
+                'quantity'       => (float) $c->total_in - (float) $c->total_out,
+                'unit_cost'      => $last ? (float) $last->unit_cost : 0,
+                'sale_price'     => ($last && $last->sale_price !== null) ? (float) $last->sale_price : 0,
+                'min_price'      => ($last && $last->min_price !== null)  ? (float) $last->min_price  : 0,
+                'max_price'      => ($last && $last->max_price !== null)  ? (float) $last->max_price  : 0,
+                /* ظ…ظپطھط§ط­ طھط±طھظٹط¨ ظ…ط¤ظ‚طھ: ط¢ط®ط± ط­ط±ظƒط© ط¯ط®ظˆظ„ ظ„ظƒظ„ طھط±ظƒظٹط¨ط© */
+                '_order'         => $last ? (int) $last->movement_detail_id : 0,
+            ];
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
         }
     } while (!empty($newIds));
 
+<<<<<<< HEAD
     // 3. جلب كل البيانات
     $batches = DB::table('inventory_movement_details as imd')
         ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
@@ -844,6 +1229,10 @@ class InventoryMovementController extends Controller
         )
         ->orderBy('imd.movement_detail_id')
         ->get();
+=======
+        /* âœ… ط§ظ„ط£ط­ط¯ط« ط¯ط®ظˆظ„ط§ظ‹ ظپظٹ ط§ظ„ط£ط¹ظ„ظ‰ (ط­ط³ط¨ ط£ظƒط¨ط± movement_detail_id ظ„ظƒظ„ طھط±ظƒظٹط¨ط©) */
+        usort($rows, fn ($a, $b) => $b['_order'] <=> $a['_order']);
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
 
     if ($batches->isEmpty()) {
         return response()->json(['success' => true, 'data' => []]);
@@ -911,7 +1300,7 @@ class InventoryMovementController extends Controller
 }
 
     // =====================================================
-    // دوال مساعدة
+    // ط¯ظˆط§ظ„ ظ…ط³ط§ط¹ط¯ط©
     // =====================================================
     private function validateMovement(Request $request)
     {
@@ -924,7 +1313,7 @@ class InventoryMovementController extends Controller
             'source_type'     => ['nullable', 'string', 'max:50'],
             'source_id'       => ['nullable', 'integer'],
             'details'                   => ['required', 'array', 'min:1'],
-            'details.*.item_id'         => ['required', 'exists:Items,itemID'],
+            'details.*.item_id'         => ['required', 'exists:items,itemID'],
             'details.*.type_id'         => ['nullable', 'exists:type,id'],
             'details.*.unit_id'         => ['nullable', 'exists:units,UnitID'],
             'details.*.code'            => ['nullable', 'string', 'max:50'],
@@ -935,19 +1324,19 @@ class InventoryMovementController extends Controller
             'details.*.max_price'       => ['nullable', 'numeric', 'min:0'],
             'details.*.sale_price'      => ['nullable', 'numeric', 'min:0'],
         ], [
-            'movement_type.required'    => 'نوع الحركة مطلوب',
-            'movement_type.in'          => 'نوع الحركة غير صالح',
-            'movement_date.required'    => 'تاريخ الحركة مطلوب',
-            'warehouse_id.required'     => 'يجب اختيار المخزن',
-            'warehouse_id.exists'       => 'المخزن المحدد غير موجود',
-            'details.required'          => 'يجب إضافة صنف واحد على الأقل',
-            'details.min'               => 'يجب إضافة صنف واحد على الأقل',
-            'details.*.item_id.required'=> 'يجب اختيار الصنف في كل الصفوف',
-            'details.*.item_id.exists'  => 'أحد الأصناف المحددة غير موجود',
-            'details.*.warehouse_id.required' => 'يجب اختيار المخزن في كل الصفوف',
-            'details.*.warehouse_id.exists'   => 'أحد المخازن المحددة غير موجود',
-            'details.*.quantity.gt'     => 'الكمية يجب أن تكون أكبر من صفر',
-            'details.*.unit_cost.min'   => 'تكلفة الوحدة لا يمكن أن تكون سالبة',
+            'movement_type.required'    => 'ظ†ظˆط¹ ط§ظ„ط­ط±ظƒط© ظ…ط·ظ„ظˆط¨',
+            'movement_type.in'          => 'ظ†ظˆط¹ ط§ظ„ط­ط±ظƒط© ط؛ظٹط± طµط§ظ„ط­',
+            'movement_date.required'    => 'طھط§ط±ظٹط® ط§ظ„ط­ط±ظƒط© ظ…ط·ظ„ظˆط¨',
+            'warehouse_id.required'     => 'ظٹط¬ط¨ ط§ط®طھظٹط§ط± ط§ظ„ظ…ط®ط²ظ†',
+            'warehouse_id.exists'       => 'ط§ظ„ظ…ط®ط²ظ† ط§ظ„ظ…ط­ط¯ط¯ ط؛ظٹط± ظ…ظˆط¬ظˆط¯',
+            'details.required'          => 'ظٹط¬ط¨ ط¥ط¶ط§ظپط© طµظ†ظپ ظˆط§ط­ط¯ ط¹ظ„ظ‰ ط§ظ„ط£ظ‚ظ„',
+            'details.min'               => 'ظٹط¬ط¨ ط¥ط¶ط§ظپط© طµظ†ظپ ظˆط§ط­ط¯ ط¹ظ„ظ‰ ط§ظ„ط£ظ‚ظ„',
+            'details.*.item_id.required'=> 'ظٹط¬ط¨ ط§ط®طھظٹط§ط± ط§ظ„طµظ†ظپ ظپظٹ ظƒظ„ ط§ظ„طµظپظˆظپ',
+            'details.*.item_id.exists'  => 'ط£ط­ط¯ ط§ظ„ط£طµظ†ط§ظپ ط§ظ„ظ…ط­ط¯ط¯ط© ط؛ظٹط± ظ…ظˆط¬ظˆط¯',
+            'details.*.warehouse_id.required' => 'ظٹط¬ط¨ ط§ط®طھظٹط§ط± ط§ظ„ظ…ط®ط²ظ† ظپظٹ ظƒظ„ ط§ظ„طµظپظˆظپ',
+            'details.*.warehouse_id.exists'   => 'ط£ط­ط¯ ط§ظ„ظ…ط®ط§ط²ظ† ط§ظ„ظ…ط­ط¯ط¯ط© ط؛ظٹط± ظ…ظˆط¬ظˆط¯',
+            'details.*.quantity.gt'     => 'ط§ظ„ظƒظ…ظٹط© ظٹط¬ط¨ ط£ظ† طھظƒظˆظ† ط£ظƒط¨ط± ظ…ظ† طµظپط±',
+            'details.*.unit_cost.min'   => 'طھظƒظ„ظپط© ط§ظ„ظˆط­ط¯ط© ظ„ط§ ظٹظ…ظƒظ† ط£ظ† طھظƒظˆظ† ط³ط§ظ„ط¨ط©',
         ]);
 
         $validator->after(function ($v) use ($request) {
@@ -956,6 +1345,7 @@ class InventoryMovementController extends Controller
                 $max  = isset($row['max_price']) && $row['max_price'] !== '' ? (float) $row['max_price'] : null;
                 $sale = isset($row['sale_price']) && $row['sale_price'] !== '' ? (float) $row['sale_price'] : null;
 
+<<<<<<< HEAD
                 if ($min !== null && $max !== null && $min > $max)
                     $v->errors()->add("details.{$i}.min_price", 'الحد الأدنى أكبر من الحد الأعلى');
                 if ($sale !== null) {
@@ -963,6 +1353,18 @@ class InventoryMovementController extends Controller
                         $v->errors()->add("details.{$i}.sale_price", "سعر البيع أقل من الحد الأدنى ({$min})");
                     if ($max !== null && $sale > $max)
                         $v->errors()->add("details.{$i}.sale_price", "سعر البيع أكبر من الحد الأعلى ({$max})");
+=======
+                if ($min !== null && $max !== null && $min > $max) {
+                    $v->errors()->add("details.{$i}.min_price", 'ط§ظ„ط­ط¯ ط§ظ„ط£ط¯ظ†ظ‰ ط£ظƒط¨ط± ظ…ظ† ط§ظ„ط­ط¯ ط§ظ„ط£ط¹ظ„ظ‰');
+                }
+                if ($sale !== null) {
+                    if ($min !== null && $sale < $min) {
+                        $v->errors()->add("details.{$i}.sale_price", "ط³ط¹ط± ط§ظ„ط¨ظٹط¹ ط£ظ‚ظ„ ظ…ظ† ط§ظ„ط­ط¯ ط§ظ„ط£ط¯ظ†ظ‰ ({$min})");
+                    }
+                    if ($max !== null && $sale > $max) {
+                        $v->errors()->add("details.{$i}.sale_price", "ط³ط¹ط± ط§ظ„ط¨ظٹط¹ ط£ظƒط¨ط± ظ…ظ† ط§ظ„ط­ط¯ ط§ظ„ط£ط¹ظ„ظ‰ ({$max})");
+                    }
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
                 }
             }
         });
@@ -984,7 +1386,11 @@ class InventoryMovementController extends Controller
                 'unit_id'      => $row['unit_id'] ?? null,
                 'code'         => $row['code'] ?? null,
                 'warehouse_id' => $row['warehouse_id'],
+<<<<<<< HEAD
                 'supplier_account_id'  => $row['supplier_account_id'] ?? null,
+=======
+                'supplier_account_id'  => $row['supplier_account_id'] ?? null, /* طھظˆط±ظٹط¯ ظٹط¯ظˆظٹ: ظ…ظˆط±ط¯ ط§ط®طھظٹط§ط±ظٹ */
+>>>>>>> aef3eed46de06d3de9fb12821a6088aab97182fe
                 'lot_source_detail_id' => $row['lot_source_detail_id'] ?? null,
                 'quantity'     => $quantity,
                 'unit_cost'    => $unitCost,

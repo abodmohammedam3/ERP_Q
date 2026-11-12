@@ -1,5 +1,5 @@
 <!-- =========================================================
-     مودال اختيار المورد (عام)
+     مودال اختيار الرعوي (عام)
      ========================================================= -->
 
 <div
@@ -16,7 +16,7 @@
             <div class="modal-header">
                 <h5 class="modal-title" id="SupplierModalLabel">
                     <i class="bi bi-person me-2"></i>
-                    اختيار المورد
+                    اختيار الرعوي
                 </h5>
                 <button
                     type="button"
@@ -35,7 +35,7 @@
                         type="text"
                         class="form-control"
                         id="SupplierSearchInput"
-                        placeholder="ابحث عن المورد (اسم أو رقم محاسبي)..."
+                        placeholder="ابحث عن الرعوي (اسم أو رقم محاسبي)..."
                         oninput="Supplier.search()"
                         autofocus
                     >
@@ -47,7 +47,7 @@
                         <thead class="table-light">
                             <tr class="text-center">
                                 <th>#</th>
-                                <th>اسم المورد</th>
+                                <th>اسم الرعوي</th>
                                 <th>الرقم المحاسبي</th>
                                 <th>اختيار</th>
                             </tr>
@@ -55,7 +55,7 @@
                         <tbody id="SupplierResults">
                             <tr>
                                 <td colspan="4" class="text-center text-muted py-3">
-                                    ابحث عن المورد
+                                    ابحث عن الرعوي
                                 </td>
                             </tr>
                         </tbody>

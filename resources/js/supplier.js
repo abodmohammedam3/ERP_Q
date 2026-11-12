@@ -1,7 +1,7 @@
 /**
  * =========================================================
  * suppliers.js
- * إدارة الموردين
+ * إدارة الرعويين
  * =========================================================
  */
 
@@ -18,7 +18,7 @@ function notify(message, type = 'danger') {
 }
 
 // =====================================================
-// طباعة تقرير الموردين (بدون فتح نافذة جديدة — via iframe)
+// طباعة تقرير الرعويين (بدون فتح نافذة جديدة — via iframe)
 // =====================================================
 
 function printSuppliers() {
@@ -167,7 +167,7 @@ function initSuppliersPage() {
         editingSupplierId = null;
         originalSupplierData = null;
 
-        if (supplierModalTitle) supplierModalTitle.textContent = 'إضافة مورد جديد';
+        if (supplierModalTitle) supplierModalTitle.textContent = 'إضافة رعوي جديد';
         if (saveSupplierBtn)    saveSupplierBtn.textContent    = 'حفظ البيانات';
 
         if (supplierForm) supplierForm.reset();
@@ -179,7 +179,7 @@ function initSuppliersPage() {
     }
 
     // =====================================================
-    // تعديل المورد
+    // تعديل الرعوي
     // =====================================================
 
     window.editSupplier = async function (id) {
@@ -195,7 +195,7 @@ function initSuppliersPage() {
             const data = await response.json();
 
             if (!response.ok || !data.success) {
-                throw new Error(data.message || 'تعذر تحميل بيانات المورد');
+                throw new Error(data.message || 'تعذر تحميل بيانات الرعوي');
             }
 
             const supplier = data.supplier;
@@ -217,7 +217,7 @@ function initSuppliersPage() {
             formMode          = 'edit';
             editingSupplierId = supplier.suplierID;
 
-            if (supplierModalTitle) supplierModalTitle.textContent = 'تعديل المورد';
+            if (supplierModalTitle) supplierModalTitle.textContent = 'تعديل الرعوي';
             if (saveSupplierBtn)    saveSupplierBtn.textContent    = 'تحديث البيانات';
 
             if (supplierID) supplierID.value = supplier.suplierID ?? '';
@@ -253,7 +253,7 @@ function initSuppliersPage() {
     };
 
     // =====================================================
-    // حفظ / تحديث المورد
+    // حفظ / تحديث الرعوي
     // =====================================================
 
     if (supplierForm) {
@@ -283,7 +283,7 @@ function initSuppliersPage() {
                     currentSupplierData.is_active !== originalSupplierData.is_active;
 
                 if (!hasChanges) {
-                    notify('لم يتم إجراء أي تعديل على بيانات المورد', 'danger');
+                    notify('لم يتم إجراء أي تعديل على بيانات الرعوي', 'danger');
                     return;
                 }
             }
@@ -358,7 +358,7 @@ function initSuppliersPage() {
     }
 
     // =====================================================
-    // إضافة مورد
+    // إضافة رعوي
     // =====================================================
 
     if (addSupplierBtn) {
@@ -369,7 +369,7 @@ function initSuppliersPage() {
     }
 
     // =====================================================
-    // زر طباعة تقرير الموردين
+    // زر طباعة تقرير الرعويين
     // =====================================================
 
     if (printSuppliersBtn) {
@@ -382,7 +382,7 @@ function initSuppliersPage() {
     }
 
     // =====================================================
-    // إغلاق نافذة المورد
+    // إغلاق نافذة الرعوي
     // =====================================================
 
     if (supplierModalElement) {
@@ -444,7 +444,7 @@ function initSuppliersPage() {
                 if (!response.ok || !data.success) {
                     throw new Error(
                         data.message ||
-                        'لا يمكن حذف المورد لوجود حركات مرتبطة به'
+                        'لا يمكن حذف الرعوي لوجود حركات مرتبطة به'
                     );
                 }
 
@@ -452,7 +452,7 @@ function initSuppliersPage() {
 
                 closeDeleteConfirm();
 
-                notify(data.message || 'تم حذف المورد بنجاح', 'success');
+                notify(data.message || 'تم حذف الرعوي بنجاح', 'success');
 
             } catch (error) {
                 closeDeleteConfirm();
@@ -504,10 +504,10 @@ function initSuppliersPage() {
 
         if (paginationInfo) {
             if (totalRows === 0) {
-                paginationInfo.textContent = 'عرض 0-0 من 0 مورد';
+                paginationInfo.textContent = 'عرض 0-0 من 0 رعوي';
             } else {
                 paginationInfo.textContent =
-                    `عرض ${start + 1}-${Math.min(end, totalRows)} من ${totalRows} مورد`;
+                    `عرض ${start + 1}-${Math.min(end, totalRows)} من ${totalRows} رعوي`;
             }
         }
 
@@ -592,7 +592,7 @@ function initSuppliersPage() {
     }
 
     // =====================================================
-    // إعادة تحميل جدول الموردين
+    // إعادة تحميل جدول الرعويين
     // =====================================================
 
     async function reloadSuppliersTable() {
@@ -632,7 +632,7 @@ function initSuppliersPage() {
             const data = await response.json();
 
             if (!response.ok || !data.success) {
-                throw new Error(data.message || 'تعذر تحميل الموردين');
+                throw new Error(data.message || 'تعذر تحميل الرعويين');
             }
 
             if (suppliersTableContainer) {

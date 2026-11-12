@@ -1335,8 +1335,8 @@ function renderStockBalances(rows) {
         return;
     }
 
-    /* ✅ مفتاح مركّب: الصنف + النوع + المخزن + الوحدة + المورد
-       (الدفعة الموردية هي وحدة التعطيل، لا الصنف كاملاً) */
+    /* ✅ مفتاح مركّب: الصنف + النوع + المخزن + الوحدة + الرعوي
+       (الدفعة الرعويية هي وحدة التعطيل، لا الصنف كاملاً) */
     const balanceKey = (r) => [
         r.item_id ?? '',
         r.type_id ?? '',
@@ -1401,7 +1401,7 @@ function renderStockBalances(rows) {
         if (isUsed) {
             btnSelect.disabled = true;
             btnSelect.classList.add('disabled');
-            btnSelect.title = 'هذه الدفعة (الصنف/النوع/المخزن/الوحدة/المورد) مضافة بالفعل في صف آخر';
+            btnSelect.title = 'هذه الدفعة (الصنف/النوع/المخزن/الوحدة/الرعوي) مضافة بالفعل في صف آخر';
         } else {
             btnSelect.addEventListener('click', () => selectStockBalance(row));
         }
@@ -1432,7 +1432,7 @@ function selectStockBalance(row) {
     activeStockBalanceRow.querySelector('.row-warehouse-id').value = row.warehouse_id ?? '';
     activeStockBalanceRow.querySelector('.row-warehouse').value = row.warehouse_name ?? '';
 
-    /* ✅ المورد المختار — يُرسل مع السطر ويُخصم رصيده تحديداً */
+    /* ✅ الرعوي المختار — يُرسل مع السطر ويُخصم رصيده تحديداً */
     const supplierIdEl = activeStockBalanceRow.querySelector('.row-supplier-id');
     const supplierNameEl = activeStockBalanceRow.querySelector('.row-supplier');
     if (supplierIdEl) supplierIdEl.value = row.supplier_account_id ?? '';
@@ -1446,7 +1446,7 @@ function selectStockBalance(row) {
 
     /* ✅ سعر البيع من الدفعة المختارة؛ وإن كانت الدفعة بلا تسعير
        (توريد عام مثلاً) نستخدم أول تسعير معروف لنفس
-       (الصنف/النوع/المخزن/الوحدة) من أي مورد في الكاش. */
+       (الصنف/النوع/المخزن/الوحدة) من أي رعوي في الكاش. */
     let salePriceBase = Number(row.sale_price) || 0;
     if (!salePriceBase) {
         const comboKey = (r) => [r.item_id ?? '', r.type_id ?? '', r.warehouse_id ?? '', r.unit_id ?? ''].join('|');

@@ -21,7 +21,7 @@ class ItemUpdateRequest extends ItemStoreRequest
                 'required',
                 'string',
                 'max:255',
-                Rule::unique('Items', 'itemName2')->ignore($itemId, 'itemID'),
+                Rule::unique('items', 'itemName2')->ignore($itemId, 'itemID'),
             ],
         ];
     }

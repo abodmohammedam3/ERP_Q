@@ -90,10 +90,10 @@ class GeneralLedgerReport implements Report
         $page = max(1, (int) ($filters['page'] ?? 1));
 
         $query = JournalEntryLine::query()
-            ->join('Journal_Entries as je', 'je.entryID', '=', 'JournalEntrryLine.entryID')
-            ->join('characcount as ca', 'ca.accountID', '=', 'JournalEntrryLine.accountID')
+            ->join('journal_entries as je', 'je.entryID', '=', 'journalentrryline.entryID')
+            ->join('characcount as ca', 'ca.accountID', '=', 'journalentrryline.accountID')
             ->select([
-                'JournalEntrryLine.entryID',
+                'journalentrryline.entryID',
                 'je.entryNo',
                 'je.entryDate',
                 'je.docType',
@@ -101,8 +101,8 @@ class GeneralLedgerReport implements Report
                 'je.description2',
                 'ca.accCode as account_code',
                 'ca.accName as account_name',
-                'JournalEntrryLine.localDebit',
-                'JournalEntrryLine.localCredit',
+                'journalentrryline.localDebit',
+                'journalentrryline.localCredit',
             ]);
 
         if (!empty($filters['date_from'])) {
@@ -132,8 +132,8 @@ class GeneralLedgerReport implements Report
         // نظّف الأعمدة قبل إضافة عمودي SUM (وإلا خلط MySQL بينهما ورفض الاستعلام)
         $totalsRow = (clone $query)->toBase()
             ->cloneWithout(['columns'])
-            ->selectRaw('COALESCE(SUM(JournalEntrryLine.localDebit), 0) as debit')
-            ->selectRaw('COALESCE(SUM(JournalEntrryLine.localCredit), 0) as credit')
+            ->selectRaw('COALESCE(SUM(journalentrryline.localDebit), 0) as debit')
+            ->selectRaw('COALESCE(SUM(journalentrryline.localCredit), 0) as credit')
             ->first();
 
         $total = (clone $query)->count();

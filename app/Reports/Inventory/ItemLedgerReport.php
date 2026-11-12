@@ -90,7 +90,7 @@ class ItemLedgerReport implements Report
 
         $query = InventoryMovementDetail::query()
             ->join('inventory_movements as im', 'im.movement_id', '=', 'inventory_movement_details.movement_id')
-            ->join('Items as it', 'it.itemID', '=', 'inventory_movement_details.item_id')
+            ->join('items as it', 'it.itemID', '=', 'inventory_movement_details.item_id')
             ->select([
                 'im.movement_id',
                 'im.display_id',

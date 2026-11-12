@@ -15,11 +15,11 @@ const lookupFormatRate = (v) =>
 const LookupConfigs = {
 
     supplier: {
-        title: 'اختيار المورد',
+        title: 'اختيار الرعوي',
         icon: 'bi-person-fill',
         columns: [
             { key: 'suplierID', label: 'الرقم', width: '70px', align: 'center' },
-            { key: 'supName', label: 'اسم المورد', align: 'start' },
+            { key: 'supName', label: 'اسم الرعوي', align: 'start' },
             { key: 'accountCode', label: 'الرقم المحاسبي', width: '130px', align: 'center' },
         ],
         cacheKey: 'suppliers',

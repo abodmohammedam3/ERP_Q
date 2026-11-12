@@ -44,7 +44,7 @@
                 data-type="SUPPLIER"
                 role="tab">
             <i class="bi bi-truck"></i>
-            الموردين
+            الرعويين
         </button>
     </li>
      <li class="nav-item" role="presentation">

@@ -8,7 +8,7 @@ use App\Reports\Contracts\Report;
 /**
  * تقرير فواتير الشراء.
  *
- * جميع فواتير الشراء خلال فترة (مع فلاتر المورد وطريقة الدفع)
+ * جميع فواتير الشراء خلال فترة (مع فلاتر الرعوي وطريقة الدفع)
  * مع الإجماليات — الإجمالي الكلي أخضر والخصم أحمر.
  */
 class PurchaseInvoicesReport implements Report
@@ -45,12 +45,12 @@ class PurchaseInvoicesReport implements Report
         return [
             [
                 'key'         => 'supplier_id',
-                'label'       => 'المورد',
+                'label'       => 'الرعوي',
                 'type'        => 'account',
                 'mode'        => 'all',
                 'source'      => 'accounts',
                 'restrict'    => 'suppliers',
-                'placeholder' => 'اكتب أو اضغط Enter لاختيار المورد...',
+                'placeholder' => 'اكتب أو اضغط Enter لاختيار الرعوي...',
                 'col'         => 'col-md-3',
             ],
             [
@@ -80,7 +80,7 @@ class PurchaseInvoicesReport implements Report
         return [
             ['key' => 'invoice_number',  'label' => 'رقم الفاتورة',   'type' => 'text'],
             ['key' => 'invoice_date',    'label' => 'التاريخ',         'type' => 'date'],
-            ['key' => 'supplier',        'label' => 'المورد',          'type' => 'text'],
+            ['key' => 'supplier',        'label' => 'الرعوي',          'type' => 'text'],
             ['key' => 'payment_method',  'label' => 'طريقة الدفع',     'type' => 'text'],
             ['key' => 'currency',        'label' => 'العملة',          'type' => 'text'],
             ['key' => 'statement',       'label' => 'البيان',          'type' => 'text'],

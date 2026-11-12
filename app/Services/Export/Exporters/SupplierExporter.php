@@ -14,7 +14,7 @@ class SupplierExporter extends AbstractExporter
 
     public function getTableName(): string
     {
-        return 'Suppliers';
+        return 'suppliers';
     }
 
     public function getModelClass(): string

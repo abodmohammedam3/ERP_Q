@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class JournalEntryLine extends Model
 {
-    protected $table      = 'JournalEntrryLine';
+    protected $table      = 'journalentrryline';
     protected $primaryKey = 'entryLineID';
     public $timestamps = false;
 

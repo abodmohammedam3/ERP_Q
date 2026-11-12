@@ -33,7 +33,7 @@ class StoreSalesInvoiceRequest extends FormRequest
             'reference'          => ['nullable', 'string'],
 
             'details'                => ['required', 'array', 'min:1'],
-            'details.*.item_id'      => ['required', 'exists:Items,itemID'],
+            'details.*.item_id'      => ['required', 'exists:items,itemID'],
             'details.*.type_id'      => ['nullable', 'exists:type,id'],
             'details.*.unit_id'      => ['nullable', 'exists:units,UnitID'],
             'details.*.warehouse_id' => ['required', 'exists:stocks,StockID'],

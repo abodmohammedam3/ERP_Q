@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * كشف حساب (عميل / مورد / أي حساب من الدليل).
+ * كشف حساب (عميل / رعوي / أي حساب من الدليل).
  *
  * حركة حساب واحد زمنياً مع رصيد أول المدة والرصيد التراكمي.
  * الرصيد يُحسب حسب طبيعة الحساب (nature): مدينة أو دائنة.
@@ -30,7 +30,7 @@ class AccountStatementReport implements Report
 
     public function description(): string
     {
-        return 'حركة عميل أو مورد مع رصيد أول المدة والرصيد التراكمي';
+        return 'حركة عميل أو رعوي مع رصيد أول المدة والرصيد التراكمي';
     }
 
     public function icon(): string
@@ -220,18 +220,18 @@ class AccountStatementReport implements Report
         $isSingle = count($accountIds) === 1;
 
         $query = JournalEntryLine::query()
-            ->join('Journal_Entries as je', 'je.entryID', '=', 'JournalEntrryLine.entryID')
-            ->whereIn('JournalEntrryLine.accountID', $accountIds)
+            ->join('journal_entries as je', 'je.entryID', '=', 'journalentrryline.entryID')
+            ->whereIn('journalentrryline.accountID', $accountIds)
             ->select([
-                'JournalEntrryLine.accountID',
+                'journalentrryline.accountID',
                 'je.entryID',
                 'je.entryNo',
                 'je.entryDate',
                 'je.docType',
                 'je.docNumber',
                 'je.description2',
-                'JournalEntrryLine.localDebit',
-                'JournalEntrryLine.localCredit',
+                'journalentrryline.localDebit',
+                'journalentrryline.localCredit',
             ]);
 
         // ── رصيد أول المدة: مجموع الحركة قبل بداية الفترة ──
@@ -264,14 +264,14 @@ class AccountStatementReport implements Report
 
         if (!empty($filters['date_from'])) {
             $openRows = JournalEntryLine::query()
-                ->join('Journal_Entries as je', 'je.entryID', '=', 'JournalEntrryLine.entryID')
-                ->whereIn('JournalEntrryLine.accountID', $accountIds)
+                ->join('journal_entries as je', 'je.entryID', '=', 'journalentrryline.entryID')
+                ->whereIn('journalentrryline.accountID', $accountIds)
                 ->where('je.entryDate', '<', $filters['date_from'])
                 ->toBase()
-                ->select('JournalEntrryLine.accountID')
-                ->selectRaw('COALESCE(SUM(JournalEntrryLine.localDebit), 0) as d')
-                ->selectRaw('COALESCE(SUM(JournalEntrryLine.localCredit), 0) as c')
-                ->groupBy('JournalEntrryLine.accountID')
+                ->select('journalentrryline.accountID')
+                ->selectRaw('COALESCE(SUM(journalentrryline.localDebit), 0) as d')
+                ->selectRaw('COALESCE(SUM(journalentrryline.localCredit), 0) as c')
+                ->groupBy('journalentrryline.accountID')
                 ->get();
 
             foreach ($openRows as $o) {
@@ -283,10 +283,10 @@ class AccountStatementReport implements Report
         }
 
         $lines = $query
-            ->orderBy('JournalEntrryLine.accountID')
+            ->orderBy('journalentrryline.accountID')
             ->orderBy('je.entryDate')
             ->orderBy('je.entryID')
-            ->orderBy('JournalEntrryLine.entryLineID')
+            ->orderBy('journalentrryline.entryLineID')
             ->get()
             ->groupBy('accountID');
 

@@ -1,5 +1,5 @@
 {{-- ========================= --}}
-{{-- جدول عرض الموردين --}}
+{{-- جدول عرض الرعويين --}}
 {{-- ========================= --}}
 
 <div class="card" id="suppliersTableCard">
@@ -7,7 +7,7 @@
     <div class="card-header d-flex justify-content-between align-items-center">
 
         <span>
-            <i class="bi bi-list-ul"></i> قائمة الموردين
+            <i class="bi bi-list-ul"></i> قائمة الرعويين
         </span>
 
         <span class="badge bg-secondary" id="suppliersCountBadge">
@@ -42,7 +42,7 @@
 
                         <th>#</th>
 
-                        <th>اسم المورد</th>
+                        <th>اسم الرعوي</th>
 
                         <th>رقم الهاتف</th>
 
@@ -75,7 +75,7 @@
                             </td>
 
 
-                            {{-- اسم المورد --}}
+                            {{-- اسم الرعوي --}}
                             <td
                                 class="fw-semibold"
                                 style="
@@ -190,7 +190,7 @@
 
                                 <i class="bi bi-truck fs-2 d-block mb-2 text-secondary"></i>
 
-                                لا يوجد موردون مسجلون
+                                لا يوجد رعويون مسجلون
 
                             </td>
 

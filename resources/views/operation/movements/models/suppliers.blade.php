@@ -1,11 +1,11 @@
-{{-- نافذة اختيار المورد --}}
+{{-- نافذة اختيار الرعوي --}}
 <div class="modal fade" id="supplierModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
 
             <div class="modal-header">
                 <h5 class="modal-title">
-                    <i class="bi bi-person"></i> اختيار المورد
+                    <i class="bi bi-person"></i> اختيار الرعوي
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -15,7 +15,7 @@
                 <div class="row g-2 mb-3">
                     <div class="col-md-10">
                         <input type="text" class="form-control" id="supplierSearchInput"
-                               placeholder="اسم المورد أو الرقم المحاسبي"
+                               placeholder="اسم الرعوي أو الرقم المحاسبي"
                                oninput="supplierInput(event)"
                                onkeydown="if(event.key==='Enter') searchSuppliers()">
                     </div>
@@ -30,7 +30,7 @@
                         <thead class="table-light">
                             <tr class="text-center">
                                 <th>الرقم</th>
-                                <th>اسم المورد</th>
+                                <th>اسم الرعوي</th>
                                 <th>الرقم المحاسبي</th>
                                 <th>اختيار</th>
                             </tr>

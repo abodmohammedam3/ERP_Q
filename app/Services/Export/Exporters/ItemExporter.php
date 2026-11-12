@@ -14,7 +14,7 @@ class ItemExporter extends AbstractExporter
 
     public function getTableName(): string
     {
-        return 'Items';
+        return 'items';
     }
 
     public function getModelClass(): string

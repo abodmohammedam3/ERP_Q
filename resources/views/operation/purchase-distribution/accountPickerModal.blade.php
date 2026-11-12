@@ -37,14 +37,14 @@
                         </button>
                     </li>
 
-                    <!-- الموردون -->
+                    <!-- الرعويون -->
                     <li class="nav-item" role="presentation">
                         <button class="nav-link"
                                 data-type="supplier"
                                 type="button"
                                 role="tab">
                             <i class="bi bi-truck"></i>
-                            الموردين
+                            الرعويين
                         </button>
                     </li>
 

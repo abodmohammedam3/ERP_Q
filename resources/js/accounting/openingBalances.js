@@ -615,7 +615,7 @@ async function activatePickerTab(type) {
         CASH:      'اختيار صندوق',
         BANK:      'اختيار بنك',
         CUSTOMER:  'اختيار عميل',
-        SUPPLIER:  'اختيار مورد',
+        SUPPLIER:  'اختيار رعوي',
         INVENTORY: 'اختيار مخزن',
     };
     El.pickerTitle.textContent = titles[type] || 'اختيار حساب';

@@ -10,33 +10,19 @@ use Illuminate\Validation\ValidationException;
 class InventoryService
 {
     // =====================================================
-    // ✅ قفل صفوف المخزون (يمنع Race Conditions)
+    // قفل صفوف المخزون
     // =====================================================
-
-    /**
-     * يقفل صفوف inventory_movement_details المرتبطة بـ
-     * (item + warehouse + unit + supplier?).
-     *
-     * عند تمرير supplierAccountId يقفل فقط دفعة ذلك المورد —
-     * يمنع سباق خصم من نفس دفعة مورد بطلبيتين متزامنتين.
-     */
-    public function lockStockRows(array $combinations): void
+    public function lockStockRows(array $details): void
     {
         $pairs = [];
 
-        foreach ($combinations as $c) {
-            $itemId      = (int) ($c['item_id'] ?? 0);
-            $warehouseId = (int) ($c['warehouse_id'] ?? 0);
-            $unitId      = isset($c['unit_id']) && $c['unit_id'] !== null
-                ? (int) $c['unit_id']
-                : null;
-            $supplierId  = isset($c['supplier_account_id']) && $c['supplier_account_id'] !== null
-                ? (int) $c['supplier_account_id']
-                : null;
+        foreach ($details as $row) {
+            $itemId      = (int) ($row['item_id'] ?? 0);
+            $warehouseId = (int) ($row['warehouse_id'] ?? 0);
+            $unitId      = isset($row['unit_id']) && $row['unit_id'] !== null ? (int) $row['unit_id'] : null;
+            $supplierId  = !empty($row['supplier_account_id']) ? (int) $row['supplier_account_id'] : null;
 
-            if (!$itemId || !$warehouseId) {
-                continue;
-            }
+            if (!$itemId || !$warehouseId) continue;
 
             $key = $itemId . '|' . $warehouseId . '|' . ($unitId ?? 0) . '|' . ($supplierId ?? 0);
             $pairs[$key] = [
@@ -47,125 +33,80 @@ class InventoryService
             ];
         }
 
+        if (empty($pairs)) return;
+
         ksort($pairs);
 
-        foreach ($pairs as $pair) {
-            $query = DB::table('inventory_movement_details')
-                ->where('item_id', $pair['item_id'])
-                ->where('warehouse_id', $pair['warehouse_id']);
-
-            if ($pair['unit_id']) {
-                $query->where('unit_id', $pair['unit_id']);
-            }
-
-            /* ✅ القفل على دفعة المورد تحديداً عند تمريره */
-            if ($pair['supplier_account_id'] !== null) {
-                $query->where('supplier_account_id', $pair['supplier_account_id']);
-            }
-
-            $query->select('movement_detail_id')
-                  ->lockForUpdate()
-                  ->get();
-        }
+        DB::table('inventory_movement_details')
+            ->where(function ($q) use ($pairs) {
+                foreach ($pairs as $pair) {
+                    $q->orWhere(function ($sub) use ($pair) {
+                        $sub->where('item_id', $pair['item_id'])
+                            ->where('warehouse_id', $pair['warehouse_id']);
+                        if ($pair['unit_id']) $sub->where('unit_id', $pair['unit_id']);
+                        if ($pair['supplier_account_id'] !== null) {
+                            $sub->where('supplier_account_id', $pair['supplier_account_id']);
+                        }
+                    });
+                }
+            })
+            ->lockForUpdate()
+            ->pluck('movement_detail_id');
     }
 
     // =====================================================
-    // القراءة — قراءة الأرصدة
+    // القراءة
     // =====================================================
-
-    public function availableQuantity(
-        int $itemId,
-        int $warehouseId,
-        ?int $unitId = null
-    ): float {
+    public function availableQuantity(int $itemId, int $warehouseId, ?int $unitId = null): float
+    {
         $in = InventoryMovementDetail::query()
-            ->join(
-                'inventory_movements',
-                'inventory_movements.movement_id',
-                '=',
-                'inventory_movement_details.movement_id'
-            )
+            ->join('inventory_movements', 'inventory_movements.movement_id', '=', 'inventory_movement_details.movement_id')
             ->where('inventory_movement_details.item_id', $itemId)
             ->where('inventory_movement_details.warehouse_id', $warehouseId)
-            ->when($unitId !== null, function ($q) use ($unitId) {
-                $q->where('inventory_movement_details.unit_id', $unitId);
-            })
+            ->when($unitId !== null, fn($q) => $q->where('inventory_movement_details.unit_id', $unitId))
             ->where('inventory_movements.direction', 'in')
             ->sum('inventory_movement_details.quantity');
 
         $out = InventoryMovementDetail::query()
-            ->join(
-                'inventory_movements',
-                'inventory_movements.movement_id',
-                '=',
-                'inventory_movement_details.movement_id'
-            )
+            ->join('inventory_movements', 'inventory_movements.movement_id', '=', 'inventory_movement_details.movement_id')
             ->where('inventory_movement_details.item_id', $itemId)
             ->where('inventory_movement_details.warehouse_id', $warehouseId)
-            ->when($unitId !== null, function ($q) use ($unitId) {
-                $q->where('inventory_movement_details.unit_id', $unitId);
-            })
+            ->when($unitId !== null, fn($q) => $q->where('inventory_movement_details.unit_id', $unitId))
             ->where('inventory_movements.direction', 'out')
             ->sum('inventory_movement_details.quantity');
 
         return (float) $in - (float) $out;
     }
 
-    public function isAvailable(
-        int $itemId,
-        int $warehouseId,
-        float $qty,
-        ?int $unitId = null
-    ): bool {
+    public function isAvailable(int $itemId, int $warehouseId, float $qty, ?int $unitId = null): bool
+    {
         return $this->availableQuantity($itemId, $warehouseId, $unitId) >= $qty;
     }
 
-    // =====================================================
-    // ✅ رصيد دفعة موردية (Supplier-Tracked Lot)
-    // =====================================================
-
-    /**
-     * رصيد صنف/مخزن/وحدة **لمورد محدد**.
-     * supplierAccountId = null ⇒ رصيد "التوريد العام" (حركات بلا مورد: supply, بيع تاريخي...)
-     */
-    public function availableQuantityForSupplier(
-        int $itemId,
-        int $warehouseId,
-        ?int $unitId,
-        ?int $supplierAccountId
-    ): float {
+    public function availableQuantityForSupplier(int $itemId, int $warehouseId, ?int $unitId, ?int $supplierAccountId): float
+    {
         $in = InventoryMovementDetail::query()
-            ->join(
-                'inventory_movements',
-                'inventory_movements.movement_id',
-                '=',
-                'inventory_movement_details.movement_id'
-            )
+            ->join('inventory_movements', 'inventory_movements.movement_id', '=', 'inventory_movement_details.movement_id')
             ->where('inventory_movement_details.item_id', $itemId)
             ->where('inventory_movement_details.warehouse_id', $warehouseId)
-            ->when($unitId !== null, fn ($q) => $q->where('inventory_movement_details.unit_id', $unitId))
+            ->when($unitId !== null, fn($q) => $q->where('inventory_movement_details.unit_id', $unitId))
             ->when(
                 $supplierAccountId === null,
-                fn ($q) => $q->whereNull('inventory_movement_details.supplier_account_id'),
-                fn ($q) => $q->where('inventory_movement_details.supplier_account_id', $supplierAccountId)
+                fn($q) => $q->whereNull('inventory_movement_details.supplier_account_id'),
+                fn($q) => $q->where('inventory_movement_details.supplier_account_id', $supplierAccountId)
             )
             ->where('inventory_movements.direction', 'in')
             ->sum('inventory_movement_details.quantity');
 
         $out = InventoryMovementDetail::query()
-            ->join(
-                'inventory_movements',
-                'inventory_movements.movement_id',
-                '=',
-                'inventory_movement_details.movement_id'
-            )
+            ->join('inventory_movements', 'inventory_movements.movement_id', '=', 'inventory_movement_details.movement_id')
             ->where('inventory_movement_details.item_id', $itemId)
             ->where('inventory_movement_details.warehouse_id', $warehouseId)
-            ->when($unitId !== null, fn ($q) => $q->where('inventory_movement_details.unit_id', $unitId))
+            ->when($unitId !== null, fn($q) => $q->where('inventory_movement_details.unit_id', $unitId))
             ->when(
                 $supplierAccountId === null,
-                fn ($q) => $q->whereNull('inventory_movement_details.supplier_account_id'),
-                fn ($q) => $q->where('inventory_movement_details.supplier_account_id', $supplierAccountId)
+                fn($q) => $q->whereNull('inventory_movement_details.supplier_account_id'),
+                fn($q) => $q->where('inventory_movement_details.supplier_account_id', $supplierAccountId)
             )
             ->where('inventory_movements.direction', 'out')
             ->sum('inventory_movement_details.quantity');
@@ -173,29 +114,17 @@ class InventoryService
         return (float) $in - (float) $out;
     }
 
-    /**
-     * تكلفة آخر دفعة دخول **لمورد محدد** (نفس المنطق الحالي لكن مُقَيَّد بالمورد).
-     */
-    public function lastCostForSupplier(
-        int $itemId,
-        int $warehouseId,
-        ?int $unitId,
-        ?int $supplierAccountId
-    ): float {
+    public function lastCostForSupplier(int $itemId, int $warehouseId, ?int $unitId, ?int $supplierAccountId): float
+    {
         $detail = InventoryMovementDetail::query()
-            ->join(
-                'inventory_movements',
-                'inventory_movements.movement_id',
-                '=',
-                'inventory_movement_details.movement_id'
-            )
+            ->join('inventory_movements', 'inventory_movements.movement_id', '=', 'inventory_movement_details.movement_id')
             ->where('inventory_movement_details.item_id', $itemId)
             ->where('inventory_movement_details.warehouse_id', $warehouseId)
-            ->when($unitId !== null, fn ($q) => $q->where('inventory_movement_details.unit_id', $unitId))
+            ->when($unitId !== null, fn($q) => $q->where('inventory_movement_details.unit_id', $unitId))
             ->when(
                 $supplierAccountId === null,
-                fn ($q) => $q->whereNull('inventory_movement_details.supplier_account_id'),
-                fn ($q) => $q->where('inventory_movement_details.supplier_account_id', $supplierAccountId)
+                fn($q) => $q->whereNull('inventory_movement_details.supplier_account_id'),
+                fn($q) => $q->where('inventory_movement_details.supplier_account_id', $supplierAccountId)
             )
             ->where('inventory_movements.direction', 'in')
             ->orderByDesc('inventory_movement_details.movement_detail_id')
@@ -205,23 +134,13 @@ class InventoryService
         return $detail ? (float) $detail->unit_cost : 0;
     }
 
-    public function lastCost(
-        int $itemId,
-        int $warehouseId,
-        ?int $unitId = null
-    ): float {
+    public function lastCost(int $itemId, int $warehouseId, ?int $unitId = null): float
+    {
         $detail = InventoryMovementDetail::query()
-            ->join(
-                'inventory_movements',
-                'inventory_movements.movement_id',
-                '=',
-                'inventory_movement_details.movement_id'
-            )
+            ->join('inventory_movements', 'inventory_movements.movement_id', '=', 'inventory_movement_details.movement_id')
             ->where('inventory_movement_details.item_id', $itemId)
             ->where('inventory_movement_details.warehouse_id', $warehouseId)
-            ->when($unitId !== null, function ($q) use ($unitId) {
-                $q->where('inventory_movement_details.unit_id', $unitId);
-            })
+            ->when($unitId !== null, fn($q) => $q->where('inventory_movement_details.unit_id', $unitId))
             ->where('inventory_movements.direction', 'in')
             ->orderByDesc('inventory_movement_details.movement_detail_id')
             ->select('inventory_movement_details.unit_cost')
@@ -230,61 +149,37 @@ class InventoryService
         return $detail ? (float) $detail->unit_cost : 0;
     }
 
-   public function currentUnitCost(
-    int $itemId,
-    ?int $typeId,
-    int $warehouseId,
-    int $unitId
-    ): float {
-    /* ✅ إصلاح: إزالة استثناء source_type='sorting'
-       كان يمنع الفرز المتعدد المستويات (كجم → جرام → قطعة).
-       التكلفة الصحيحة للوحدة الناتجة عن فرز سابق = تكلفتها المخزّنة نفسها. */
+    public function currentUnitCost(int $itemId, ?int $typeId, int $warehouseId, int $unitId): float
+    {
         $query = InventoryMovementDetail::query()
-        ->join(
-            'inventory_movements',
-            'inventory_movements.movement_id',
-            '=',
-            'inventory_movement_details.movement_id'
-        )
-        ->where('inventory_movement_details.item_id', $itemId)
-        ->where('inventory_movement_details.warehouse_id', $warehouseId)
-        ->where('inventory_movement_details.unit_id', $unitId)
-        ->where('inventory_movements.direction', 'in');
-
-     if ($typeId !== null) {
-        $query->where('inventory_movement_details.type_id', $typeId);
-     }
-
-    $detail = $query
-        ->orderByDesc('inventory_movement_details.movement_detail_id')
-        ->select('inventory_movement_details.unit_cost')
-        ->first();
-
-    return $detail ? (float) $detail->unit_cost : 0;
-    }
-
-    public function lastPricing(
-        int $itemId,
-        int $warehouseId,
-        ?int $unitId = null,
-        ?int $supplierAccountId = null
-    ): array {
-        $query = InventoryMovementDetail::query()
-            ->join(
-                'inventory_movements',
-                'inventory_movements.movement_id',
-                '=',
-                'inventory_movement_details.movement_id'
-            )
+            ->join('inventory_movements', 'inventory_movements.movement_id', '=', 'inventory_movement_details.movement_id')
             ->where('inventory_movement_details.item_id', $itemId)
             ->where('inventory_movement_details.warehouse_id', $warehouseId)
-            ->when($unitId !== null, function ($q) use ($unitId) {
-                $q->where('inventory_movement_details.unit_id', $unitId);
-            })
-            /* ✅ تسعير دفعة المورد المحدد (اختياري — null = التوريد العام) */
+            ->where('inventory_movement_details.unit_id', $unitId)
+            ->where('inventory_movements.direction', 'in');
+
+        if ($typeId !== null) {
+            $query->where('inventory_movement_details.type_id', $typeId);
+        }
+
+        $detail = $query
+            ->orderByDesc('inventory_movement_details.movement_detail_id')
+            ->select('inventory_movement_details.unit_cost')
+            ->first();
+
+        return $detail ? (float) $detail->unit_cost : 0;
+    }
+
+    public function lastPricing(int $itemId, int $warehouseId, ?int $unitId = null, ?int $supplierAccountId = null): array
+    {
+        $query = InventoryMovementDetail::query()
+            ->join('inventory_movements', 'inventory_movements.movement_id', '=', 'inventory_movement_details.movement_id')
+            ->where('inventory_movement_details.item_id', $itemId)
+            ->where('inventory_movement_details.warehouse_id', $warehouseId)
+            ->when($unitId !== null, fn($q) => $q->where('inventory_movement_details.unit_id', $unitId))
             ->when(
                 $supplierAccountId !== null,
-                fn ($q) => $q->where('inventory_movement_details.supplier_account_id', $supplierAccountId)
+                fn($q) => $q->where('inventory_movement_details.supplier_account_id', $supplierAccountId)
             )
             ->where('inventory_movements.direction', 'in')
             ->whereNotNull('inventory_movement_details.sale_price');
@@ -306,126 +201,121 @@ class InventoryService
     }
 
     // =====================================================
-    // الفرز / التجهيز
+    // ✅ الفرز — مع دعم batch_id (فاتورة محددة)
     // =====================================================
-
     public function sortInventory(array $data): array
     {
         return DB::transaction(function () use ($data) {
 
-            // 1) استخراج المدخلات
             $itemId       = (int) $data['item_id'];
-            $typeId       = isset($data['type_id']) && $data['type_id'] !== null
-                ? (int) $data['type_id']
-                : null;
+            $typeId       = isset($data['type_id']) && $data['type_id'] !== null ? (int) $data['type_id'] : null;
             $warehouseId  = (int) $data['warehouse_id'];
             $inputUnitId  = (int) $data['input_unit_id'];
             $outputUnitId = (int) $data['output_unit_id'];
             $inputQty     = (float) $data['input_quantity'];
             $outputQty    = (float) $data['output_quantity'];
-            $supplierId   = !empty($data['supplier_account_id'])
-                ? (int) $data['supplier_account_id']
-                : null;
+            $supplierId   = !empty($data['supplier_account_id']) ? (int) $data['supplier_account_id'] : null;
+            $batchId      = !empty($data['batch_id']) ? (int) $data['batch_id'] : null;
             $movementDate = $data['movement_date'] ?? now()->format('Y-m-d');
 
-            // 2) التحقق
             if ($inputQty <= 0) {
-                throw ValidationException::withMessages([
-                    'input_quantity' => 'الكمية المفرزة يجب أن تكون أكبر من صفر',
-                ]);
+                throw ValidationException::withMessages(['input_quantity' => 'الكمية المفرزة يجب أن تكون أكبر من صفر']);
             }
-
             if ($outputQty <= 0) {
-                throw ValidationException::withMessages([
-                    'output_quantity' => 'عدد الوحدات الناتجة يجب أن يكون أكبر من صفر',
-                ]);
+                throw ValidationException::withMessages(['output_quantity' => 'عدد الوحدات الناتجة يجب أن يكون أكبر من صفر']);
             }
-
             if ($inputUnitId === $outputUnitId) {
-                throw ValidationException::withMessages([
-                    'output_unit_id' => 'وحدة المصدر ووحدة الناتج يجب أن تكونا مختلفتين',
-                ]);
+                throw ValidationException::withMessages(['output_unit_id' => 'وحدة المصدر ووحدة الناتج يجب أن تكونا مختلفتين']);
             }
 
-            // ✅ 3) قفل صفوف المخزون (يمنع Race مع بيع/شراء/مرتجع متزامن)
-            //    ✅ القفل على دفعة المورد المحدد فقط
             $this->lockStockRows([
                 ['item_id' => $itemId, 'warehouse_id' => $warehouseId, 'unit_id' => $inputUnitId, 'supplier_account_id' => $supplierId],
                 ['item_id' => $itemId, 'warehouse_id' => $warehouseId, 'unit_id' => $outputUnitId, 'supplier_account_id' => $supplierId],
             ]);
 
-            // ✅ 4) فحص الرصيد — على دفعة المورد المحدد حصراً
-            //    حتى لو نفس الصنف موجود بمورد آخر لا يُمسّ رصيده
-            $available = $this->availableQuantityForSupplier($itemId, $warehouseId, $inputUnitId, $supplierId);
-            if ($available < $inputQty) {
-                throw ValidationException::withMessages([
-                    'input_quantity' => "الكمية المتوفرة من دفعة هذا المورد ({$available}) أقل من المطلوب ({$inputQty})",
-                ]);
+            if ($batchId !== null) {
+                $sourceDetail = InventoryMovementDetail::query()
+                    ->join('inventory_movements', 'inventory_movements.movement_id', '=', 'inventory_movement_details.movement_id')
+                    ->where('inventory_movement_details.movement_detail_id', $batchId)
+                    ->where('inventory_movement_details.item_id', $itemId)
+                    ->where('inventory_movement_details.warehouse_id', $warehouseId)
+                    ->where('inventory_movement_details.unit_id', $inputUnitId)
+                    ->where('inventory_movements.direction', 'in')
+                    ->select(
+                        'inventory_movement_details.movement_detail_id',
+                        'inventory_movement_details.supplier_account_id',
+                        'inventory_movement_details.quantity as batch_quantity'
+                    )
+                    ->first();
+
+                if (!$sourceDetail) {
+                    throw ValidationException::withMessages([
+                        'batch_id' => 'الدفعة المحددة غير موجودة أو لا تنتمي لهذا الصنف/المخزن/الوحدة',
+                    ]);
+                }
+
+                $distributed = (float) DB::table('distribution_details')
+                    ->where('movement_detail_id', $batchId)
+                    ->sum('quantity');
+
+                $sortedOut = (float) DB::table('inventory_movement_details as imd')
+                    ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
+                    ->where('imd.lot_source_detail_id', $batchId)
+                    ->where('im.movement_type', InventoryMovement::TYPE_SORTING_OUT)
+                    ->sum('imd.quantity');
+
+                $batchAvailable = max(0, (float) $sourceDetail->batch_quantity - $distributed - $sortedOut);
+
+                if ($batchAvailable < $inputQty) {
+                    throw ValidationException::withMessages([
+                        'input_quantity' => "الكمية المتاحة من هذه الدفعة ({$batchAvailable}) أقل من المطلوب ({$inputQty})",
+                    ]);
+                }
+            } else {
+                $available = $this->availableQuantityForSupplier($itemId, $warehouseId, $inputUnitId, $supplierId);
+                if ($available < $inputQty) {
+                    throw ValidationException::withMessages([
+                        'input_quantity' => "الكمية المتوفرة من دفعة هذا المورد ({$available}) أقل من المطلوب ({$inputQty})",
+                    ]);
+                }
+
+                $sourceDetail = InventoryMovementDetail::query()
+                    ->join('inventory_movements', 'inventory_movements.movement_id', '=', 'inventory_movement_details.movement_id')
+                    ->where('inventory_movement_details.item_id', $itemId)
+                    ->where('inventory_movement_details.warehouse_id', $warehouseId)
+                    ->where('inventory_movement_details.unit_id', $inputUnitId)
+                    ->where('inventory_movements.direction', 'in')
+                    ->when(
+                        $supplierId !== null,
+                        fn($q) => $q->where('inventory_movement_details.supplier_account_id', $supplierId),
+                        fn($q) => $q->whereNull('inventory_movement_details.supplier_account_id')
+                    )
+                    ->orderByDesc('inventory_movement_details.movement_detail_id')
+                    ->select(
+                        'inventory_movement_details.movement_detail_id',
+                        'inventory_movement_details.supplier_account_id'
+                    )
+                    ->first();
             }
 
-            // ✅ تكلفة الوحدة الأصلية
-            $unitCostInput = $this->currentUnitCost(
-                $itemId,
-                $typeId,
-                $warehouseId,
-                $inputUnitId
-            );
-
+            $unitCostInput = $this->currentUnitCost($itemId, $typeId, $warehouseId, $inputUnitId);
             if ($unitCostInput <= 0) {
                 throw ValidationException::withMessages([
                     'item_id' => 'لا يوجد سجل تكلفة صالح لهذا الصنف في الوحدة المحددة لهذا المورد',
                 ]);
             }
 
-            /* ✅ الدفعة المصروفة: آخر دفعة دخول لنفس التركيبة والمورد —
-               الفرز يورّث مورد الدفعة ولا يخلط بين الموردين */
-            $sourceDetail = InventoryMovementDetail::query()
-                ->join(
-                    'inventory_movements',
-                    'inventory_movements.movement_id',
-                    '=',
-                    'inventory_movement_details.movement_id'
-                )
-                ->where('inventory_movement_details.item_id', $itemId)
-                ->where('inventory_movement_details.warehouse_id', $warehouseId)
-                ->where('inventory_movement_details.unit_id', $inputUnitId)
-                ->where('inventory_movements.direction', 'in')
-                /* ✅ الدفعة المصروفة من المورد المحدد فقط */
-                ->when(
-                    $supplierId !== null,
-                    fn ($q) => $q->where('inventory_movement_details.supplier_account_id', $supplierId),
-                    fn ($q) => $q->whereNull('inventory_movement_details.supplier_account_id')
-                )
-                ->orderByDesc('inventory_movement_details.movement_detail_id')
-                ->select(
-                    'inventory_movement_details.movement_detail_id',
-                    'inventory_movement_details.supplier_account_id'
-                )
-                ->first();
-
             $sourceSupplierId = $sourceDetail?->supplier_account_id;
             $sourceDetailId   = $sourceDetail?->movement_detail_id;
 
-            // 5) الحساب
-            $inputTotal = round($inputQty * $unitCostInput, 6);
-
-            $unitCostOutput = $outputQty > 0
-                ? round($inputTotal / $outputQty, 6)
-                : 0;
-
-            // 6) توليد رقم العملية
+            $inputTotal     = round($inputQty * $unitCostInput, 6);
+            $unitCostOutput = $outputQty > 0 ? round($inputTotal / $outputQty, 6) : 0;
             $documentNumber = $this->generateSortingNumber();
 
-            // 7) display_id
-            $lastMovement = InventoryMovement::lockForUpdate()
-                ->orderByDesc('movement_id')
-                ->first();
+            $lastMovement = InventoryMovement::lockForUpdate()->orderByDesc('movement_id')->first();
+            $nextDisplayId = $lastMovement ? ((int) $lastMovement->display_id + 1) : 1;
 
-            $nextDisplayId = $lastMovement
-                ? ((int) $lastMovement->display_id + 1)
-                : 1;
-
-            // 8) OUT (الوحدة الأصلية)
+            // OUT
             $outMovement = InventoryMovement::create([
                 'display_id'      => (string) $nextDisplayId,
                 'movement_type'   => InventoryMovement::TYPE_SORTING_OUT,
@@ -446,7 +336,8 @@ class InventoryService
                 'unit_id'      => $inputUnitId,
                 'code'         => $data['code'] ?? null,
                 'warehouse_id' => $warehouseId,
-                'supplier_account_id' => $sourceSupplierId,
+                'supplier_account_id'  => $sourceSupplierId,
+                'lot_source_detail_id' => $sourceDetailId,
                 'quantity'     => $inputQty,
                 'unit_cost'    => $unitCostInput,
                 'min_price'    => null,
@@ -455,7 +346,7 @@ class InventoryService
                 'total'        => $inputTotal,
             ]);
 
-            // 9) IN (الوحدة الناتجة)
+            // IN
             $nextDisplayId++;
 
             $inMovement = InventoryMovement::create([
@@ -478,7 +369,7 @@ class InventoryService
                 'unit_id'      => $outputUnitId,
                 'code'         => $data['code'] ?? null,
                 'warehouse_id' => $warehouseId,
-                'supplier_account_id'  => $sourceSupplierId, /* ✅ الفرز يورّث المورد */
+                'supplier_account_id'  => $sourceSupplierId,
                 'lot_source_detail_id' => $sourceDetailId,
                 'quantity'     => $outputQty,
                 'unit_cost'    => $unitCostOutput,
@@ -488,11 +379,9 @@ class InventoryService
                 'total'        => $inputTotal,
             ]);
 
-            // 10) تطبيق
             $this->applyMovement($outMovement);
             $this->applyMovement($inMovement);
 
-            // 11) النتيجة
             return [
                 'document_number'   => $documentNumber,
                 'out_movement_id'   => $outMovement->movement_id,
@@ -501,16 +390,14 @@ class InventoryService
                 'output_quantity'   => $outputQty,
                 'input_value'       => $inputTotal,
                 'output_unit_cost'  => $unitCostOutput,
+                'batch_id'          => $sourceDetailId,
             ];
         });
     }
 
     public function generateSortingNumber(): string
     {
-        $lastDoc = InventoryMovement::where(
-                'source_type',
-                InventoryMovement::SOURCE_SORTING
-            )
+        $lastDoc = InventoryMovement::where('source_type', InventoryMovement::SOURCE_SORTING)
             ->where('document_number', 'like', 'SORT-%')
             ->orderByDesc('movement_id')
             ->value('document_number');
@@ -523,34 +410,6 @@ class InventoryService
         return 'SORT-' . str_pad($lastNumber + 1, 6, '0', STR_PAD_LEFT);
     }
 
-       // =====================================================
-    // ✅ applyMovement / reverseMovement
-    // -----------------------------------------------------
-    // الرصيد في هذا النظام يُحسب دائماً مباشرة من
-    // inventory_movements + inventory_movement_details
-    // (SUM(in) − SUM(out)) — لا يوجد جدول أرصدة منفصل
-    // يُحدَّث عند كل حركة، لذا هذه العمليات اختيارية.
-    // نُبقيها كنقاط ربط (Hooks) مستقبلاً لجدول
-    // inventory_balances الموثَّق في تقارير الفحص،
-    // مع ضمان عدم انكسار الاستدعاءات الموجودة في
-    // خدمات البيع/الشراء/المرتجعات/الفرز.
-    // =====================================================
-
-    /**
-     * نقطة ربط بعد إنشاء الحركة — لا تعديل على الأرصدة (تُحسب مباشرة من الحركات).
-     */
-    public function applyMovement(InventoryMovement $movement): void
-    {
-        /* No-op — الرصيد يُحسب مباشرة من inventory_movement_details */
-    }
-
-    /**
-     * نقطة ربط بعد حذف الحركة — لا تعديل على الأرصدة (تُحسب مباشرة من الحركات).
-     */
-    public function reverseMovement(InventoryMovement $movement): void
-    {
-        /* No-op — الرصيد يُحسب مباشرة من inventory_movement_details */
-    }
-
-
+    public function applyMovement(InventoryMovement $movement): void { /* No-op */ }
+    public function reverseMovement(InventoryMovement $movement): void { /* No-op */ }
 }

@@ -716,7 +716,6 @@ Route::post(
     '/operation/purchases/invoicesPurch/{id}/unpost',
     [PurchaseInvoiceApiController::class, 'unpost']
 )->name('invoicesPurch.unpost');
-
 // =====================================================
 // حركات المخزون
 // =====================================================
@@ -773,6 +772,17 @@ Route::get(
 
 
 // -----------------------------------------------------
+// ✅ Helpers — دفعات فواتير الشراء المتاحة للفرز (جديد)
+// ⚠️ يجب أن يوضع قبل /{id}
+// -----------------------------------------------------
+
+Route::get(
+    '/operation/movements/helpers/balance-batches',
+    [InventoryMovementController::class, 'balanceBatches']
+)->name('movements.helpers.balanceBatches');
+
+
+// -----------------------------------------------------
 // ✅ فرز / تجهيز المخزون
 // -----------------------------------------------------
 
@@ -825,7 +835,6 @@ Route::post(
     '/operation/movements',
     [InventoryMovementController::class, 'store']
 )->name('movements.store');
-
 // =====================================================
 // فواتير البيع
 // =====================================================

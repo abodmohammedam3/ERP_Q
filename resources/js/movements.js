@@ -42,17 +42,29 @@ let activeWarehouseTarget = null;
 let isSavingMovement = false;
 
 let activeTab = 'movements';
+
+// ─── كاش العرض (يستخدمه جدول الأرصدة فقط) ───
 let stockBalancesCache = [];
+
+// ─── كاش التسعير الكامل (لا يتأثر بفلتر الفواتير أبدًا) ───
+let stockBalancesForPricing = [];
+let stockBalancesPricingStale = true;
+
 let balancesLoaded = false;
 
+let balancesInvoiceFilter = null;
+let balanceInvoicesCache = [];
+let balanceInvoicePickerInstance = null;
+
 async function ensureStockBalancesCache() {
-    if (balancesLoaded || stockBalancesCache.length) return;
+    if (stockBalancesForPricing.length && !stockBalancesPricingStale) return;
     try {
         const res = await apiGet('/operation/movements/helpers/stock-balances');
-        stockBalancesCache = Array.isArray(res.data) ? res.data : [];
+        stockBalancesForPricing = Array.isArray(res.data) ? res.data : [];
+        stockBalancesPricingStale = false;
         balancesLoaded = true;
     } catch (e) {
-        stockBalancesCache = [];
+        stockBalancesForPricing = [];
     }
 }
 
@@ -181,6 +193,57 @@ function findDefaultPieceUnit() {
 }
 
 /* ============================================================
+   ✅ استخراج رقم مستند الفرز من صف الرصيد
+   ============================================================ */
+function resolveSortDocumentNumber(row) {
+    if (!row) return null;
+
+    const candidates = [
+        row.document_number,
+        row.sort_document_number,
+        row.sorting_document_number,
+        row.reverse_document_number,
+        row.source_document_number,
+        row.sort_doc_number,
+    ];
+
+    for (const c of candidates) {
+        if (c !== null && c !== undefined && String(c).trim() !== '') {
+            return String(c).trim();
+        }
+    }
+    return null;
+}
+
+/**
+ * هل الصف يُمثّل حركة فرز؟
+ * يفحص عدة إشارات بديلة لتفادي اختلاف تسميات الحقول بين الوضعين
+ * (مفلتر / غير مفلتر) وبين النسخ المختلفة من الـ backend.
+ */
+function isSortedBalanceRow(row, sortDocNumber) {
+    if (!row) return false;
+
+    const flag = row.is_sorted;
+    if (flag === true || flag === 1 || flag === '1' || flag === 'true' ||
+        flag === 'TRUE' || flag === 'True') {
+        return true;
+    }
+    if (flag === false || flag === 0 || flag === '0' || flag === 'false') {
+        // قد يبقى الفرز مستنتجًا من حقول أخرى
+    }
+
+    if (sortDocNumber && /SORT-/i.test(sortDocNumber)) return true;
+
+    const mt = String(row.movement_type || '').toLowerCase();
+    if (mt.includes('sorting')) return true;
+
+    const st = String(row.source_type || '').toLowerCase();
+    if (st === 'sorting') return true;
+
+    return false;
+}
+
+/* ============================================================
    التهيئة
    ============================================================ */
 
@@ -205,6 +268,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     setMovementMode('view');
     clearMovementForm();
+
+    document.getElementById('balanceInvSearch')?.addEventListener('input',
+        debounce(renderInvoicesForBalances, 250)
+    );
+
+    // ✅ التحقق الحيّ من سعر البيع
+    document.getElementById('movementDetails')?.addEventListener('input', (e) => {
+        if (e.target.classList?.contains('movement-sale-price')) {
+            validateSalePrice(e.target.closest('tr'));
+        }
+    });
 
     const activeInput = document.getElementById('activeMovementTab');
     if (activeInput && activeInput.value === 'balances') {
@@ -263,7 +337,7 @@ function initTabs() {
 }
 
 /* ============================================================
-   أوضاع الشاشة (حركات المخزون)
+   أوضاع الشاشة
    ============================================================ */
 
 function setMovementMode(mode) {
@@ -273,10 +347,7 @@ function setMovementMode(mode) {
     const hasMovement = !!currentMovementId;
 
     const editableHeaderIds = [
-        'movementDate',
-        'movementDocumentNumber',
-        'movementStatement',
-        'movementWarehouse',
+        'movementDate', 'movementDocumentNumber', 'movementStatement', 'movementWarehouse',
     ];
 
     editableHeaderIds.forEach(id => {
@@ -348,7 +419,7 @@ function clearMovementForm() {
 }
 
 /* ============================================================
-   إدارة الصفوف (حركات المخزون)
+   إدارة الصفوف
    ============================================================ */
 
 function addMovementRow() {
@@ -382,18 +453,12 @@ function enableMovementRow(row) {
 
 function applyRowMode(row) {
     if (!row) return;
-
     const isView = movementMode === 'view';
-
     row.querySelectorAll('input').forEach(input => {
         if (input.classList.contains('movement-total')) return;
         if (input.type === 'hidden') return;
-
-        if (isView) {
-            input.setAttribute('readonly', true);
-        } else {
-            input.removeAttribute('readonly');
-        }
+        if (isView) input.setAttribute('readonly', true);
+        else input.removeAttribute('readonly');
     });
 }
 
@@ -406,20 +471,15 @@ function renumberMovementRows() {
 }
 
 /* ============================================================
-   الحسابات (حركات المخزون)
+   الحسابات
    ============================================================ */
 
 function calculateMovementRow(element) {
     if (!element) return;
 
     let row = null;
-
-    if (element.tagName === 'TR') {
-        row = element;
-    } else if (element.closest) {
-        row = element.closest('tr');
-    }
-
+    if (element.tagName === 'TR') row = element;
+    else if (element.closest) row = element.closest('tr');
     if (!row) return;
 
     const quantity = parseFloat(row.querySelector('.movement-quantity')?.value) || 0;
@@ -434,12 +494,10 @@ function calculateMovementRow(element) {
 
 function calculateMovementTotal() {
     let total = 0;
-
     document.querySelectorAll('#movementDetails .movement-detail-row').forEach(row => {
         const rowTotal = parseFloat(row.querySelector('.movement-total')?.value) || 0;
         total += rowTotal;
     });
-
     setValue('movementTotal', total.toFixed(2));
 }
 
@@ -449,7 +507,6 @@ function validateSalePrice(row) {
     const minPriceInput = row.querySelector('.movement-min-price');
     const maxPriceInput = row.querySelector('.movement-max-price');
     const salePriceInput = row.querySelector('.movement-sale-price');
-
     if (!salePriceInput) return;
 
     const min = minPriceInput && minPriceInput.value !== '' ? parseFloat(minPriceInput.value) : null;
@@ -457,17 +514,9 @@ function validateSalePrice(row) {
     const sale = salePriceInput.value !== '' ? parseFloat(salePriceInput.value) : null;
 
     salePriceInput.classList.remove('is-invalid');
-
     if (sale === null) return;
-
-    if (min !== null && sale < min) {
-        salePriceInput.classList.add('is-invalid');
-        return;
-    }
-
-    if (max !== null && sale > max) {
-        salePriceInput.classList.add('is-invalid');
-    }
+    if (min !== null && sale < min) { salePriceInput.classList.add('is-invalid'); return; }
+    if (max !== null && sale > max) salePriceInput.classList.add('is-invalid');
 }
 
 /* ============================================================
@@ -545,9 +594,7 @@ function searchMovementItems() {
     tbody.replaceChildren();
 
     const filtered = cache.items.filter(i =>
-        !search ||
-        (i.itemName2 || '').includes(search) ||
-        String(i.itemID || '').includes(search)
+        !search || (i.itemName2 || '').includes(search) || String(i.itemID || '').includes(search)
     );
 
     filtered.forEach(item => {
@@ -561,13 +608,10 @@ function searchMovementItems() {
 
 function selectMovementItem(id, name) {
     if (!activeMovementRow) return;
-
     activeMovementRow.querySelector('.movement-item-id').value = id;
     activeMovementRow.querySelector('.movement-item').value = name;
-
     activeMovementRow.querySelector('.movement-type-id').value = '';
     activeMovementRow.querySelector('.movement-type').value = '';
-
     if (movementItemModal) movementItemModal.hide();
     setTimeout(() => activeMovementRow.querySelector('.movement-type')?.focus(), 250);
 }
@@ -588,10 +632,7 @@ function openMovementTypeModal() {
     if (!activeMovementRow) return;
 
     const itemId = activeMovementRow.querySelector('.movement-item-id')?.value;
-    if (!itemId) {
-        notify('يرجى اختيار الصنف أولاً', 'warning');
-        return;
-    }
+    if (!itemId) { notify('يرجى اختيار الصنف أولاً', 'warning'); return; }
 
     document.getElementById('movementTypeSearchInput').value =
         activeMovementRow.querySelector('.movement-type')?.value || '';
@@ -608,10 +649,7 @@ function searchMovementTypes() {
     const tbody = document.getElementById('movementTypeResults');
     tbody.replaceChildren();
 
-    const filtered = cache.types.filter(t =>
-        !search || (t.name || '').includes(search)
-    );
-
+    const filtered = cache.types.filter(t => !search || (t.name || '').includes(search));
     filtered.forEach(type => {
         const tr = cloneTemplate('movementTypeRowTemplate');
         tr.querySelector('.c-id').textContent = type.id;
@@ -623,10 +661,8 @@ function searchMovementTypes() {
 
 function selectMovementType(id, name) {
     if (!activeMovementRow) return;
-
     activeMovementRow.querySelector('.movement-type-id').value = id;
     activeMovementRow.querySelector('.movement-type').value = name;
-
     if (movementTypeModal) movementTypeModal.hide();
     setTimeout(() => activeMovementRow.querySelector('.movement-code')?.focus(), 250);
 }
@@ -658,10 +694,7 @@ function searchMovementWarehouses() {
     const tbody = document.getElementById('movementWarehouseResults');
     tbody.replaceChildren();
 
-    const filtered = cache.warehouses.filter(w =>
-        !search || (w.StockName || '').includes(search)
-    );
-
+    const filtered = cache.warehouses.filter(w => !search || (w.StockName || '').includes(search));
     filtered.forEach(w => {
         const tr = cloneTemplate('movementWarehouseRowTemplate');
         tr.querySelector('.c-id').textContent = w.StockID;
@@ -685,12 +718,8 @@ function selectMovementWarehouse(id, name) {
     setTimeout(() => {
         if (activeWarehouseTarget === 'header') {
             const firstRow = document.querySelector('#movementDetails .movement-detail-row');
-            if (firstRow) {
-                firstRow.querySelector('.movement-item')?.focus();
-            } else {
-                const row = addMovementRow();
-                row?.querySelector('.movement-item')?.focus();
-            }
+            if (firstRow) firstRow.querySelector('.movement-item')?.focus();
+            else { const row = addMovementRow(); row?.querySelector('.movement-item')?.focus(); }
         } else if (activeMovementRow) {
             activeMovementRow.querySelector('.movement-unit')?.focus();
         }
@@ -722,10 +751,7 @@ function searchMovementUnits() {
     const tbody = document.getElementById('movementUnitResults');
     tbody.replaceChildren();
 
-    const filtered = cache.units.filter(u =>
-        !search || (u.UnitName || '').includes(search)
-    );
-
+    const filtered = cache.units.filter(u => !search || (u.UnitName || '').includes(search));
     filtered.forEach(u => {
         const tr = cloneTemplate('movementUnitRowTemplate');
         tr.querySelector('.c-id').textContent = u.UnitID;
@@ -737,10 +763,8 @@ function searchMovementUnits() {
 
 function selectMovementUnit(id, name) {
     if (!activeMovementRow) return;
-
     activeMovementRow.querySelector('.movement-unit-id').value = id;
     activeMovementRow.querySelector('.movement-unit').value = name;
-
     if (movementUnitModal) movementUnitModal.hide();
     setTimeout(() => activeMovementRow.querySelector('.movement-quantity')?.focus(), 250);
 }
@@ -748,16 +772,20 @@ function selectMovementUnit(id, name) {
 function movementUnitInput(e) { _debouncedSearchUnits(); }
 
 /* ============================================================
-   بدء الحركات
+   بدء الحركات (موحّد)
    ============================================================ */
 
-async function startSupplyMovement() {
-    clearMovementForm();
-    currentMovementType = 'supply';
+async function startMovement(mode) {
+    if (mode !== 'supply' && mode !== 'issue') return;
 
+    clearMovementForm();
+    currentMovementType = mode;
     setMovementMode('add');
-    setValue('movementType', MOVEMENT_TYPE_LABELS.supply);
-    setValue('movementDirection', MOVEMENT_DIRECTION_LABELS.in);
+
+    setValue('movementType', MOVEMENT_TYPE_LABELS[mode]);
+    setValue('movementDirection',
+        mode === 'supply' ? MOVEMENT_DIRECTION_LABELS.in : MOVEMENT_DIRECTION_LABELS.out
+    );
     setTodayDate();
 
     const btnPrint = document.getElementById('btnPrintMovement');
@@ -777,31 +805,8 @@ async function startSupplyMovement() {
     document.getElementById('movementWarehouse')?.focus();
 }
 
-async function startIssueMovement() {
-    clearMovementForm();
-    currentMovementType = 'issue';
-
-    setMovementMode('add');
-    setValue('movementType', MOVEMENT_TYPE_LABELS.issue);
-    setValue('movementDirection', MOVEMENT_DIRECTION_LABELS.out);
-    setTodayDate();
-
-    const btnPrint = document.getElementById('btnPrintMovement');
-    if (btnPrint) btnPrint.disabled = true;
-
-    const displayEl = document.getElementById('movementDisplayId');
-    if (displayEl) {
-        try {
-            const res = await apiGet('/operation/movements/next-number');
-            displayEl.value = res.next_number || '';
-        } catch (e) {
-            displayEl.value = '';
-            notify('تعذّر جلب رقم الحركة التالي', 'danger');
-        }
-    }
-
-    document.getElementById('movementWarehouse')?.focus();
-}
+function startSupplyMovement() { return startMovement('supply'); }
+function startIssueMovement()  { return startMovement('issue');  }
 
 /* ============================================================
    البحث عن الحركات
@@ -881,14 +886,11 @@ function displayMovementSearchResults(results) {
 
 function stockBalancesPricingLookup(itemId, typeId, warehouseId, unitId) {
     const none = { min_price: null, max_price: null };
-    if (!Array.isArray(stockBalancesCache) || !stockBalancesCache.length) return none;
+    if (!Array.isArray(stockBalancesForPricing) || !stockBalancesForPricing.length) return none;
 
-    const key = (id, type, wh, unit) => [
-        id ?? '', type ?? '', wh ?? '', unit ?? ''
-    ].join('|');
-
+    const key = (id, type, wh, unit) => [id ?? '', type ?? '', wh ?? '', unit ?? ''].join('|');
     const target = key(itemId, typeId, warehouseId, unitId);
-    const row = stockBalancesCache.find(
+    const row = stockBalancesForPricing.find(
         r => key(r.item_id, r.type_id, r.warehouse_id, r.unit_id) === target
     );
 
@@ -911,7 +913,6 @@ async function loadMovement(movementId) {
         const details = res.details || [];
 
         await ensureStockBalancesCache();
-
         clearMovementForm();
 
         setValue('movementDisplayId', h.display_id ?? '');
@@ -931,18 +932,13 @@ async function loadMovement(movementId) {
 
             row.querySelector('.movement-item-id').value = d.item_id ?? '';
             row.querySelector('.movement-item').value = d.item_name ?? '';
-
             row.querySelector('.movement-type-id').value = d.type_id ?? '';
             row.querySelector('.movement-type').value = d.type_name ?? '';
-
             row.querySelector('.movement-code').value = d.code ?? '';
-
             row.querySelector('.movement-warehouse-id').value = d.warehouse_id ?? '';
             row.querySelector('.movement-warehouse').value = d.warehouse_name ?? '';
-
             row.querySelector('.movement-unit-id').value = d.unit_id ?? '';
             row.querySelector('.movement-unit').value = d.unit_name ?? '';
-
             row.querySelector('.movement-quantity').value = d.quantity ?? 0;
             row.querySelector('.movement-unit-cost').value = toFixed2(d.unit_cost);
 
@@ -950,13 +946,8 @@ async function loadMovement(movementId) {
                 d.item_id, d.type_id, d.warehouse_id, d.unit_id
             );
 
-            const minPrice = (d.min_price !== null && d.min_price !== undefined)
-                ? d.min_price
-                : knownPricing.min_price;
-
-            const maxPrice = (d.max_price !== null && d.max_price !== undefined)
-                ? d.max_price
-                : knownPricing.max_price;
+            const minPrice = (d.min_price !== null && d.min_price !== undefined) ? d.min_price : knownPricing.min_price;
+            const maxPrice = (d.max_price !== null && d.max_price !== undefined) ? d.max_price : knownPricing.max_price;
 
             const minEl = row.querySelector('.movement-min-price');
             const maxEl = row.querySelector('.movement-max-price');
@@ -1010,11 +1001,7 @@ async function saveMovement() {
     if (isSavingMovement) return;
     if (movementMode !== 'add') return;
 
-    if (!currentMovementType) {
-        notify('لم يتم تحديد نوع الحركة.', 'warning');
-        return;
-    }
-
+    if (!currentMovementType) { notify('لم يتم تحديد نوع الحركة.', 'warning'); return; }
     if (!validateMovement()) return;
 
     const payload = collectMovementData();
@@ -1034,6 +1021,8 @@ async function saveMovement() {
         notify(r.message || 'تم حفظ حركة المخزون بنجاح', 'success');
         setMovementMode('view');
 
+        stockBalancesPricingStale = true;
+
         const btnPrint = document.getElementById('btnPrintMovement');
         if (btnPrint) btnPrint.disabled = false;
 
@@ -1050,7 +1039,6 @@ async function saveMovement() {
 
 function collectMovementData() {
     const details = [];
-
     document.querySelectorAll('#movementDetails .movement-detail-row').forEach(row => {
         details.push({
             item_id: row.querySelector('.movement-item-id')?.value || null,
@@ -1080,30 +1068,22 @@ function collectMovementData() {
 }
 
 function validateMovement() {
-    if (!getValue('movementDate')) {
-        notify('يرجى تحديد تاريخ الحركة.', 'warning');
-        return false;
-    }
-
-    if (!getValue('movementWarehouseId')) {
-        notify('يرجى اختيار المخزن في رأس الحركة.', 'warning');
-        return false;
-    }
+    if (!getValue('movementDate')) { notify('يرجى تحديد تاريخ الحركة.', 'warning'); return false; }
+    if (!getValue('movementWarehouseId')) { notify('يرجى اختيار المخزن في رأس الحركة.', 'warning'); return false; }
 
     const rows = document.querySelectorAll('#movementDetails .movement-detail-row');
-    if (!rows.length) {
-        notify('يجب إضافة صنف واحد على الأقل.', 'warning');
-        return false;
-    }
+    if (!rows.length) { notify('يجب إضافة صنف واحد على الأقل.', 'warning'); return false; }
 
     for (const row of rows) {
         const itemId = row.querySelector('.movement-item-id')?.value;
+        const typeId = row.querySelector('.movement-type-id')?.value;
         const unitId = row.querySelector('.movement-unit-id')?.value;
         const warehouseId = row.querySelector('.movement-warehouse-id')?.value;
         const quantity = parseFloat(row.querySelector('.movement-quantity')?.value) || 0;
         const unitCost = parseFloat(row.querySelector('.movement-unit-cost')?.value) || 0;
 
         if (!itemId) { notify('يجب اختيار الصنف في جميع الصفوف.', 'warning'); return false; }
+        if (!typeId) { notify('يجب اختيار النوع في جميع الصفوف.', 'warning'); return false; }
         if (!warehouseId) { notify('يجب اختيار المخزن في جميع الصفوف.', 'warning'); return false; }
         if (!unitId) { notify('يجب اختيار الوحدة في جميع الصفوف.', 'warning'); return false; }
         if (quantity <= 0) { notify('الكمية يجب أن تكون أكبر من صفر.', 'warning'); return false; }
@@ -1120,14 +1100,8 @@ function validateMovement() {
 
         if (salePrice !== '') {
             const sale = parseFloat(salePrice);
-            if (minPrice !== '' && sale < parseFloat(minPrice)) {
-                notify('سعر البيع أقل من الحد الأدنى.', 'warning');
-                return false;
-            }
-            if (maxPrice !== '' && sale > parseFloat(maxPrice)) {
-                notify('سعر البيع أكبر من الحد الأعلى.', 'warning');
-                return false;
-            }
+            if (minPrice !== '' && sale < parseFloat(minPrice)) { notify('سعر البيع أقل من الحد الأدنى.', 'warning'); return false; }
+            if (maxPrice !== '' && sale > parseFloat(maxPrice)) { notify('سعر البيع أكبر من الحد الأعلى.', 'warning'); return false; }
         }
     }
 
@@ -1142,9 +1116,7 @@ async function cancelMovement() {
     if (movementMode !== 'add') return;
 
     const ok = await movementConfirm('هل تريد إلغاء الحركة الحالية؟', {
-        title: 'إلغاء الحركة',
-        okText: 'تأكيد الإلغاء',
-        danger: true,
+        title: 'إلغاء الحركة', okText: 'تأكيد الإلغاء', danger: true,
     });
     if (!ok) return;
 
@@ -1158,11 +1130,46 @@ function printMovement() {
         return;
     }
 
-    window.open(
-        `/operation/movements/${currentMovementId}/print`,
-        '_blank',
-        'width=900,height=700'
+    window.open(`/operation/movements/${currentMovementId}/print`, '_blank', 'width=900,height=700');
+}
+
+/* ============================================================
+   ✅ عكس الفرز (Reverse Sorting)
+   ============================================================ */
+
+async function reverseSorting(documentNumber) {
+    if (!documentNumber) {
+        notify('رقم مستند الفرز مفقود', 'warning');
+        return;
+    }
+
+    const ok = await movementConfirm(
+        `سيتم عكس عملية الفرز ${documentNumber}.\n\n` +
+        `سيتم:\n` +
+        `• إنشاء حركات معكوسة (REV-SORT)\n` +
+        `• حذف الحركات الأصلية (SORT)\n` +
+        `• إعادة الكمية الأصلية للمخزون\n\n` +
+        `متابعة؟`,
+        { title: 'عكس الفرز', okText: 'عكس الفرز', cancelText: 'إلغاء', danger: true }
     );
+    if (!ok) return;
+
+    try {
+        const data = await apiSend(
+            `/operation/movements/sort/${encodeURIComponent(documentNumber)}/reverse`,
+            'POST',
+            {}
+        );
+
+        notify(data.message || 'تم عكس الفرز بنجاح', 'success');
+
+        stockBalancesPricingStale = true;
+        balancesLoaded = false;
+        await loadStockBalances();
+
+    } catch (e) {
+        notify(e.message, 'danger');
+    }
 }
 
 /* ============================================================
@@ -1200,8 +1207,130 @@ function setValue(id, value) {
 }
 
 /* =========================================================================
-   قسم أرصدة المخزون (التاب 2)
+   قسم أرصدة المخزون
    ========================================================================= */
+
+async function openInvoicesPicker() {
+    const modalEl = document.getElementById('balanceInvoicePickerModal');
+    if (!modalEl) return;
+
+    if (!balanceInvoicePickerInstance) {
+        balanceInvoicePickerInstance = new bootstrap.Modal(modalEl);
+    }
+    balanceInvoicePickerInstance.show();
+
+    const searchEl = document.getElementById('balanceInvSearch');
+    if (searchEl) searchEl.value = '';
+
+    await loadInvoicesForBalances();
+}
+
+async function loadInvoicesForBalances() {
+    const tbody = document.getElementById('balanceInvoicesTbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div> تحميل...</td></tr>';
+
+    try {
+        const res = await apiGet('/operation/purchases/distribution/invoices');
+        balanceInvoicesCache = res.data || [];
+        renderInvoicesForBalances();
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">فشل: ${e.message}</td></tr>`;
+    }
+}
+
+function renderInvoicesForBalances() {
+    const tbody = document.getElementById('balanceInvoicesTbody');
+    if (!tbody) return;
+
+    const search = (document.getElementById('balanceInvSearch')?.value || '').trim().toLowerCase();
+
+    let rows = balanceInvoicesCache;
+    if (search) {
+        rows = balanceInvoicesCache.filter(inv =>
+            (inv.invoice_number || '').toLowerCase().includes(search) ||
+            (inv.supplier || '').toLowerCase().includes(search) ||
+            (inv.invoice_date || '').toLowerCase().includes(search)
+        );
+    }
+
+    tbody.replaceChildren();
+
+    if (!rows.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 5;
+        td.className = 'text-center text-muted py-3';
+        td.textContent = 'لا توجد فواتير.';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+    }
+
+    rows.forEach((inv, i) => {
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+
+        const tdNum = document.createElement('td');
+        tdNum.className = 'text-muted';
+        tdNum.textContent = i + 1;
+        tr.appendChild(tdNum);
+
+        const tdInv = document.createElement('td');
+        tdInv.className = 'fw-semibold';
+        tdInv.textContent = inv.invoice_number ?? '';
+        tr.appendChild(tdInv);
+
+        const tdDate = document.createElement('td');
+        tdDate.className = 'text-muted';
+        tdDate.textContent = inv.invoice_date ?? '';
+        tr.appendChild(tdDate);
+
+        const tdSup = document.createElement('td');
+        tdSup.textContent = inv.supplier ?? '';
+        tr.appendChild(tdSup);
+
+        const tdTotal = document.createElement('td');
+        tdTotal.className = 'text-end';
+        tdTotal.textContent = formatMoney(inv.total);
+        tr.appendChild(tdTotal);
+
+        tr.addEventListener('click', () => {
+            balanceInvoicePickerInstance?.hide();
+            applyInvoiceFilter(inv);
+        });
+        tbody.appendChild(tr);
+    });
+}
+
+function applyInvoiceFilter(inv) {
+    balancesInvoiceFilter = inv.id;
+
+    const label = document.getElementById('selectedInvoiceLabel');
+    const meta = document.getElementById('selectedInvoiceMeta');
+    const clearBtn = document.getElementById('btnClearInvoiceFilter');
+
+    if (label) label.innerHTML = `<span class="text-primary">#${inv.invoice_number}</span> — ${inv.supplier}`;
+    if (meta) { meta.textContent = `التاريخ: ${inv.invoice_date}`; meta.style.display = ''; }
+    if (clearBtn) clearBtn.disabled = false;
+
+    loadStockBalances();
+}
+
+function clearInvoiceFilter() {
+    balancesInvoiceFilter = null;
+
+    const label = document.getElementById('selectedInvoiceLabel');
+    const meta = document.getElementById('selectedInvoiceMeta');
+    const clearBtn = document.getElementById('btnClearInvoiceFilter');
+
+    if (label) label.textContent = 'كل الفواتير';
+    if (meta) meta.style.display = 'none';
+    if (clearBtn) clearBtn.disabled = true;
+
+    loadStockBalances();
+}
 
 async function loadStockBalances() {
     const tbody = document.getElementById('balancesTableBody');
@@ -1217,9 +1346,18 @@ async function loadStockBalances() {
     }
 
     try {
-        const res = await apiGet('/operation/movements/helpers/stock-balances');
+        const url = balancesInvoiceFilter
+            ? `/operation/movements/helpers/stock-balances?purchase_invoice_id=${balancesInvoiceFilter}`
+            : '/operation/movements/helpers/stock-balances';
+
+        const res = await apiGet(url);
         stockBalancesCache = Array.isArray(res.data) ? res.data : [];
         balancesLoaded = true;
+
+        if (!balancesInvoiceFilter) {
+            stockBalancesForPricing = stockBalancesCache;
+            stockBalancesPricingStale = false;
+        }
 
         filterStockBalances();
     } catch (e) {
@@ -1309,9 +1447,7 @@ function renderStockBalances(rows) {
 
         const tdSup = document.createElement('td');
         tdSup.textContent = row.supplier_name || 'توريد عام';
-        if (!row.supplier_account_id) {
-            tdSup.className = 'text-muted';
-        }
+        if (!row.supplier_account_id) tdSup.className = 'text-muted';
         tr.appendChild(tdSup);
 
         const tdUnit = document.createElement('td');
@@ -1399,6 +1535,30 @@ function renderStockBalances(rows) {
         btnSort.addEventListener('click', () => openSortingFromBalance(row));
         actionsWrap.appendChild(btnSort);
 
+        /* ============================================================
+           ✅ زر "عكس الفرز" — يظهر دائمًا للصفوف المفرزة
+           سواء كان الفلتر مفعّلًا (فاتورة محددة) أم لا (كل الأرصدة)
+           ============================================================ */
+        const sortDocNumber = resolveSortDocumentNumber(row);
+        const isSortedRow = isSortedBalanceRow(row, sortDocNumber);
+
+        if (isSortedRow) {
+            const btnReverse = document.createElement('button');
+            btnReverse.type = 'button';
+            btnReverse.className = 'btn btn-outline-warning btn-action';
+            btnReverse.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> عكس';
+
+            if (sortDocNumber) {
+                btnReverse.title = `عكس فرز ${sortDocNumber}`;
+                btnReverse.addEventListener('click', () => reverseSorting(sortDocNumber));
+            } else {
+                btnReverse.title = 'رقم مستند الفرز غير متوفر لهذا الصف';
+                btnReverse.disabled = true;
+            }
+
+            actionsWrap.appendChild(btnReverse);
+        }
+
         tdActions.appendChild(actionsWrap);
         tr.appendChild(tdActions);
 
@@ -1446,26 +1606,20 @@ async function updatePricingInline(rowData, changes) {
     }
 
     try {
-        const r = await fetch('/operation/movements/helpers/pricing', {
-            method: 'PUT',
-            headers: apiHeaders(true),
-            body: JSON.stringify(payload),
-        });
-
-        const data = await r.json().catch(() => ({}));
-
-        if (!r.ok) {
-            let errorMsg = data.message || 'فشل تحديث التسعير';
-            if (data.errors) {
-                const messages = Object.values(data.errors).flat();
-                if (messages.length) errorMsg = messages.join(' | ');
-            }
-            throw new Error(errorMsg);
-        }
+        await apiSend('/operation/movements/helpers/pricing', 'PUT', payload);
 
         rowData.sale_price = payload.sale_price ?? 0;
         rowData.min_price = payload.min_price ?? 0;
         rowData.max_price = payload.max_price ?? 0;
+
+        const key = (r) => [r.item_id ?? '', r.type_id ?? '', r.warehouse_id ?? '', r.unit_id ?? ''].join('|');
+        const targetKey = [rowData.item_id ?? '', rowData.type_id ?? '', rowData.warehouse_id ?? '', rowData.unit_id ?? ''].join('|');
+        const cached = stockBalancesForPricing.find(r => key(r) === targetKey);
+        if (cached) {
+            cached.sale_price = rowData.sale_price;
+            cached.min_price = rowData.min_price;
+            cached.max_price = rowData.max_price;
+        }
 
         notify('تم تحديث التسعير', 'success');
         return true;
@@ -1531,9 +1685,7 @@ async function savePricingEdit() {
 }
 
 /* =========================================================================
-   حذف الصنف من نافذة تعديل التسعير (أرصدة المخازن)
-   يستخدم مسار items.destroy الموجود — والحماية على الخادم (ItemService::delete)
-   ترفض الحذف إن كان الصنف مستخدماً في مستندات/حركات مع رسالة عربية واضحة.
+   حذف الصنف
    ========================================================================= */
 
 async function deleteItemFromPricingModal() {
@@ -1543,17 +1695,12 @@ async function deleteItemFromPricingModal() {
     const itemName = activePricingBalance.item_name || `#${itemId}`;
     const qty = Number(activePricingBalance.quantity) || 0;
 
-    /* المرحلة 1: رسالة توضيحية قبل أي إجراء */
     const ok = await movementConfirm(
         `الصنف "${itemName}" له رصيد حالي ${qty}.\n\n` +
         `حذف الصنف نهائيًا يستلزم ألا يكون مرتبطًا بأي فاتورة أو حركة.\n` +
         `إذا كان مرتبطًا، يمكنك تعطيله بدلًا من ذلك (يختفي من الشاشة، والبيانات التاريخية تبقى سليمة).\n\n` +
         `متابعة؟`,
-        {
-            title: 'حذف / تعطيل الصنف',
-            okText: 'متابعة',
-            danger: true,
-        }
+        { title: 'حذف / تعطيل الصنف', okText: 'متابعة', danger: true }
     );
     if (!ok) return;
 
@@ -1561,40 +1708,27 @@ async function deleteItemFromPricingModal() {
     if (btn) btn.disabled = true;
 
     try {
-        /* المرحلة 2: محاولة الحذف الفعلي */
         const r = await apiSend(`/setting/inventory/items/${itemId}`, 'DELETE', {});
         notify(r.message || 'تم حذف الصنف نهائيًا', 'success');
         pricingEditModal?.hide();
+        stockBalancesPricingStale = true;
         await loadStockBalances();
     } catch (deleteErr) {
-        /* المرحلة 3: الحذف فشل (الصنف مستخدم) → عرض خيار التعطيل */
         try {
             const deactivate = await movementConfirm(
                 `لا يمكن حذف الصنف "${itemName}" نهائيًا:\n\n${deleteErr.message}\n\n` +
                 `هل تريد تعطيله بدلًا من ذلك؟\n` +
                 `• سيختفي من قوائم الاختيار والأرصدة\n` +
                 `• الفواتير والقيود والحركات التاريخية تبقى سليمة 100%`,
-                {
-                    title: 'تعطيل الصنف بدلًا من الحذف',
-                    okText: 'تعطيل الصنف',
-                    cancelText: 'إلغاء',
-                    danger: false,
-                }
+                { title: 'تعطيل الصنف بدلًا من الحذف', okText: 'تعطيل الصنف', cancelText: 'إلغاء', danger: false }
             );
 
-            if (!deactivate) {
-                notify('تم إلغاء العملية', 'info');
-                return;
-            }
+            if (!deactivate) { notify('تم إلغاء العملية', 'info'); return; }
 
-            /* تنفيذ التعطيل */
-            await apiSend(
-                `/setting/inventory/items/${itemId}/toggle-status`,
-                'PATCH',
-                {}
-            );
+            await apiSend(`/setting/inventory/items/${itemId}/toggle-status`, 'PATCH', {});
             notify('تم تعطيل الصنف — سيختفي من الأرصدة', 'success');
             pricingEditModal?.hide();
+            stockBalancesPricingStale = true;
             await loadStockBalances();
         } catch (deactivateErr) {
             notify(deactivateErr.message, 'danger');
@@ -1605,7 +1739,7 @@ async function deleteItemFromPricingModal() {
 }
 
 /* =========================================================================
-   الفرز
+   الفرز من الأرصدة
    ========================================================================= */
 
 function sortingUnitFactor(fromName, toName) {
@@ -1684,20 +1818,12 @@ function populateSortingUnitSelects(rowData) {
         }
     };
 
-    fromSel.onchange = () => {
-        ensureDifferent(fromSel, toSel);
-        applySortingUnitConversion();
-    };
-
-    toSel.onchange = () => {
-        ensureDifferent(toSel, fromSel);
-        applySortingUnitConversion();
-    };
+    fromSel.onchange = () => { ensureDifferent(fromSel, toSel); applySortingUnitConversion(); };
+    toSel.onchange = () => { ensureDifferent(toSel, fromSel); applySortingUnitConversion(); };
 }
 
 function openSortingFromBalance(rowData) {
     activeSortingBalance = rowData;
-    window.__activeSortingBalance = rowData;
 
     document.getElementById('sortingItemName').textContent = rowData.item_name || '—';
     document.getElementById('sortingTypeName').textContent = rowData.type_name || '—';
@@ -1727,7 +1853,6 @@ function openSortingFromBalance(rowData) {
     minEl.value = '';
     maxEl.value = '';
 
-    /* ✅ مسح علامات "تم التعديل يدويًا" — بما فيها outQtyEl */
     delete saleEl.dataset.userEdited;
     delete minEl.dataset.userEdited;
     delete maxEl.dataset.userEdited;
@@ -1735,7 +1860,6 @@ function openSortingFromBalance(rowData) {
 
     applySortingUnitConversion();
 
-    /* ✅ إرفاق المستمعات مرة واحدة فقط */
     if (!saleEl.dataset.listenerAttached) {
         saleEl.addEventListener('input', () => saleEl.dataset.userEdited = '1');
         minEl.addEventListener('input', () => minEl.dataset.userEdited = '1');
@@ -1748,16 +1872,8 @@ function openSortingFromBalance(rowData) {
             delete outQtyEl.dataset.userEdited;
         };
 
-        inQtyEl.addEventListener('input', () => {
-            clearEditedFlags();
-            applySortingUnitConversion();
-        });
-
-        /* ✅ الإصلاح: outQtyEl (المتغير الصحيح في هذا النطاق) بدل outEl */
-        outQtyEl.addEventListener('input', () => {
-            outQtyEl.dataset.userEdited = '1';
-            calculateSortingFromBalance();
-        });
+        inQtyEl.addEventListener('input', () => { clearEditedFlags(); applySortingUnitConversion(); });
+        outQtyEl.addEventListener('input', () => { outQtyEl.dataset.userEdited = '1'; calculateSortingFromBalance(); });
 
         saleEl.dataset.listenerAttached = '1';
     }
@@ -1770,13 +1886,6 @@ function openSortingFromBalance(rowData) {
     setTimeout(() => outQtyEl?.focus(), 400);
 }
 
-/**
- * ✅ حساب نتائج الفرز
- *
- * - عندما outputQty = 0 (فارغ أو محذوف) → تمسح الحقول الثلاثة
- *   (إلا إذا كان المستخدم عدّلها يدويًا → تبقى كما هي)
- * - عندما outputQty > 0 → تُحدَّث تلقائيًا (إلا المُعدَّلة يدويًا)
- */
 function calculateSortingFromBalance() {
     const saleInput = document.getElementById('sortingSalePrice');
     const minInput = document.getElementById('sortingMinPrice');
@@ -1807,15 +1916,9 @@ function calculateSortingFromBalance() {
     resultUnitCostEl.textContent = formatMoney(unitCost);
     resultTotalEl.textContent = formatMoney(totalCost);
 
-    if (saleInput.dataset.userEdited !== '1') {
-        saleInput.value = (unitCost * (1 + DEFAULT_PROFIT_MARGIN)).toFixed(2);
-    }
-    if (minInput.dataset.userEdited !== '1') {
-        minInput.value = unitCost.toFixed(2);
-    }
-    if (maxInput.dataset.userEdited !== '1') {
-        maxInput.value = (unitCost * (1 + DEFAULT_PROFIT_MARGIN * 2)).toFixed(2);
-    }
+    if (saleInput.dataset.userEdited !== '1') saleInput.value = (unitCost * (1 + DEFAULT_PROFIT_MARGIN)).toFixed(2);
+    if (minInput.dataset.userEdited !== '1') minInput.value = unitCost.toFixed(2);
+    if (maxInput.dataset.userEdited !== '1') maxInput.value = (unitCost * (1 + DEFAULT_PROFIT_MARGIN * 2)).toFixed(2);
 }
 
 async function saveSortingFromBalance() {
@@ -1824,33 +1927,25 @@ async function saveSortingFromBalance() {
     const inputQty = parseFloat(document.getElementById('sortingInputQty').value) || 0;
     const outputQty = parseFloat(document.getElementById('sortingOutputQty').value) || 0;
 
-    if (inputQty <= 0) {
-        notify('الكمية المصدر يجب أن تكون أكبر من صفر', 'warning');
-        return;
-    }
-    if (outputQty <= 0) {
-        notify('الكمية الناتجة يجب أن تكون أكبر من صفر', 'warning');
-        return;
-    }
+    if (inputQty <= 0) { notify('الكمية المصدر يجب أن تكون أكبر من صفر', 'warning'); return; }
+    if (outputQty <= 0) { notify('الكمية الناتجة يجب أن تكون أكبر من صفر', 'warning'); return; }
 
     const fromSel = document.getElementById('sortingFromUnit');
     const toSel = document.getElementById('sortingToUnit');
     const fromUnitId = fromSel ? parseInt(fromSel.value) : activeSortingBalance.unit_id;
     const toUnitId = toSel ? parseInt(toSel.value) : null;
 
-    if (!fromUnitId || !toUnitId) {
-        notify('يجب تحديد وحدة المصدر ووحدة الناتج', 'warning');
-        return;
-    }
-    if (fromUnitId === toUnitId) {
-        notify('وحدة المصدر ووحدة الناتج يجب أن تكونا مختلفتين', 'warning');
-        return;
-    }
+    if (!fromUnitId || !toUnitId) { notify('يجب تحديد وحدة المصدر ووحدة الناتج', 'warning'); return; }
+    if (fromUnitId === toUnitId) { notify('وحدة المصدر ووحدة الناتج يجب أن تكونا مختلفتين', 'warning'); return; }
 
-    const rowUnitId = activeSortingBalance.unit_id != null ? parseInt(activeSortingBalance.unit_id) : null;
-    if (fromUnitId === rowUnitId && inputQty > Number(activeSortingBalance.quantity)) {
-        notify(`الكمية المتاحة (${formatMoney(activeSortingBalance.quantity)}) أقل من المطلوب`, 'warning');
-        return;
+    const batchIdToUse = activeSortingBalance.batch_id || null;
+
+    if (!batchIdToUse) {
+        const rowUnitId = activeSortingBalance.unit_id != null ? parseInt(activeSortingBalance.unit_id) : null;
+        if (fromUnitId === rowUnitId && inputQty > Number(activeSortingBalance.quantity)) {
+            notify(`الكمية المتاحة (${formatMoney(activeSortingBalance.quantity)}) أقل من المطلوب`, 'warning');
+            return;
+        }
     }
 
     const kgCost = parseFloat(activeSortingBalance.unit_cost) || 0;
@@ -1879,30 +1974,21 @@ async function saveSortingFromBalance() {
         sale_price: parseFloat(document.getElementById('sortingSalePrice').value) || null,
         min_price: parseFloat(document.getElementById('sortingMinPrice').value) || null,
         max_price: parseFloat(document.getElementById('sortingMaxPrice').value) || null,
+        batch_id: batchIdToUse,
     };
 
     const btn = document.getElementById('btnSaveSorting');
     if (btn) btn.disabled = true;
 
     try {
-        const r = await fetch('/operation/movements/sort', {
-            method: 'POST',
-            headers: apiHeaders(true),
-            body: JSON.stringify(payload),
-        });
-        const data = await r.json();
-
-        if (!r.ok) {
-            throw new Error(data.message || 'فشل الفرز');
-        }
+        await apiSend('/operation/movements/sort', 'POST', payload);
 
         notify('تم الفرز بنجاح', 'success');
-
         sortingFromBalanceModalInstance?.hide();
 
+        stockBalancesPricingStale = true;
         balancesLoaded = false;
         setTimeout(() => loadStockBalances(), 400);
-
     } catch (e) {
         notify(e.message, 'danger');
     } finally {
@@ -1968,7 +2054,19 @@ Object.assign(window, {
     calculateSortingFromBalance,
     saveSortingFromBalance,
 
+    openInvoicesPicker,
+    loadInvoicesForBalances,
+    renderInvoicesForBalances,
+    applyInvoiceFilter,
+    clearInvoiceFilter,
+
+    reverseSorting,
+
     findDefaultPieceUnit,
     isKiloUnit,
     deleteItemFromPricingModal,
+
+    // ✅ جديدة — قد تحتاجها للاختبار في Console
+    resolveSortDocumentNumber,
+    isSortedBalanceRow,
 });

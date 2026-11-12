@@ -1238,64 +1238,52 @@ document.addEventListener('DOMContentLoaded', () => {
     // تحميل توزيع للتعديل
     // ============================================================
     async function loadExisting(id) {
-        try {
-            const res = await api(ROUTES.show(id));
-            if (!res.success) return;
+    try {
+        const res = await api(ROUTES.show(id));
+        if (!res.success) return;
 
-            state.distributionId = res.header.id;
-            updateModeBadge();
-            if ($('distributionDate'))  $('distributionDate').value  = res.header.distribution_date || '';
-            if ($('distributionNotes')) $('distributionNotes').value = res.header.notes || '';
+        state.distributionId = res.header.id;
+        updateModeBadge();
+        if ($('distributionDate'))  $('distributionDate').value  = res.header.distribution_date || '';
+        if ($('distributionNotes')) $('distributionNotes').value = res.header.notes || '';
 
-            const thisDistAlloc = {};
-            res.details.forEach(d => {
-                thisDistAlloc[d.movement_detail_id] =
-                    (thisDistAlloc[d.movement_detail_id] || 0) + num(d.quantity);
-            });
-
-            const invoiceIds = [...new Set(res.details.map(d => d.purchase_invoice_id))];
-            for (const invId of invoiceIds) {
-                try {
-                    const invRes = await api(ROUTES.items(invId));
-                    if (invRes.success) {
-                        state.invoices[invId] = {
-                            id: invId,
-                            number: invRes.invoice.invoice_number,
-                            date: invRes.invoice.invoice_date,
-                            supplier: invRes.invoice.supplier,
-                            items: (invRes.data || []).map(it => {
-                                const qty       = num(it.quantity);
-                                const addBack   = thisDistAlloc[it.id] || 0;
-                                const otherDist = qty - num(it.available) - addBack;
-                                return {
-                                    ...it,
-                                    available: Math.max(0, qty - otherDist),
-                                };
-                            }),
-                        };
-                    }
-                } catch (e) { /* تخطي */ }
-            }
-
-            res.details.forEach(d => {
-                state.customerInfo[d.customer_id] = {
-                    id: d.customer_id, name: d.customer_name, phone: '', code: '',
-                };
-                state.allocation[d.movement_detail_id] = state.allocation[d.movement_detail_id] || {};
-                state.allocation[d.movement_detail_id][d.customer_id] = num(d.quantity);
-            });
-
-            const firstInvId = Object.keys(state.invoices)[0];
-            state.activeInvoiceId = firstInvId ? parseInt(firstInvId) : null;
-
-            renderTabs();
-            renderItems();
-            renderSummary();
-            toastInfo(`تم تحميل التوزيع ${res.header.code} — وضع التعديل.`);
-        } catch (e) {
-            toastError('فشل تحميل التوزيع: ' + e.message);
+        const invoiceIds = [...new Set(res.details.map(d => d.purchase_invoice_id))];
+        for (const invId of invoiceIds) {
+            try {
+                // ✅ نمرر معرف التوزيع الحالي لكي يرجع الـ API كل الأصناف بما فيها الموزعة بالكامل
+                const invRes = await api(ROUTES.items(invId) + `?exclude_distribution_id=${id}`);
+                if (invRes.success) {
+                    state.invoices[invId] = {
+                        id: invId,
+                        number: invRes.invoice.invoice_number,
+                        date: invRes.invoice.invoice_date,
+                        supplier: invRes.invoice.supplier,
+                        // ✅ الـ API صار يرجع available صحيحة، لا داعي لإعادة حسابها هنا
+                        items: invRes.data || [],
+                    };
+                }
+            } catch (e) { /* تخطي */ }
         }
+
+        res.details.forEach(d => {
+            state.customerInfo[d.customer_id] = {
+                id: d.customer_id, name: d.customer_name, phone: '', code: '',
+            };
+            state.allocation[d.movement_detail_id] = state.allocation[d.movement_detail_id] || {};
+            state.allocation[d.movement_detail_id][d.customer_id] = num(d.quantity);
+        });
+
+        const firstInvId = Object.keys(state.invoices)[0];
+        state.activeInvoiceId = firstInvId ? parseInt(firstInvId) : null;
+
+        renderTabs();
+        renderItems();
+        renderSummary();
+        toastInfo(`تم تحميل التوزيع ${res.header.code} — وضع التعديل.`);
+    } catch (e) {
+        toastError('فشل تحميل التوزيع: ' + e.message);
     }
+}
 
     // ============================================================
     // إجراءات

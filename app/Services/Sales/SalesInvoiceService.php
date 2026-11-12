@@ -47,7 +47,11 @@ class SalesInvoiceService
                 $details = $data['details'] ?? [];
 
                 $this->lockStockRows($details);
-                $this->validateStockAvailability($details);
+                
+                // ✅ تخطي التحقق من المخزون إذا كان الطلب قادماً من توزيع
+                if (empty($data['skip_stock_validation'])) {
+                    $this->validateStockAvailability($details);
+                }
 
                 $nextNumber = $this->nextInvoiceNumber();
 
@@ -71,46 +75,83 @@ class SalesInvoiceService
     // =========================================================
     // UPDATE — يمنع تعديل المرحّلة أو التي لها مرتجعات
     // =========================================================
-    public function update(int $id, array $data): SalesInvoice
-    {
-        return $this->withWriteLock(function () use ($id, $data) {
-            return DB::transaction(function () use ($id, $data) {
+public function update(int $id, array $data): SalesInvoice
+{
+    return $this->withWriteLock(function () use ($id, $data) {
+        return DB::transaction(function () use ($id, $data) {
 
-                $invoice = SalesInvoice::lockForUpdate()->findOrFail($id);
+            $invoice = SalesInvoice::lockForUpdate()->findOrFail($id);
+            $invoice->load('details');
 
-                if ($invoice->isPosted()) {
-                    throw new \RuntimeException(
-                        'لا يمكن تعديل فاتورة مرحّلة. قم بإلغاء الترحيل أولًا.'
-                    );
+            if ($invoice->isPosted()) {
+                throw new \RuntimeException(
+                    'لا يمكن تعديل فاتورة مرحّلة. قم بإلغاء الترحيل أولًا.'
+                );
+            }
+
+            if ($invoice->returns()->exists()) {
+                throw new \RuntimeException(
+                    'لا يمكن تعديل فاتورة لها مرتجعات. احذف المرتجعات أولًا.'
+                );
+            }
+
+            $details = $data['details'] ?? [];
+            $this->lockStockRows($details);
+            
+            // ✅ 1) اكتشف إذا كانت الفاتورة تم إصدارها من شاشة التوزيع
+            $isFromDistribution = \App\Models\Purchases\DistributionDetail::where('sales_invoice_id', $invoice->sales_invoice_id)->exists();
+
+            // ✅ 2) تخطي التحقق من المخزون إذا كانت من التوزيع (لأنها محجوزة مسبقاً)
+            if (!$isFromDistribution && empty($data['skip_stock_validation'])) {
+                // احسب الكميات القديمة
+                $currentQty = [];
+                foreach ($invoice->details as $old) {
+                    $key = (int)$old->item_id . '|' . (int)$old->warehouse_id;
+                    $currentQty[$key] = ($currentQty[$key] ?? 0) + (float) $old->quantity;
                 }
 
-                if ($invoice->returns()->exists()) {
-                    throw new \RuntimeException(
-                        'لا يمكن تعديل فاتورة لها مرتجعات. احذف المرتجعات أولًا.'
-                    );
+                // نتحقق فقط من الكميات الإضافية (إذا زادت الكمية)
+                $validateDetails = [];
+                foreach ($details as $i => $row) {
+                    $itemId      = (int) ($row['item_id'] ?? 0);
+                    $warehouseId = (int) ($row['warehouse_id'] ?? 0);
+                    $newQty      = (float) ($row['quantity'] ?? 0);
+                    
+                    if (!$itemId || !$warehouseId || $newQty <= 0) continue;
+
+                    $key    = "{$itemId}|{$warehouseId}";
+                    $oldQty = $currentQty[$key] ?? 0;
+
+                    if ($newQty > $oldQty + 0.000001) {
+                        $validateDetails[$i] = array_merge($row, ['quantity' => $newQty - $oldQty]);
+                    }
+                    
+                    if (isset($currentQty[$key])) {
+                        $currentQty[$key] = max(0, $currentQty[$key] - $newQty);
+                    }
                 }
 
-                $details = $data['details'] ?? [];
+                if (!empty($validateDetails)) {
+                    $this->validateStockAvailability($validateDetails);
+                }
+            }
 
-                $this->lockStockRows($details);
-                $this->validateStockAvailability($details);
+            $header = $this->headerData($data);
+            unset($header['invoice_number']);
+            unset($header['created_by']);
+            $header['updated_by'] = auth()->id();
 
-                $header = $this->headerData($data);
-                unset($header['invoice_number']);
-                unset($header['created_by']);
-                $header['updated_by'] = auth()->id();
+            $invoice->update($header);
 
-                $invoice->update($header);
+            $this->deleteInventoryMovement($invoice);
+            $invoice->details()->delete();
+            $this->saveDetails($invoice, $details);
+            $this->recalculateTotals($invoice);
 
-                $this->deleteInventoryMovement($invoice);
-                $invoice->details()->delete();
-                $this->saveDetails($invoice, $details);
-                $this->recalculateTotals($invoice);
-
-                return $invoice->fresh(['details', 'customerAccount']);
-            });
+            return $invoice->fresh(['details', 'customerAccount']);
         });
-    }
+    });
+}
 
     // =========================================================
     // DELETE — يمنع حذف المرحّلة أو التي لها مرتجعات
@@ -173,9 +214,6 @@ class SalesInvoiceService
                     throw new \RuntimeException('الفاتورة غير مرحّلة');
                 }
 
-                /* ✅ لا يمكن إلغاء ترحيل فاتورة لها مرتجعات —
-                   إلغاء الترحيل يمحو القيد والحركة الأصلية بينما قيود/harakat
-                   المرتجعات المرتبطة تبقى بلا مرجع سليم. */
                 if ($invoice->returns()->exists()) {
                     throw new \RuntimeException(
                         'لا يمكن إلغاء ترحيل فاتورة لها مرتجعات. احذف المرتجعات أولًا.'
@@ -256,16 +294,10 @@ class SalesInvoiceService
         foreach ($details as $row) {
             $itemId      = (int) ($row['item_id'] ?? 0);
             $warehouseId = (int) ($row['warehouse_id'] ?? 0);
-            $unitId      = isset($row['unit_id']) && $row['unit_id'] !== null
-                ? (int) $row['unit_id']
-                : null;
-            $supplierId  = !empty($row['supplier_account_id'])
-                ? (int) $row['supplier_account_id']
-                : null;
+            $unitId      = isset($row['unit_id']) && $row['unit_id'] !== null ? (int) $row['unit_id'] : null;
+            $supplierId  = !empty($row['supplier_account_id']) ? (int) $row['supplier_account_id'] : null;
 
-            if (!$itemId || !$warehouseId) {
-                continue;
-            }
+            if (!$itemId || !$warehouseId) continue;
 
             $key = $itemId . '|' . $warehouseId . '|' . ($unitId ?? 0) . '|' . ($supplierId ?? 0);
             $pairs[$key] = [
@@ -276,26 +308,25 @@ class SalesInvoiceService
             ];
         }
 
+        if (empty($pairs)) return;
+
         ksort($pairs);
 
-        foreach ($pairs as $pair) {
-            $query = DB::table('inventory_movement_details')
-                ->where('item_id', $pair['item_id'])
-                ->where('warehouse_id', $pair['warehouse_id']);
-
-            if ($pair['unit_id']) {
-                $query->where('unit_id', $pair['unit_id']);
-            }
-
-            /* ✅ القفل على دفعة المورد المختار تحديداً */
-            if ($pair['supplier_account_id'] !== null) {
-                $query->where('supplier_account_id', $pair['supplier_account_id']);
-            }
-
-            $query->select('movement_detail_id')
-                  ->lockForUpdate()
-                  ->get();
-        }
+        DB::table('inventory_movement_details')
+            ->where(function ($q) use ($pairs) {
+                foreach ($pairs as $pair) {
+                    $q->orWhere(function ($sub) use ($pair) {
+                        $sub->where('item_id', $pair['item_id'])
+                            ->where('warehouse_id', $pair['warehouse_id']);
+                        if ($pair['unit_id']) $sub->where('unit_id', $pair['unit_id']);
+                        if ($pair['supplier_account_id'] !== null) {
+                            $sub->where('supplier_account_id', $pair['supplier_account_id']);
+                        }
+                    });
+                }
+            })
+            ->lockForUpdate()
+            ->pluck('movement_detail_id');
     }
 
     // =========================================================
@@ -316,8 +347,6 @@ class SalesInvoiceService
 
             if (!$itemId || !$warehouseId || $qty <= 0) continue;
 
-            /* ✅ الفحص على دفعة المورد المختار تحديداً —
-               null = رصيد التوريد العام (بدون مورد) */
             $available = $this->inventoryService->availableQuantityForSupplier(
                 (int) $itemId,
                 (int) $warehouseId,
@@ -341,9 +370,7 @@ class SalesInvoiceService
     // =========================================================
     public function syncInventoryMovement(SalesInvoice $invoice): void
     {
-        /* ✅ علاقة العميل مطلوبة للبيان */
         $invoice->loadMissing('customerAccount');
-
         $this->deleteInventoryMovement($invoice);
 
         $lastMovement = InventoryMovement::lockForUpdate()
@@ -361,8 +388,6 @@ class SalesInvoiceService
             throw new \RuntimeException('لا يمكن إنشاء حركة مخزون بدون مخزن');
         }
 
-        /* ✅ البيان: أولوية لبيان المستخدم، وإلا البيان التلقائي،
-           ثم يُلحق اسم العميل دائمًا (سواء كان البيان يدويًا أو تلقائيًا). */
         $customerName = trim((string) optional($invoice->customerAccount)->accName);
 
         $statement = trim((string) ($invoice->statement ?? ''));
@@ -395,10 +420,6 @@ class SalesInvoiceService
             $unitCost  = (float) $detail->cost_price;
             $lineTotal = $quantity * $unitCost;
 
-            /* ✅ آخر تسعير معروف للوحدة (سعر البيع/الحد الأدنى/الأعلى) بالعملة الأساسية.
-               حركة البيع اتجاهها out ولا يقرأها allStockBalances للتسعير
-               (يقرأ آخر حركة in فقط) → نسخها هنا للتوثيق فقط ولا يغيّر أي رصيد.
-               كانت تُحفظ null فتظهر فارغة/صفر في شاشة حركات المخزون. */
             $lastPricing = $this->inventoryService->lastPricing(
                 (int) $detail->item_id,
                 (int) $detail->warehouse_id,
@@ -413,7 +434,7 @@ class SalesInvoiceService
                 'unit_id'      => $detail->unit_id,
                 'code'         => $detail->code,
                 'warehouse_id' => $detail->warehouse_id,
-                'supplier_account_id' => $detail->supplier_account_id, /* ✅ الخصم من دفعة المورد */
+                'supplier_account_id' => $detail->supplier_account_id,
                 'quantity'     => $quantity,
                 'unit_cost'    => $unitCost,
                 'min_price'    => $lastPricing['min_price'] > 0 ? $lastPricing['min_price'] : null,
@@ -444,7 +465,6 @@ class SalesInvoiceService
 
         foreach ($movements as $movement) {
             $this->inventoryService->reverseMovement($movement);
-
             $movement->details()->delete();
             $movement->delete();
         }
@@ -469,7 +489,6 @@ class SalesInvoiceService
             );
         }
 
-        // 1) حساب العميل/الدفع (مدين)
         $paymentMethod = (int) $invoice->payment_method;
         $debitAccountId = $paymentMethod === SalesInvoice::PAYMENT_CREDIT
             ? (int) $invoice->account_id
@@ -481,7 +500,6 @@ class SalesInvoiceService
             );
         }
 
-        // 2) حساب المبيعات (دائن)
         $salesRevenueAccountId = $this->getAccountIdBySystemKey(
             self::SALES_REVENUE_SYSTEM_KEY
         );
@@ -493,7 +511,6 @@ class SalesInvoiceService
             );
         }
 
-        // 3) حساب COGS (مدين) + حساب المخزون لكل تفصيل (دائن)
         $cogsAccountId = $this->getAccountIdBySystemKey(
             self::COST_OF_GOODS_SOLD_SYSTEM_KEY
         );
@@ -505,22 +522,18 @@ class SalesInvoiceService
             );
         }
 
-        // 4) التاريخ والوصف
         $entryDate = $invoice->invoice_date instanceof \DateTimeInterface
             ? $invoice->invoice_date->format('Y-m-d')
             : (string) ($invoice->invoice_date ?: now()->toDateString());
 
         $docType = $invoice->journal_doc_type_label;
-
         $customerName = $invoice->customerAccount->accName ?? '';
 
         $description = $invoice->journal_doc_type_label
             . ' رقم ' . $invoice->invoice_number
             . ($customerName !== '' ? ' - ' . $customerName : '');
 
-        // 5) السطور
         $lines = [
-            // (أ) مدين: العميل / الصندوق / البنك
             [
                 'accountID'    => $debitAccountId,
                 'coinsID'      => $invoice->coin_id,
@@ -531,7 +544,6 @@ class SalesInvoiceService
                 'localCredit'  => 0,
                 'description2' => $description,
             ],
-            // (ب) دائن: المبيعات
             [
                 'accountID'    => $salesRevenueAccountId,
                 'coinsID'      => $invoice->coin_id,
@@ -544,7 +556,6 @@ class SalesInvoiceService
             ],
         ];
 
-        // (ج) COGS — تجميع حسب المخزون
         $cogsByWarehouse = [];
         $cogsTotalFC = 0;
         $cogsTotalBC = 0;
@@ -558,10 +569,7 @@ class SalesInvoiceService
             $warehouseId = (int) $detail->warehouse_id;
 
             if (!isset($cogsByWarehouse[$warehouseId])) {
-                $cogsByWarehouse[$warehouseId] = [
-                    'fc' => 0,
-                    'bc' => 0,
-                ];
+                $cogsByWarehouse[$warehouseId] = ['fc' => 0, 'bc' => 0];
             }
 
             $cogsByWarehouse[$warehouseId]['fc'] += $lineFC;
@@ -571,7 +579,6 @@ class SalesInvoiceService
             $cogsTotalBC += $lineBC;
         }
 
-        // مدين: COGS
         if ($cogsTotalFC > 0) {
             $lines[] = [
                 'accountID'    => $cogsAccountId,
@@ -584,14 +591,10 @@ class SalesInvoiceService
                 'description2' => $description . ' - تكلفة البضاعة المباعة',
             ];
 
-            // دائن: حساب المخزون لكل مخزن
             foreach ($cogsByWarehouse as $warehouseId => $amounts) {
                 $inventoryAccountId = $this->getInventoryAccountIdFromWarehouse($warehouseId);
-
                 if ($inventoryAccountId <= 0) {
-                    throw new \RuntimeException(
-                        'حساب المخزون غير مُعرّف للمخزن رقم ' . $warehouseId
-                    );
+                    throw new \RuntimeException('حساب المخزون غير مُعرّف للمخزن رقم ' . $warehouseId);
                 }
 
                 $lines[] = [
@@ -607,7 +610,6 @@ class SalesInvoiceService
             }
         }
 
-        // 6) إنشاء القيد
         $entryId = JournalEntryService::create([
             'entryDate'   => $entryDate,
             'docType'     => $docType,
@@ -629,10 +631,8 @@ class SalesInvoiceService
     {
         if (!empty($invoice->entryID)) {
             JournalEntryService::delete((int) $invoice->entryID);
-
             $invoice->entryID = null;
             $invoice->saveQuietly();
-
             return;
         }
 
@@ -680,14 +680,11 @@ class SalesInvoiceService
     // HELPERS
     // =========================================================
 
-    /**
-     * ✅ تحسين: استخدام max() بدل قراءة صف كامل
-     * - Index-Only Scan
-     * - أسرع 50-900× على المدى الطويل
-     */
     protected function nextInvoiceNumber(): int
     {
-        $maxNumber = SalesInvoice::max('invoice_number');
+        $maxNumber = SalesInvoice::query()
+            ->selectRaw('CAST(MAX(CAST(invoice_number AS UNSIGNED)) AS UNSIGNED) as max_num')
+            ->value('max_num');
 
         return ((int) $maxNumber) + 1;
     }
@@ -725,7 +722,6 @@ class SalesInvoiceService
                 ? (int) $row['supplier_account_id']
                 : null;
 
-            /* ✅ التكلفة من دفعة المورد المختار (لا من آخر حركة إجمالية) */
             $serverCost = $this->inventoryService->lastCostForSupplier(
                 $itemId,
                 $warehouseId,
@@ -750,7 +746,7 @@ class SalesInvoiceService
                 'type_id'          => $row['type_id'] ?? null,
                 'unit_id'          => $unitId,
                 'warehouse_id'     => $warehouseId,
-                'supplier_account_id' => $supplierId, /* ✅ المورد المختار للسطر */
+                'supplier_account_id' => $supplierId,
                 'code'             => $row['code'] ?? null,
                 'quantity'         => $quantity,
                 'price'            => $price,

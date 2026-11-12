@@ -227,7 +227,7 @@ class InventoryMovementController extends Controller
     public function sort(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'item_id'         => ['required', 'exists:Items,itemID'],
+            'item_id'         => ['required', 'exists:items,itemID'],
             'type_id'         => ['nullable', 'exists:type,id'],
             'warehouse_id'    => ['required', 'exists:stocks,StockID'],
             'input_unit_id'   => ['required', 'exists:units,UnitID'],
@@ -480,7 +480,7 @@ class InventoryMovementController extends Controller
     public function available(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'item_id'      => ['required', 'integer', 'exists:Items,itemID'],
+            'item_id'      => ['required', 'integer', 'exists:items,itemID'],
             'warehouse_id' => ['required', 'integer', 'exists:stocks,StockID'],
             'unit_id'      => ['nullable', 'integer', 'exists:units,UnitID'],
         ]);
@@ -505,7 +505,7 @@ class InventoryMovementController extends Controller
     public function pricing(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'item_id'      => ['required', 'integer', 'exists:Items,itemID'],
+            'item_id'      => ['required', 'integer', 'exists:items,itemID'],
             'warehouse_id' => ['required', 'integer', 'exists:stocks,StockID'],
             'unit_id'      => ['nullable', 'integer', 'exists:units,UnitID'],
         ]);
@@ -527,7 +527,7 @@ class InventoryMovementController extends Controller
     public function stockPricing(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'item_id'      => ['required', 'integer', 'exists:Items,itemID'],
+            'item_id'      => ['required', 'integer', 'exists:items,itemID'],
             'warehouse_id' => ['required', 'integer', 'exists:stocks,StockID'],
             'unit_id'      => ['required', 'integer', 'exists:units,UnitID'],
             'type_id'      => ['nullable', 'integer', 'exists:type,id'],
@@ -566,7 +566,7 @@ class InventoryMovementController extends Controller
     public function updatePricing(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'item_id'      => ['required', 'integer', 'exists:Items,itemID'],
+            'item_id'      => ['required', 'integer', 'exists:items,itemID'],
             'warehouse_id' => ['required', 'integer', 'exists:stocks,StockID'],
             'unit_id'      => ['nullable', 'integer', 'exists:units,UnitID'],
             'sale_price'   => ['nullable', 'numeric', 'min:0'],
@@ -677,7 +677,7 @@ class InventoryMovementController extends Controller
         $combinations = DB::table('inventory_movement_details as imd')
             ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
             ->leftJoin('characcount as ca', 'ca.accountID', '=', 'imd.supplier_account_id')
-            ->join('Items as it', 'it.itemID', '=', 'imd.item_id')
+            ->join('items as it', 'it.itemID', '=', 'imd.item_id')
             ->where('it.is_active', 1)
             ->select(
                 'imd.item_id', 'imd.type_id', 'imd.warehouse_id', 'imd.unit_id', 'imd.supplier_account_id',
@@ -818,7 +818,7 @@ class InventoryMovementController extends Controller
 
         $batches = DB::table('inventory_movement_details as imd')
             ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
-            ->join('Items as it', 'it.itemID', '=', 'imd.item_id')
+            ->join('items as it', 'it.itemID', '=', 'imd.item_id')
             ->leftJoin('characcount as ca', 'ca.accountID', '=', 'imd.supplier_account_id')
             ->whereIn('imd.movement_detail_id', $allBatchIds)
             ->where('it.is_active', 1)
@@ -911,7 +911,7 @@ class InventoryMovementController extends Controller
             'source_type'     => ['nullable', 'string', 'max:50'],
             'source_id'       => ['nullable', 'integer'],
             'details'                   => ['required', 'array', 'min:1'],
-            'details.*.item_id'         => ['required', 'exists:Items,itemID'],
+            'details.*.item_id'         => ['required', 'exists:items,itemID'],
             'details.*.type_id'         => ['nullable', 'exists:type,id'],
             'details.*.unit_id'         => ['nullable', 'exists:units,UnitID'],
             'details.*.code'            => ['nullable', 'string', 'max:50'],

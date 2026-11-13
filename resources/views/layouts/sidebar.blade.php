@@ -210,7 +210,7 @@
                                 {{ request()->routeIs('suppliers.*') ? 'bg-success text-white' : 'text-white-50' }}"
                             >
                                 <i class="bi bi-people"></i>
-                                <span>الرعويين</span>
+                                <span>الرعية</span>
                             </a>
 
                         </div>

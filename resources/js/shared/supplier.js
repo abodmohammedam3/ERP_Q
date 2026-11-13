@@ -1,5 +1,5 @@
 /**
- * Supplier Module - إدارة الرعويين (بحث، اختيار، مودال)
+ * Supplier Module - إدارة الرعية (بحث، اختيار، مودال)
  * يمكن استخدامها في أي صفحة تحتاج إلى اختيار رعوي
  */
 
@@ -46,7 +46,7 @@ window.Supplier = {
         }, 300);
     },
 
-    // البحث عن الرعويين
+    // البحث عن الرعية
     search() {
         const searchValue = document.getElementById('SupplierSearchInput')?.value.trim() || '';
         const tbody = document.getElementById('SupplierResults');

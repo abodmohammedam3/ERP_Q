@@ -1,5 +1,5 @@
 {{-- ========================= --}}
-{{-- جدول عرض الرعويين --}}
+{{-- جدول عرض الرعية --}}
 {{-- ========================= --}}
 
 <div class="card" id="suppliersTableCard">
@@ -7,7 +7,7 @@
     <div class="card-header d-flex justify-content-between align-items-center">
 
         <span>
-            <i class="bi bi-list-ul"></i> قائمة الرعويين
+            <i class="bi bi-list-ul"></i> قائمة الرعية
         </span>
 
         <span class="badge bg-secondary" id="suppliersCountBadge">
@@ -190,7 +190,7 @@
 
                                 <i class="bi bi-truck fs-2 d-block mb-2 text-secondary"></i>
 
-                                لا يوجد رعويون مسجلون
+                                لا يوجد رعية مسجلون
 
                             </td>
 

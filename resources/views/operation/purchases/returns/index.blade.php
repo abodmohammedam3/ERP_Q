@@ -14,7 +14,7 @@
                 <i class="bi bi-arrow-return-right me-2"></i>
                 مرتجع شراء
             </h4>
-            <small class="text-muted">إدارة فواتير مرتجعات المشتريات للرعويين</small>
+            <small class="text-muted">إدارة فواتير مرتجعات المشتريات للرعية</small>
         </div>
 
         <div class="btn-group" role="group">

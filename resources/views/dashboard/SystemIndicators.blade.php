@@ -139,7 +139,7 @@
         </div>
 
 
-        <!-- الرعويون -->
+        <!-- الرعية -->
 
         <div class="col-12 col-sm-6 col-xl-3">
 
@@ -151,7 +151,7 @@
                         <div>
 
                             <h6 class="text-muted mb-2">
-                                الرعويون
+                                الرعية
                             </h6>
 
                             <h3
@@ -173,7 +173,7 @@
                     </div>
 
                     <small class="text-muted">
-                        إجمالي الرعويين
+                        إجمالي الرعية
                     </small>
 
                 </div>

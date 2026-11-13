@@ -11,7 +11,7 @@
 
         <div>
             <h4 class="mb-1">فاتورة شراء</h4>
-            <small class="text-muted">إدارة فواتير المشتريات من الرعويين</small>
+            <small class="text-muted">إدارة فواتير المشتريات من الرعية</small>
         </div>
 
         <div class="btn-group" role="group">

@@ -6,7 +6,7 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>تقرير الرعويين - {{ $printDate }}</title>
+    <title>تقرير الرعية - {{ $printDate }}</title>
 
     <style>
 
@@ -170,7 +170,7 @@
 
         <div class="report-header">
 
-            <h2>تقرير الرعويين</h2>
+            <h2>تقرير الرعية</h2>
 
             <div class="date">
                 تاريخ الطباعة: {{ $printDate }}
@@ -189,7 +189,7 @@
 
 
         {{-- ================================
-             جدول الرعويين
+             جدول الرعية
         ================================= --}}
 
         <table>
@@ -233,7 +233,7 @@
 
                     <tr>
                         <td colspan="6" class="empty">
-                            لا يوجد رعويون مطابقون لمعايير البحث
+                            لا يوجد رعية مطابقون لمعايير البحث
                         </td>
                     </tr>
 
@@ -250,11 +250,11 @@
 
         <div class="report-footer">
 
-            <span>إجمالي الرعويين: {{ $totalSuppliers }}</span>
+            <span>إجمالي الرعية: {{ $totalSuppliers }}</span>
 
-            <span>الرعويون النشطون: {{ $activeSuppliers }}</span>
+            <span>الرعية النشطون: {{ $activeSuppliers }}</span>
 
-            <span>الرعويون غير النشطين: {{ $inactiveSuppliers }}</span>
+            <span>الرعية غير النشطين: {{ $inactiveSuppliers }}</span>
 
         </div>
 

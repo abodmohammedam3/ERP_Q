@@ -40,7 +40,7 @@
                                 type="button"
                                 role="tab">
                             <i class="bi bi-truck"></i>
-                            الرعويين
+                            الرعية
                         </button>
                     </li>
 

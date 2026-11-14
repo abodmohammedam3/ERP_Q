@@ -141,7 +141,7 @@ class PurchaseInvoicesReport implements Report
         $paymentLabels = [
             PurchaseInvoice::PAYMENT_CREDIT  => 'آجل',
             PurchaseInvoice::PAYMENT_CASH    => 'نقد',
-            PurchaseInvoice::PAYMENT_BANK    => 'بنك',
+            PurchaseInvoice::PAYMENT_BANK    => 'بنك / محفظة / صراف',
         ];
 
         $rows = [];

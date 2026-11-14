@@ -92,7 +92,7 @@ class PaymentVoucher extends Model
     {
         return match ((int) $this->paymentMethod) {
             self::PAYMENT_CASH => 'سند صرف نقدي',
-            self::PAYMENT_BANK => 'سند صرف بنكي',
+            self::PAYMENT_BANK => 'سند صرف بنكي / محفظة / صراف',
             default            => 'سند صرف',
         };
     }
@@ -106,7 +106,7 @@ class PaymentVoucher extends Model
     {
         return [
             self::PAYMENT_CASH => 'نقد',
-            self::PAYMENT_BANK => 'تحويل بنكي',
+            self::PAYMENT_BANK => 'تحويل بنكي / محفظة / صراف',
         ];
     }
 

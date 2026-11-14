@@ -146,13 +146,13 @@ class ReportCenterController extends Controller
                 'paymentMethodsSales' => [
                     ['id' => SalesInvoice::PAYMENT_CREDIT,  'text' => 'آجل'],
                     ['id' => SalesInvoice::PAYMENT_CASH,    'text' => 'نقد'],
-                    ['id' => SalesInvoice::PAYMENT_BANK,    'text' => 'بنك'],
+                    ['id' => SalesInvoice::PAYMENT_BANK,    'text' => 'بنك / محفظة / صراف'],
                     ['id' => SalesInvoice::PAYMENT_NETWORK, 'text' => 'شبكة'],
                 ],
                 'paymentMethodsPurchases' => [
                     ['id' => PurchaseInvoice::PAYMENT_CREDIT, 'text' => 'آجل'],
                     ['id' => PurchaseInvoice::PAYMENT_CASH,   'text' => 'نقد'],
-                    ['id' => PurchaseInvoice::PAYMENT_BANK,   'text' => 'بنك'],
+                    ['id' => PurchaseInvoice::PAYMENT_BANK,   'text' => 'بنك / محفظة / صراف'],
                 ],
             ];
         });

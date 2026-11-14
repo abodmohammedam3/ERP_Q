@@ -7,7 +7,7 @@
    ========================= */
 
 /** تسميات طرق الدفع */
-const SALES_RETURN_PAYMENT_LABELS = { 1: 'أجل', 2: 'نقدي', 3: 'بنك' };
+const SALES_RETURN_PAYMENT_LABELS = { 1: 'أجل', 2: 'نقدي', 3: 'بنك / محفظة / صراف' };
 
 /** خرائط التحويل (للتوافق مع أي كود خارجي) */
 const SALES_RETURN_PAYMENT_TO_INT = { credit: 1, cash: 2, bank: 3 };
@@ -606,7 +606,7 @@ function salesReturnPaymentMethodChanged() {
 
     if (methodValue === 2 || methodValue === 3) {
         container.classList.remove('d-none');
-        if (label) label.textContent = methodValue === 3 ? 'الحساب البنكي' : 'الصندوق';
+        if (label) label.textContent = methodValue === 3 ? 'الحساب البنكي / المحفظة / الصراف' : 'الصندوق';
     } else {
         container.classList.add('d-none');
         salesReturnSetValue('salesReturnPaymentAccount', '');

@@ -4,7 +4,7 @@
 
 const PURCHASE_RETURN_PAYMENT_TO_INT = { credit: 1, cash: 2, bank: 3 };
 const PURCHASE_RETURN_PAYMENT_TO_STR = { 1: 'credit', 2: 'cash', 3: 'bank' };
-const PURCHASE_RETURN_PAYMENT_LABELS = { 1: 'أجل', 2: 'نقدي', 3: 'بنك' };
+const PURCHASE_RETURN_PAYMENT_LABELS = { 1: 'أجل', 2: 'نقدي', 3: 'بنك / محفظة / صراف' };
 
 /** تنسيق المبالغ بفواصل الآلاف (موحّد عبر Utils) */
 function purchaseReturnFormatMoney(v) {
@@ -469,7 +469,7 @@ function purchaseReturnPaymentMethodChanged() {
         if (methodValue === 2 || methodValue === 3) {
             container.classList.remove('d-none');
             if (label) {
-                label.textContent = methodValue === 3 ? 'الحساب البنكي' : 'الصندوق';
+                label.textContent = methodValue === 3 ? 'الحساب البنكي / المحفظة / الصراف' : 'الصندوق';
             }
         } else {
             container.classList.add('d-none');

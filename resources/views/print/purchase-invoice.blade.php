@@ -286,7 +286,7 @@
     $paymentLabels = [
         PurchaseInvoice::PAYMENT_CREDIT => 'أجل',
         PurchaseInvoice::PAYMENT_CASH   => 'نقدي',
-        PurchaseInvoice::PAYMENT_BANK   => 'بنك',
+        PurchaseInvoice::PAYMENT_BANK   => 'بنك / محفظة / صراف',
     ];
 
     // ✅ هل الفاتورة بحساب بنكي؟

@@ -528,7 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!state.customer) { toastError('اختر عميلًا أولًا.'); return; }
         if (!state.details.length) { toastError('لا توجد تفاصيل قابلة للفوترة.'); return; }
         if (state.paymentMethod !== 1 && !state.paymentAccountId) {
-            toastError('اختر حساب الدفع أولًا (نقدي/بنك).');
+            toastError('اختر حساب الدفع أولًا (نقدي/بنك / محفظة / صراف).');
             return;
         }
 

@@ -38,7 +38,7 @@
                     <select class="form-select" id="PaymentMethod" name="paymentMethod">
                         <option value="">اختر طريقة الدفع</option>
                         <option value="2">نقد</option>
-                        <option value="3">تحويل بنكي</option>
+                        <option value="3">تحويل بنكي / محفظة / صراف</option>
                     </select>
                     <div class="invalid-feedback">يرجى اختيار طريقة الدفع.</div>
                 </div>

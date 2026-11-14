@@ -173,7 +173,7 @@ class SalesReturn extends Model
         return [
             self::PAYMENT_CREDIT => 'أجل',
             self::PAYMENT_CASH   => 'نقدي',
-            self::PAYMENT_BANK   => 'بنك',
+            self::PAYMENT_BANK   => 'بنك / محفظة / صراف',
         ];
     }
 

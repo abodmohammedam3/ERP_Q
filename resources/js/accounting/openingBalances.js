@@ -613,7 +613,7 @@ async function activatePickerTab(type) {
 
     const titles = {
         CASH:      'اختيار صندوق',
-        BANK:      'اختيار بنك',
+        BANK:      'اختيار بنك / محفظة / صراف',
         CUSTOMER:  'اختيار عميل',
         SUPPLIER:  'اختيار رعوي',
         INVENTORY: 'اختيار مخزن',

@@ -140,7 +140,7 @@ class SalesInvoicesReport implements Report
         $paymentLabels = [
             SalesInvoice::PAYMENT_CREDIT  => 'آجل',
             SalesInvoice::PAYMENT_CASH    => 'نقد',
-            SalesInvoice::PAYMENT_BANK    => 'بنك',
+            SalesInvoice::PAYMENT_BANK    => 'بنك / محفظة / صراف',
             SalesInvoice::PAYMENT_NETWORK => 'شبكة',
         ];
 

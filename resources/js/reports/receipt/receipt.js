@@ -354,7 +354,7 @@ function initReceiptVoucherPage() {
         if (methodInt === 2 || methodInt === 3) {
             debitContainer.classList.remove('d-none');
             if (debitLabel) {
-                debitLabel.textContent = methodInt === 2 ? 'حساب الصندوق' : 'حساب البنك';
+                debitLabel.textContent = methodInt === 2 ? 'حساب الصندوق' : 'حساب البنك / المحفظة / الصراف';
             }
         } else {
             debitContainer.classList.add('d-none');
@@ -1027,7 +1027,7 @@ function initReceiptVoucherPage() {
 
                 const paymentMethodText = {
                     2: 'نقد',
-                    3: 'تحويل بنكي',
+                    3: 'تحويل بنكي / محفظة / صراف',
                 }[row.paymentMethod] || '—';
 
                 const statusBadge = row.isPosted

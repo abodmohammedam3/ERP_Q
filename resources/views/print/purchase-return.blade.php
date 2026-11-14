@@ -238,7 +238,7 @@
     $paymentLabels = [
         PurchaseReturn::PAYMENT_CREDIT => 'أجل',
         PurchaseReturn::PAYMENT_CASH   => 'نقدي',
-        PurchaseReturn::PAYMENT_BANK   => 'بنك',
+        PurchaseReturn::PAYMENT_BANK   => 'بنك / محفظة / صراف',
     ];
 @endphp
 

@@ -54,7 +54,7 @@
                     <option value="">اختر طريقة الدفع</option>
                     <option value="credit">أجل</option>
                     <option value="cash">نقدي (صندوق)</option>
-                    <option value="bank">بنك</option>
+                    <option value="bank">بنك / محفظة / صراف</option>
                 </select>
             </div>
 

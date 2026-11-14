@@ -59,14 +59,14 @@
                         </button>
                     </li>
 
-                    <!-- البنوك -->
+                    <!-- البنوك / المحافظ / الصراف -->
                     <li class="nav-item" role="presentation">
                         <button class="nav-link"
                                 data-type="bank"
                                 type="button"
                                 role="tab">
                             <i class="bi bi-bank"></i>
-                            البنوك
+                            البنوك / المحافظ / الصراف
                         </button>
                     </li>
 

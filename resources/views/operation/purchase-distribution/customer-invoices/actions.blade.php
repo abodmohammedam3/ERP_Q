@@ -16,7 +16,7 @@
                     {{-- بنك = 3 --}}
                     <input type="radio" class="btn-check" name="paymentMethod" id="pmBank" value="3">
                     <label class="btn btn-sm btn-outline-primary" for="pmBank">
-                        <i class="bi bi-bank"></i> بنك
+                        <i class="bi bi-bank"></i> بنك / محفظة / صراف
                     </label>
 
                     {{-- آجل = 1 --}}

@@ -26,7 +26,7 @@ function findDefaultKiloUnit() {
 /* ✅ طرق الدفع: أجل / نقدي / بنك */
 const PAYMENT_METHOD_TO_INT = { credit: 1, cash: 2, bank: 3 };
 const PAYMENT_METHOD_TO_STR = { 1: 'credit', 2: 'cash', 3: 'bank' };
-const PAYMENT_METHOD_LABELS = { 1: 'أجل', 2: 'نقدي', 3: 'بنك' };
+const PAYMENT_METHOD_LABELS = { 1: 'أجل', 2: 'نقدي', 3: 'بنك / محفظة / صراف' };
 
 let invoiceMode = 'view';
 let currentInvoiceId = null;
@@ -686,7 +686,7 @@ function paymentMethodChanged(clearPrevious = false) {
         input.dataset.lookupIdField = 'accountID';
     }
 
-    const labels = { cash: 'الصندوق', bank: 'الحساب البنكي' };
+    const labels = { cash: 'الصندوق', bank: 'الحساب البنكي / المحفظة / الصراف' };
     const lbl = container.querySelector('label');
     if (lbl) lbl.textContent = labels[method] || 'الحساب';
 }

@@ -10,7 +10,7 @@ const SALES_SYSTEM_CURRENCY_CODE = window.SALES_SYSTEM_CURRENCY_CODE || '';
 
 const SALES_PAYMENT_TO_INT = { credit: 1, cash: 2, bank: 3 };
 const SALES_PAYMENT_TO_STR = { 1: 'credit', 2: 'cash', 3: 'bank' };
-const SALES_PAYMENT_LABELS = { 1: 'أجل', 2: 'نقدي', 3: 'بنك' };
+const SALES_PAYMENT_LABELS = { 1: 'أجل', 2: 'نقدي', 3: 'بنك / محفظة / صراف' };
 
 const PIECE_UNIT_NAMES = ['الحبة', 'حبة', 'حبه', 'حب', 'قطعة', 'قطعه'];
 
@@ -650,7 +650,7 @@ function salesPaymentMethodChanged(clearPrevious = false) {
     if (method === 'bank') {
         input.dataset.lookup = 'bank';
         input.dataset.lookupDisplayField = 'bankName';
-        if (label) label.textContent = 'الحساب البنكي';
+        if (label) label.textContent = 'الحساب البنكي / المحفظة / الصراف';
     } else {
         input.dataset.lookup = 'box';
         input.dataset.lookupDisplayField = 'boxName';

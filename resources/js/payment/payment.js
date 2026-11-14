@@ -437,7 +437,7 @@ function initPaymentVoucherPage() {
             if (paymentLabel) {
                 paymentLabel.textContent = methodInt === 2
                     ? 'حساب الصندوق'
-                    : 'حساب البنك';
+                    : 'حساب البنك / المحفظة / الصراف';
             }
         } else {
             paymentContainer.classList.add('d-none');
@@ -1164,7 +1164,7 @@ function initPaymentVoucherPage() {
 
                 const paymentMethodText = {
                     2: 'نقد',
-                    3: 'تحويل بنكي',
+                    3: 'تحويل بنكي / محفظة / صراف',
                 }[row.paymentMethod] || row.paymentMethodText || '—';
 
                 const statusBadge = row.isPosted

@@ -60,7 +60,7 @@
                                 type="button"
                                 role="tab">
                             <i class="bi bi-bank"></i>
-                            البنوك
+                            البنوك / المحافظ / الصراف
                         </button>
                     </li>
 

@@ -50,7 +50,7 @@
                                 <th class="bg-light" style="width: 10%;">رقم السند</th>
                                 <th class="bg-light" style="width: 10%;">التاريخ</th>
                                 <th class="bg-light">المستفيد (مدين)</th>
-                                <th class="bg-light">الصندوق / البنك (دائن)</th>
+                                <th class="bg-light">الصندوق / البنك / المحفظة / الصراف (دائن)</th>
                                 <th class="bg-light" style="width: 12%;">المبلغ</th>
                                 <th class="bg-light" style="width: 8%;">العملة</th>
                                 <th class="bg-light" style="width: 10%;">طريقة الدفع</th>

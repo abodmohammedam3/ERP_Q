@@ -307,7 +307,7 @@
     $paymentLabels = [
         SalesInvoice::PAYMENT_CREDIT => 'أجل',
         SalesInvoice::PAYMENT_CASH   => 'نقدي',
-        SalesInvoice::PAYMENT_BANK   => 'بنك',
+        SalesInvoice::PAYMENT_BANK   => 'بنك / محفظة / صراف',
     ];
 
     $itemsCount = $invoice->details->count();

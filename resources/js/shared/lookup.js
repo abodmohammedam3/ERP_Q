@@ -132,7 +132,7 @@ const LookupConfigs = {
 
     /* ✅ البنك — مع العملة وسعر الصرف + فلترة حسب العملة */
     bank: {
-        title: 'اختيار البنك',
+        title: 'اختيار بنك / محفظة / صراف',
         icon: 'bi-bank',
         columns: [
             { key: 'accountCode', label: 'الرقم المحاسبي', width: '130px', align: 'center' },

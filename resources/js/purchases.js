@@ -34,6 +34,7 @@ let currentInvoiceIsPosted = false;
 let currentInvoiceHasReturns = false;
 let isSavingInvoice = false;
 let editSnapshot = null;
+let addSnapshot = null;   // ✅ لقطة مرجعية لوضع الإضافة (لحارس التنقّل)
 let invoiceSearchTimer = null;
 
 const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -384,6 +385,9 @@ async function resetInvoice() {
 
     const supplierEl = document.getElementById('supplierName');
     if (supplierEl) supplierEl.focus();
+
+    // ✅ لقطة مرجعية لوضع الإضافة — بعد كل التهيئة التلقائية (الرقم/التاريخ/صف فارغ)
+    addSnapshot = takeSnapshot();
 }
 
 function clearInvoiceForm() {
@@ -446,6 +450,7 @@ function clearInvoiceForm() {
     currentInvoiceIsPosted = false;
     currentInvoiceHasReturns = false;
     editSnapshot = null;
+    addSnapshot = null;   // ✅ لا لقطة مرجعية خارج وضع الإضافة
 
     setInvoiceMode('view');
 }
@@ -1174,6 +1179,29 @@ function hasInvoiceData() {
     const el = document.getElementById('PurchaseInvoicesON2');
     return el ? el.value.trim() !== '' : false;
 }
+
+/* =========================================================
+   ✅ حارس التنقّل (shared/navigation-guard.js)
+   يعتمد على أدوات موجودة في هذا الملف:
+   - invoiceMode (س31) + editSnapshot (س36) + takeSnapshot (س1142)
+   - أثناء الحفظ غير المتزامن (isSavingInvoice س35) لا تحذير
+   ========================================================= */
+window.NavigationGuard?.register(() => {
+    if (isSavingInvoice) return false;
+
+    // وضع الإضافة: مقارنة مع اللقطة المرجعية المأخوذة فور تهيئة النموذج
+    // (resetInvoice يملأ الرقم والتاريخ وصفاً فارغاً تلقائياً — ليست بيانات مستخدم)
+    if (invoiceMode === 'add' && addSnapshot) {
+        return takeSnapshot() !== addSnapshot;
+    }
+
+    // وضع التعديل: مقارنة اللقطة المأخوذة عند بدء التعديل (بدون إنذار كاذب)
+    if (invoiceMode === 'edit' && editSnapshot) {
+        return takeSnapshot() !== editSnapshot;
+    }
+
+    return false;
+});
 
 function getValue(id) {
     const el = document.getElementById(id);

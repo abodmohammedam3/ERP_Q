@@ -23,6 +23,7 @@ import './shared/utils';
 import './shared/state';
 import './shared/modals';
 import './shared/app-confirm';   // ← ✅ هنا في app.js فقط
+import './shared/navigation-guard'; // ← ✅ حارس التنقّل عند وجود بيانات غير محفوظة
 
 // ─── نظام التنبيهات ───
 import './system';

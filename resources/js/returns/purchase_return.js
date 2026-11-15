@@ -1213,6 +1213,47 @@ function hasPurchaseReturnData() {
     return el ? el.value.trim() !== '' : false;
 }
 
+/**
+ * ✅ حارس التنقّل — هل المستخدم أدخل بيانات فعلية في مرتجع الشراء؟
+ * يستثني الحقول المعبّأة تلقائياً عند التهيئة (الرقم والتاريخ من resetPurchaseReturn
+ * سطر 282/287) حتى لا يظهر تحذير كاذب بعد فتح "مرتجع جديد" بدون إدخال.
+ *
+ * ⚠️ Limitation موثّق (خيار أ من الخطة المعتمدة):
+ * في وضع التعديل بعد loadPurchaseReturn(id) تكون الحقول ممتلئة ببيانات محفوظة،
+ * فقد يظهر المودال دون تعديل فعلي من المستخدم.
+ * المرحلة 2: takePurchaseReturnSnapshot() بنمط purchases.js takeSnapshot (س1142).
+ */
+function hasAnyReturnInput() {
+    const userFields = [
+        'originalPurchaseInvoiceId',
+        'purchaseReturnSupplierID',
+        'purchaseReturnCoinsID',
+        'purchaseReturnWarehouseID',
+        'PurchaseReturnPaymentMethodValue',
+        'purchaseReturnPaymentAccountId',
+        'PurchaseReturnStatement',
+        'PurchaseReturnReference',
+    ];
+
+    if (userFields.some(id => (purchaseReturnGetValue(id) ?? '').trim() !== '')) {
+        return true;
+    }
+
+    // أي صف كمية أكبر من صفر = بيانات مُدخلة
+    return Array.from(
+        document.querySelectorAll('#purchaseReturnDetails .return-detail-row')
+    ).some(row => (parseFloat(row.querySelector('.row-measure')?.value) || 0) > 0);
+}
+
+window.NavigationGuard?.register(() => {
+    // أثناء الحفظ غير المتزامن لا تحذير
+    if (isSavingPurchaseReturn) return false;
+
+    if (purchaseReturnMode === 'view') return false;
+
+    return hasAnyReturnInput();
+});
+
 function editPurchaseReturn() {
     if (!hasPurchaseReturnData() || !currentPurchaseReturnId) {
         purchaseReturnNotify('لا يوجد مرتجع للتعديل', 'warning');

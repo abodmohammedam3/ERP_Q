@@ -111,7 +111,8 @@
                     danger: true,
                 }).then((leave) => {
                     if (leave) {
-                        this._checkers = [];          // مغادرة باختيار واعٍ
+                        this._checkers = [];   // مغادرة باختيار واعٍ
+                        this.silence();        // ✅ لا مربع متصفح بعد قرار المستخدم
                         window.location.href = a.href;
                     }
                     // "متابعة التحرير" → لا شيء: المستخدم بقي في شاشته

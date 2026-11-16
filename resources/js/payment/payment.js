@@ -1606,18 +1606,10 @@ function initPaymentVoucherPage() {
     // BEFOREUNLOAD
     // ══════════════════════════════════════════════════════════
 
-    window.addEventListener('beforeunload', function (e) {
-        if (state.mode === 'view') return;
-
-        if (state.mode === 'add' && !originalVoucherData && !hasAnyInput()) {
-            return;
-        }
-
-        if (!hasChanges()) return;
-
-        e.preventDefault();
-        e.returnValue = '';
-    });
+    // ✅ BEFOREUNLOAD انتقل مركزياً إلى shared/navigation-guard.js (المرحلة 2)
+    //    نفس المنطق: view→صمت، add فارغ→صمت، غير ذلك→hasChanges()
+    //    (الاحتفاظ بنسخة محلية كان يسبب مربع متصفح مزدوجاً بعد
+    //    "تجاهل والمغادرة" من المودال المركزي)
 
     // ══════════════════════════════════════════════════════════
     // INITIALIZE
@@ -1625,6 +1617,22 @@ function initPaymentVoucherPage() {
 
     clearForm();
     loadNextVoucherNumber();
+
+    // ══════════════════
+    // ✅ حارس التنقّل (shared/navigation-guard.js)
+    // يستخدم أدوات هذا الملف: hasChanges (س573) + hasAnyInput (س580)
+    // منطق مطابق للـ beforeunload المركزي — لا إنذار كاذب لسند جديد فارغ
+    // ══════════════════
+
+    window.NavigationGuard?.register(() => {
+        if (saveInProgress) return false;
+        if (state.mode === 'view') return false;
+
+        // سند جديد فارغ (لا لقطة) — الفحص على الإدخال الفعلي فقط
+        if (state.mode === 'add' && !originalVoucherData) return hasAnyInput();
+
+        return hasChanges();
+    });
 
     console.log('✅ تم تهيئة صفحة سند الصرف بنجاح');
 }

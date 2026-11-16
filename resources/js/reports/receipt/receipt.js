@@ -503,6 +503,17 @@ function initReceiptVoucherPage() {
             !== JSON.stringify(originalVoucherData);
     }
 
+    /** ✅ هل أدخل المستخدم بيانات فعلية؟ — نمط payment.js س580–588 بحقول القبض */
+    function hasAnyInput() {
+        return ['CreditAccountID', 'DebitAccountID', 'Amount', 'Notes']
+            .some(id => {
+                const el = document.getElementById(id);
+                if (!el) return false;
+                const val = (el.value ?? '').toString().trim();
+                return val !== '';
+            });
+    }
+
     // ══════════════════════════════════════════════════════════
     // CLEAR
     // ══════════════════════════════════════════════════════════
@@ -1392,6 +1403,22 @@ function initReceiptVoucherPage() {
 
     clearForm();
     loadNextVoucherNumber();
+
+    // ══════════════════
+    // ✅ حارس التنقّل (shared/navigation-guard.js)
+    // يستخدم أدوات هذا الملف: hasChanges (س499) + hasAnyInput
+    // لا إنذار كاذب لسند جديد فارغ (hasAnyInput يفحص الإدخال الفعلي)
+    // ══════════════════
+
+    window.NavigationGuard?.register(() => {
+        if (saveInProgress) return false;
+        if (state.mode === 'view') return false;
+
+        // سند جديد فارغ (لا لقطة) — الفحص على الإدخال الفعلي فقط
+        if (state.mode === 'add' && !originalVoucherData) return hasAnyInput();
+
+        return hasChanges();
+    });
 
     console.log('✅ تم تهيئة صفحة سند القبض بنجاح');
 }

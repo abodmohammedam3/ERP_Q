@@ -684,6 +684,11 @@ Route::get(
 )->name('invoicesPurch.list');
 
 Route::get(
+    '/operation/purchases/invoicesPurch/defaults',
+    [PurchaseInvoiceApiController::class, 'defaults']
+)->name('invoicesPurch.defaults');
+
+Route::get(
     '/operation/purchases/invoicesPurch/{id}',
     [PurchaseInvoiceApiController::class, 'show']
 )->name('invoicesPurch.show');

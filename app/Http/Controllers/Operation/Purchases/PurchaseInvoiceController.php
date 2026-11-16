@@ -17,9 +17,9 @@ class PurchaseInvoiceController extends Controller
 
         session()->save();
 
-        // ✅ عملة النظام (مخزّنة — ثابتة عملياً)
-        $systemCurrency = Cache::rememberForever('system_coin', fn () => Coin::where('coinsSystem', 1)
-            ->first(['coinsID', 'coinsCode']));
+        // ✅ عملة النظام — نفس شرط endpoint الافتراضيات (coinsSystem + is_active)
+        $systemCurrency = Coin::where('coinsSystem', 1)->where('is_active', true)
+            ->first(['coinsID', 'coinsCode']);
 
         return view('operation.purchases.invoicesPurch.index', [
             'systemCurrencyId'   => $systemCurrency->coinsID ?? null,

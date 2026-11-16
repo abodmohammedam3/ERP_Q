@@ -2,7 +2,7 @@
    فاتورة الشراء — يعتمد على النظام الموحّد للنوافذ
    ========================================================= */
 
-const SYSTEM_CURRENCY_ID   = window.PURCHASE_SYSTEM_CURRENCY_ID || null;
+const SYSTEM_CURRENCY_ID = window.PURCHASE_SYSTEM_CURRENCY_ID || null;
 const SYSTEM_CURRENCY_CODE = window.PURCHASE_SYSTEM_CURRENCY_CODE || '';
 
 /* ✅ الوحدة الافتراضية */
@@ -322,14 +322,14 @@ function updateSearchButton() {
    ========================================================= */
 
 function updatePostingButtons() {
-    const editBtn   = document.getElementById('btnEditInvoice');
-    const postBtn   = document.getElementById('btnPostInvoice');
+    const editBtn = document.getElementById('btnEditInvoice');
+    const postBtn = document.getElementById('btnPostInvoice');
     const unpostBtn = document.getElementById('btnUnpostInvoice');
-    const printBtn  = document.getElementById('btnPrintInvoice');
+    const printBtn = document.getElementById('btnPrintInvoice');
 
-    const hasData  = hasInvoiceData();
+    const hasData = hasInvoiceData();
     const isPosted = currentInvoiceIsPosted;
-    const isView   = invoiceMode === 'view';
+    const isView = invoiceMode === 'view';
 
     if (editBtn) {
         editBtn.disabled = !hasData || isPosted || !isView;
@@ -378,8 +378,8 @@ async function resetInvoice() {
         notify('تعذّر جلب رقم الفاتورة التالي', 'danger');
     }
 
-    const dateEl = document.getElementById('PurchaseInvoicesDate2');
-    if (dateEl) dateEl.value = new Date().toISOString().split('T')[0];
+    // تطبيق القيم الافتراضية من النظام
+    await applyDefaultValues();
 
     addInvoiceRow();
 
@@ -1410,6 +1410,71 @@ function printInvoice() {
    تصدير للـ HTML
    ========================================================= */
 
+/**
+ * تطبيق القيم الافتراضية المباشرة على النموذج
+ */
+async function applyDefaultValues() {
+    try {
+        // جلب القيم الافتراضية من النظام
+        const defaults = await apiGet('/operation/purchases/invoicesPurch/defaults');
+
+        // تنبيهات فقط — لا منع للحفظ (fallback = أول صف مرجعي من الخادم)
+        if (defaults.warnings && defaults.warnings.length) {
+            defaults.warnings.forEach(w => notify(w, 'warning'));
+        }
+
+        /** لا نستبدل ما أدخله المستخدم بالفعل */
+        const keepIfFilled = (id, value) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (el.value !== '' && el.value !== null) return; // مدخل المستخدم مُحفوظ
+            if (value !== null && value !== undefined) el.value = value;
+        };
+
+        // تاريخ الفاتورة (التاريخ الحالي)
+        const dateEl = document.getElementById('PurchaseInvoicesDate2');
+        if (dateEl && !dateEl.value) {
+            dateEl.value = defaults.invoice_date || new Date().toISOString().split('T')[0];
+        }
+
+        // طريقة الدفع (رقم موحّد من الخادم → نص الواجهة)
+        const paymentMethodEl = document.getElementById('PuInPaymentMethod2');
+        let needDefaultBox = false;
+        if (paymentMethodEl && !paymentMethodEl.value) {
+            paymentMethodEl.value = PAYMENT_METHOD_TO_STR[defaults.payment_method] || 'cash';
+            needDefaultBox = paymentMethodEl.value === 'cash';
+            paymentMethodChanged();
+        } else {
+            needDefaultBox = paymentMethodEl?.value === 'cash';
+        }
+
+        // العملة (عملة النظام أو أول عملة نشطة — من الخادم)
+        keepIfFilled('currencyName', defaults.currency_name);
+        keepIfFilled('currencyCode', defaults.currency_code);
+        keepIfFilled('coinsID', defaults.coin_id != null ? String(defaults.coin_id) : null);
+
+        // المخزن الافتراضي
+        keepIfFilled('warehouseName', defaults.warehouse_name);
+        keepIfFilled('warehouseID', defaults.warehouse_id != null ? String(defaults.warehouse_id) : null);
+
+        // ✅ الصندوق الرئيسي الافتراضي عند طريقة الدفع "نقدي"
+        if (needDefaultBox && defaults.default_box_account_id) {
+            keepIfFilled('paymentAccountId', String(defaults.default_box_account_id));
+            keepIfFilled('paymentAccount', defaults.default_box_name);
+        }
+
+        // سعر الصرف
+        keepIfFilled('PuInExchangeRate2', defaults.exchange_rate ? String(defaults.exchange_rate) : null);
+
+        // إعادة حساب الإجماليات بعد تطبيق القيم الافتراضية
+        calculateTotals();
+    } catch (error) {
+        console.error('Error loading default values:', error);
+        // فشل الشبكة/الصلاحيات → تنبيه فقط، والمستخدم يُكمل يدويًا
+        notify('تعذّر جلب القيم الافتراضية من النظام — أكمل البيانات يدويًا', 'warning');
+    }
+}
+
 Object.assign(window, {
     resetInvoice,
     searchInvoice,
@@ -1435,6 +1500,7 @@ Object.assign(window, {
     protectExchangeRateInput,
     setInvoiceMode,
     clearInvoiceForm,
+    applyDefaultValues,
 
     postInvoice,
     unpostInvoice,

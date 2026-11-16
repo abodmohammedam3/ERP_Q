@@ -124,6 +124,27 @@ class PurchaseInvoiceApiController extends Controller
     }
 
     /**
+     * القيم الافتراضية لفاتورة الشراء.
+     *
+     * نفس مخرجات الخدمة تمامًا (مصدر واحد للحقيقة) + warnings.
+     * payment_method رقم موحّد (PAYMENT_CASH = 2).
+     */
+    public function defaults()
+    {
+        Permissions::authorize(config('permissions.purchase_invoices.create'));
+
+        $defaults = $this->service->getDefaults();
+
+        // مؤشرات للواجهة — لا منع للحفظ، فقط تنبيهات
+        $defaults['is_ready'] = !empty($defaults['coin_id']) && !empty($defaults['warehouse_id']);
+        $defaults['missing'] = [];
+        if (empty($defaults['coin_id']))      $defaults['missing'][] = 'عملة النظام';
+        if (empty($defaults['warehouse_id'])) $defaults['missing'][] = 'المخزن الافتراضي';
+
+        return response()->json($defaults);
+    }
+
+    /**
      * قائمة البنوك
      */
     public function listBanksFull()

@@ -25,10 +25,127 @@ class PurchaseInvoiceService
     private const INVENTORY_ACCOUNT_CACHE_TTL = 3600;
 
     // =========================================================
+    // القيم الافتراضية لفاتورة الشراء
+    // =========================================================
+    /**
+     * القيم الافتراضية لفاتورة الشراء.
+     *
+     * ⚠️ لا fallback صلب بمعرّفات وهمية — لكن عند فقدان القيمة المرجعية
+     * المحددة نستبدلها بأول صف نشط من نفس الجدول (وليس معرّف مخترعًا)،
+     * مع تسجيل الملاحظة في 'warnings' لتُعرض للواجهة دون منع الحفظ.
+     */
+    public function getDefaults(): array
+    {
+        $warnings = [];
+
+        // 1. عملة النظام — وإن لم توجد: أول عملة نشطة
+        $systemCoin = \App\Models\Accounting\Coin::where('coinsSystem', true)
+            ->where('is_active', true)
+            ->first();
+
+        if (!$systemCoin) {
+            $systemCoin = \App\Models\Accounting\Coin::where('is_active', true)
+                ->orderBy('coinsID', 'asc')
+                ->first();
+            if ($systemCoin) {
+                $warnings[] = 'لم تُضبط عملة النظام — استُخدمت أول عملة نشطة ('.$systemCoin->coinsName.')';
+            }
+        }
+
+        // 2. المخزن الرئيسي — أول مخزن نشط (كما هو)
+        $mainWarehouse = \App\Models\Inventory\Stock::where('is_active', true)
+            ->orderBy('StockID', 'asc')
+            ->first();
+
+        if (!$mainWarehouse) {
+            $warnings[] = 'لا يوجد أي مخزن نشط في النظام';
+        }
+
+        // 3. طريقة الدفع الافتراضية (نقدي) — قيمة رقمية موحّدة
+        $paymentMethod = \App\Models\Purchases\PurchaseInvoice::PAYMENT_CASH;
+
+        // 4. الصندوق الرئيسي الافتراضي لحساب الدفع عند اختيار "نقدي"
+        $defaultBox = null;
+        $coinId = $systemCoin ? (int) $systemCoin->coinsID : null;
+
+        if ($coinId) {
+            $defaultBox = \Illuminate\Support\Facades\DB::table('boxes')
+                ->where('is_active', 1)
+                ->where('coinsID', $coinId)
+                ->where('boxName', 'like', '%رئيسي%')
+                ->orderBy('boxID', 'asc')
+                ->first();
+
+            // لا صندوق رئيسي على عملة النظام؟ أول صندوق نشط على نفس العملة
+            if (!$defaultBox) {
+                $defaultBox = \Illuminate\Support\Facades\DB::table('boxes')
+                    ->where('is_active', 1)
+                    ->where('coinsID', $coinId)
+                    ->orderBy('boxID', 'asc')
+                    ->first();
+            }
+        }
+
+        if (!$defaultBox && $coinId) {
+            $warnings[] = 'لا يوجد صندوق نشط على عملة النظام — يجب اختيار الصندوق يدويًا';
+        }
+
+        return [
+            'invoice_date' => now()->toDateString(),
+            'payment_method' => $paymentMethod, // 2 = نقدي
+            'coin_id' => $systemCoin ? (int) $systemCoin->coinsID : null,
+            'currency_code' => $systemCoin ? $systemCoin->coinsCode : null,
+            'currency_name' => $systemCoin ? $systemCoin->coinsName : null,
+            'warehouse_id' => $mainWarehouse ? (int) $mainWarehouse->StockID : null,
+            'warehouse_name' => $mainWarehouse ? $mainWarehouse->StockName : null,
+            // الصندوق الرئيسي الافتراضي (حساب الدفع)
+            'default_box_account_id' => $defaultBox ? (int) $defaultBox->accountID : null,
+            'default_box_name' => $defaultBox ? $defaultBox->boxName : null,
+            'exchange_rate' => 1,
+            'expenses' => 0,
+            'tax_cost' => 0,
+            'transportation' => 0,
+            'other_cost' => 0,
+            'warnings' => $warnings,
+        ];
+    }
+
+    /**
+     * تطبيق الافتراضيات على الحقول الرقمية/التواريخ فقط.
+     * لا يمس الحقول النصية القابلة للإلغاء (statement / reference)
+     * حتى لا يُعاد تشكيل مدخلات المستخدم المتعمدة.
+     */
+    public function applyDefaults(array $data): array
+    {
+        $defaults = $this->getDefaults();
+
+        // الحقول التي يُسمح بتطبيق الافتراضي عليها فقط
+        $applyableKeys = [
+            'invoice_date', 'payment_method', 'coin_id', 'warehouse_id',
+            'exchange_rate', 'expenses', 'tax_cost', 'transportation', 'other_cost',
+        ];
+
+        foreach ($defaults as $key => $value) {
+            if (!in_array($key, $applyableKeys, true)) {
+                continue;
+            }
+
+            if (!array_key_exists($key, $data) || $data[$key] === null || $data[$key] === '') {
+                $data[$key] = $value;
+            }
+        }
+        
+        return $data;
+    }
+
+    // =========================================================
     // CREATE
     // =========================================================
     public function create(array $data): PurchaseInvoice
     {
+        // تطبيق القيم الافتراضية
+        $data = $this->applyDefaults($data);
+        
         return $this->withWriteLock(function () use ($data) {
             return DB::transaction(function () use ($data) {
                 $details = $data['details'] ?? [];
@@ -56,6 +173,9 @@ class PurchaseInvoiceService
     // =========================================================
     public function update(int $id, array $data): PurchaseInvoice
     {
+        // تطبيق القيم الافتراضية للحقول الفارغة فقط
+        $data = $this->applyDefaults($data);
+        
         return $this->withWriteLock(function () use ($id, $data) {
             return DB::transaction(function () use ($id, $data) {
                 $invoice = PurchaseInvoice::lockForUpdate()->findOrFail($id);

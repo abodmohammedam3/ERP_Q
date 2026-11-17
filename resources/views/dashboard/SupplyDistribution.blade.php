@@ -146,11 +146,18 @@
                             {{-- الفلتر: عميل + تاريخ --}}
                             <div class="d-flex gap-1 align-items-center">
 
-                                <select id="distCustomerFilter"
-                                        class="form-select form-select-sm"
-                                        style="max-width: 180px;">
-                                    <option value="">كل العملاء</option>
-                                </select>
+                                {{-- بحث بالكتابة مع قائمة اقتراحات (تُملأ من JS) --}}
+                                <div class="position-relative" style="max-width: 200px;">
+                                    <input type="text"
+                                           id="distCustomerFilter"
+                                           class="form-control form-control-sm"
+                                           placeholder="بحث باسم العميل..."
+                                           autocomplete="off">
+                                    <div id="distCustomerSuggestions"
+                                         class="list-group position-absolute w-100 shadow-sm d-none"
+                                         style="top: 100%; right: 0; z-index: 1050; max-height: 220px; overflow-y: auto;">
+                                    </div>
+                                </div>
 
                                 <input type="date"
                                        id="distDateFilter"
@@ -210,22 +217,31 @@
 
                                 </tbody>
 
-                                <tfoot class="table-light fw-semibold">
+                                {{-- تذييل بلا خطوط أعمدة: tfoot::td بلا حد جانبي، والجدول تُحجب حدوده السفلية --}}
+                                <tfoot class="table-light fw-semibold tfoot-no-borders">
 
                                     <tr class="text-center">
 
-                                        <td colspan="3" class="text-start ps-3">
-                                            الإجمالي
+                                        {{-- العداد: إجمالي الكميات (أسفل عمود الكمية فقط) --}}
+                                        <td class="text-start ps-3">
+                                            العداد:
+                                            <span id="distTotalQty">0</span>
+                                        </td>
+
+                                        <td></td>
+
+                                        {{-- قديم أعلى "بالريال السعودي" في نفس الحقل --}}
+                                        <td>
+                                            قديم: <span id="distTotalAmount">0.00</span>
                                             <small class="text-muted d-block">
                                                 بالريال السعودي: <span id="distTotalSar">0.00</span>
                                                 <span id="distSarRate" class="d-none"></span>
                                             </small>
                                         </td>
 
-                                        <td id="distTotalAmount">0.00</td>
-
+                                        {{-- الوزن أسفل عمود النوع (العمود الأخير) --}}
                                         <td>
-                                            الوزن كم: <span id="distTotalKg">0.000</span>
+                                            الوزن: <span id="distTotalKg">0.000</span> كيلو
                                             <span id="distKgUnknown" class="d-none text-warning small">(بعض الصفوف بلا وزن)</span>
                                         </td>
 
@@ -244,3 +260,18 @@
             </div>
 
         </div>
+
+    </div>
+
+</div>
+
+{{-- إخفاء الحدود العمودية (الفواصل الرأسية بين الأعمدة) في تذييل جدول التوزيع
+    اليومي — تبقى حدود الصفوف فقط. موضوعة هنا مباشرة لأن layouts/app.blade.php
+    لا يحتوي على @stack('styles') فأي @push('styles') لن يُعرض. --}}
+<style>
+    #dashboardDistributionDaily tfoot td,
+    tfoot.tfoot-no-borders td {
+        border-left: 0 !important;
+        border-right: 0 !important;
+    }
+</style>

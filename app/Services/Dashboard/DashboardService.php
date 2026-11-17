@@ -513,6 +513,7 @@ class DashboardService
         $rows      = [];
         $totalSar  = 0.0;
         $totalBase = 0.0;
+        $totalQty  = 0.0;
         $totalKg   = 0.0;
         $hasUnknownWeight = false;
 
@@ -535,6 +536,7 @@ class DashboardService
 
             $totalBase += $lineBase;
             $totalSar  += $lineSar;
+            $totalQty  += $qty;
 
             $rows[] = [
                 'id'          => (int) $d->id,
@@ -572,6 +574,7 @@ class DashboardService
             'totals'        => [
                 'total_sar'        => round($totalSar, 2),
                 'total_base'       => round($totalBase, 2),
+                'total_qty'        => round($totalQty, 3),
                 'total_kg'         => round($totalKg, 3),
                 'has_unknown_kg'   => $hasUnknownWeight,
                 'rows_count'       => count($rows),

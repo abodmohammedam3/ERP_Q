@@ -378,26 +378,16 @@ function paintDistributionDaily(data) {
     setText('distDayName', data.day_name || '—');
     setText('distCustomerName', data.customer?.name || 'كل العملاء');
 
-    // قائمة العملاء في الفلتر
+    // حفظ قائمة عملاء اليوم (للاقتراحات في البحث النصي)
+    DASH.dist.customers = Array.isArray(data.customers) ? data.customers : [];
+
+    // عند تحديد عميل نكتب اسمه في حقل البحث، وإلا نفرّغه
     const filter = document.getElementById('distCustomerFilter');
     if (filter) {
-        const current = String(DASH.dist.customerId ?? '');
-        filter.replaceChildren();
-
-        const allOpt = document.createElement('option');
-        allOpt.value = '';
-        allOpt.textContent = 'كل العملاء';
-        filter.appendChild(allOpt);
-
-        (data.customers || []).forEach((c) => {
-            const opt = document.createElement('option');
-            opt.value = String(c.id);
-            opt.textContent = c.name;
-            filter.appendChild(opt);
-        });
-
-        filter.value = current;
-        if (filter.value !== current) filter.value = '';
+        const selected = (data.customer && data.customer.id)
+            ? DASH.dist.customers.find((c) => String(c.id) === String(data.customer.id))
+            : null;
+        filter.value = selected ? (selected.name || '') : '';
     }
 
     // صفوف الجدول
@@ -434,6 +424,7 @@ function paintDistributionDaily(data) {
 
     // سطر الإجماليات
     const totals = data.totals || {};
+    setText('distTotalQty', Number(numOr(totals.total_qty)).toLocaleString('en-US', { maximumFractionDigits: 3 }));
     setText('distTotalAmount', money(totals.total_base));
     setText('distTotalSar', money(totals.total_sar));
     setText('distTotalKg', totals.total_kg != null ? Number(totals.total_kg).toFixed(3) : '0.000');
@@ -518,12 +509,83 @@ function bindDistributionDaily() {
         todayBtn.dataset.bound = '1';
     }
 
+    /**
+     * حقل بحث العميل: نص مكتوب + قائمة اقتراحات تُفلتر بالكتابة.
+     * الاختيار من القائمة يثبّت العميل؛ مسح النص يعيد عرض كل العملاء.
+     */
     if (customerFilter && !customerFilter.dataset.bound) {
-        customerFilter.addEventListener('change', () => {
-            const v = customerFilter.value;
-            DASH.dist.customerId = v === '' ? null : parseInt(v, 10);
-            fetchDistributionDaily();
+        const suggestions = document.getElementById('distCustomerSuggestions');
+
+        const hideSuggestions = () => {
+            if (suggestions) suggestions.classList.add('d-none');
+        };
+
+        const renderSuggestions = () => {
+            if (!suggestions) return;
+
+            const term = (customerFilter.value || '').trim().toLowerCase();
+            const matches = DASH.dist.customers.filter((c) =>
+                term === '' || String(c.name || '').toLowerCase().includes(term)
+            );
+
+            suggestions.replaceChildren();
+
+            // خيار "كل العملاء" يظهر أولًا دائمًا
+            const allItem = document.createElement('button');
+            allItem.type = 'button';
+            allItem.className = 'list-group-item list-group-item-action text-center small';
+            allItem.textContent = 'كل العملاء';
+            allItem.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                customerFilter.value = '';
+                DASH.dist.customerId = null;
+                hideSuggestions();
+                fetchDistributionDaily();
+            });
+            suggestions.appendChild(allItem);
+
+            matches.forEach((c) => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'list-group-item list-group-item-action small';
+                item.textContent = c.name || '—';
+                item.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    customerFilter.value = c.name || '';
+                    DASH.dist.customerId = c.id;
+                    hideSuggestions();
+                    fetchDistributionDaily();
+                });
+                suggestions.appendChild(item);
+            });
+
+            suggestions.classList.toggle('d-none', suggestions.children.length === 0);
+        };
+
+        // الكتابة تُظهر القائمة مصفّاة بالكلمات المكتوبة
+        customerFilter.addEventListener('input', renderSuggestions);
+
+        customerFilter.addEventListener('focus', renderSuggestions);
+
+        // المسح الكامل للنص يعيد كل العملاء فورًا
+        customerFilter.addEventListener('input', () => {
+            if ((customerFilter.value || '').trim() === '' && DASH.dist.customerId !== null) {
+                DASH.dist.customerId = null;
+                fetchDistributionDaily();
+            }
         });
+
+        customerFilter.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') hideSuggestions();
+        });
+
+        // إخفاء القائمة عند النقر خارجها
+        document.addEventListener('click', (e) => {
+            if (!customerFilter.contains(e.target) && !(suggestions && suggestions.contains(e.target))) {
+                hideSuggestions();
+            }
+        });
+
         customerFilter.dataset.bound = '1';
     }
 
@@ -559,7 +621,7 @@ function bindDistributionDaily() {
             : Math.min(customers.length - 1, Math.max(0, idx + dir));
 
         DASH.dist.customerId = customers[idx].id;
-        if (customerFilter) customerFilter.value = String(DASH.dist.customerId);
+        if (customerFilter) customerFilter.value = customers[idx].name || '';
         fetchDistributionDaily();
     };
 

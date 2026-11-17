@@ -12,6 +12,9 @@ use App\Models\Inventory\Type;
 use App\Models\Inventory\Unit;
 use App\Models\Purchases\PurchaseInvoice;
 use App\Models\Purchases\PurchaseReturn;
+use App\Models\Purchases\Distribution;
+use App\Models\Purchases\DistributionDetail;
+use App\Models\Accounting\Coin;
 use App\Models\Sales\SalesInvoice;
 use App\Models\Sales\SalesReturn;
 use App\Models\Supplier;
@@ -442,6 +445,221 @@ class DashboardService
         }
 
         return $this->partyNameCache[$accountId];
+    }
+
+    // ════════
+    //  جدول التوزيع اليومي (شاشة توزيع الأصناف المشتراة)
+    // ════════
+
+    /**
+     * عمليات التوزيع لعميل محدد في يوم محدد (كل الحالات: مسودة + مفوتر).
+     *
+     * المصدر: distribution_details + distributions (لا inventory_movements)
+     * — لأن عميل التوزيع محفوظ مباشرة في distribution_details.customer_id.
+     *
+     * العملة: sale_price محفوظ بعملة فاتورة الشراء الأصلية.
+     * التحويل للريال السعودي (قرار المستخدم):
+     *   بالمبالغ الأساسية = quantity × sale_price × exchange_rate (نمط recalculateTotals)
+     *   بالسعودي          = المبلغ الأساسي ÷ سعر صرف RSA من coins.
+     *
+     * الوزن بالكيلو (قرار المستخدم — من منطق شاشة الفرز):
+     *   نتبع سلسلة lot_source_detail_id حتى أول دفعة دخول بوحدة كيلو،
+     *   والمعامل الضمني لكل خطوة فرز = كمية الدفعة الناتجة ÷ كمية الدفعة الأصلية.
+     *   الصفوف بلا أساس كيلو (لا سلسلة ترجع لوحدة كيلو) تعود بـ null.
+     *
+     * @return array{date:string,day_name:string,customer:array,totals:array,rows:array}
+     */
+    public function distributionDaily(?string $date = null, ?int $customerId = null): array
+    {
+        $date = $date ?: now()->toDateString();
+
+        $query = DistributionDetail::query()
+            ->join('distributions', 'distributions.id', '=', 'distribution_details.distribution_id')
+            ->whereDate('distributions.distribution_date', $date)
+            ->with([
+                'customer:CustomersID,CustomersName2,CusPhone,accountID',
+                'purchaseInvoice:purchase_invoice_id,exchange_rate,coin_id',
+                'movementDetail:movement_detail_id,item_id,type_id,unit_id,code,quantity,lot_source_detail_id',
+                'movementDetail.type:id,name',
+                'movementDetail.unit:UnitID,UnitName',
+            ]);
+
+        if ($customerId) {
+            $query->where('distribution_details.customer_id', $customerId);
+        }
+
+        $details = $query
+            ->orderBy('distribution_details.id')
+            ->get();
+
+        // أسماء العملاء الموزع لهم في هذا اليوم (للسهمين)
+        $customerIds = DistributionDetail::query()
+            ->join('distributions', 'distributions.id', '=', 'distribution_details.distribution_id')
+            ->whereDate('distributions.distribution_date', $date)
+            ->distinct()
+            ->orderBy('distribution_details.customer_id')
+            ->pluck('distribution_details.customer_id');
+
+        $customersOfDay = Customer::query()
+            ->whereIn('CustomersID', $customerIds)
+            ->orderBy('CustomersName2')
+            ->get(['CustomersID', 'CustomersName2'])
+            ->map(fn ($c) => ['id' => (int) $c->CustomersID, 'name' => (string) $c->CustomersName2])
+            ->values()
+            ->all();
+
+        $sarRate = $this->sarExchangeRate();
+
+        $rows      = [];
+        $totalSar  = 0.0;
+        $totalBase = 0.0;
+        $totalKg   = 0.0;
+        $hasUnknownWeight = false;
+
+        foreach ($details as $d) {
+            $md = $d->movementDetail;
+
+            $qty       = (float) $d->quantity;
+            $salePrice = (float) $d->sale_price;
+            $rate      = (float) ($d->purchaseInvoice?->exchange_rate ?: 1);
+
+            $lineBase = $qty * $salePrice * $rate;
+            $lineSar  = $sarRate > 0 ? $lineBase / $sarRate : 0.0;
+
+            $kg = $this->weightInKg($md);
+            if ($kg === null) {
+                $hasUnknownWeight = true;
+            } else {
+                $totalKg += $kg;
+            }
+
+            $totalBase += $lineBase;
+            $totalSar  += $lineSar;
+
+            $rows[] = [
+                'id'          => (int) $d->id,
+                'dist_code'   => (string) ($d->distribution?->code ?? ''),
+                'date'        => optional($d->distribution?->distribution_date)->format('Y-m-d'),
+                'customer_id' => (int) $d->customer_id,
+                'customer_name' => (string) ($d->customer?->CustomersName2 ?? ''),
+                'quantity'    => $qty,
+                'code'        => (string) ($md?->code ?? ''),
+                'sale_price'  => $salePrice,
+                'line_total'  => round($qty * $salePrice, 2),
+                'type_name'   => (string) ($md?->type?->name ?? ''),
+                'unit_name'   => (string) ($md?->unit?->UnitName ?? ''),
+                'is_invoiced' => $d->sales_invoice_id !== null,
+                'weight_kg'   => $kg,
+                'total_sar'   => round($lineSar, 2),
+            ];
+        }
+
+        $customer = null;
+        if ($customerId) {
+            $first = $details->first()?->customer;
+            $customer = [
+                'id'   => (int) $customerId,
+                'name' => (string) ($first?->CustomersName2 ?? ''),
+            ];
+        }
+
+        return [
+            'date'          => $date,
+            'day_name'      => $this->dayName(\Illuminate\Support\Carbon::parse($date)),
+            'sar_rate'      => $sarRate,
+            'customers'     => $customersOfDay,
+            'customer'      => $customer,
+            'totals'        => [
+                'total_sar'        => round($totalSar, 2),
+                'total_base'       => round($totalBase, 2),
+                'total_kg'         => round($totalKg, 3),
+                'has_unknown_kg'   => $hasUnknownWeight,
+                'rows_count'       => count($rows),
+            ],
+            'rows'          => $rows,
+        ];
+    }
+
+    /**
+     * سعر صرف الريال السعودي (coinsCode = 'RSA') من جدول coins.
+     * العملة الأساسية للنظام (coinsSystem = 1) هي اليمني بسعر 1،
+     * فالتحويل للسعودي = المبلغ الأساسي ÷ سعر صرف RSA.
+     */
+    private function sarExchangeRate(): float
+    {
+        return (float) (Coin::query()->where('coinsCode', 'RSA')->value('coinsExchangeRate') ?: 0);
+    }
+
+    /**
+     * الوزن بالكيلو لدفعة حركة — عبر سلسلة lot_source_detail_id.
+     *
+     * المنطق (مشتق من شاشة الفرز — movements.js / InventoryService::sortInventory):
+     *  - كل خطوة فرز تحفظ الدفعة الأصل بالوزن (sorting_out) والناتج (sorting_in)،
+     *    فالمعامل الضمني = كمية الدفعة الحالية ÷ كمية أصلها.
+     *  - نضرب المعاملات تراكميًا حتى نصل لدفعة دخول (in) وحدتها كيلو،
+     *    فنحصل على وزن الصف بالكيلو.
+     *  - إن انكسرت السلسلة أو وصلنا لدفعة لا أساس كيلو لها ⇒ null.
+     *
+     * @return float|null null = لا يمكن تحديد الوزن بالكيلو
+     */
+    private function weightInKg(?InventoryMovementDetail $detail, int $depth = 0): ?float
+    {
+        if (!$detail || $depth > 20) {
+            return null;
+        }
+
+        $unitName = (string) ($detail->unit?->UnitName ?? '');
+
+        if ($this->isKiloUnit($unitName)) {
+            return (float) $detail->quantity;
+        }
+
+        // جرام: وسيط معروف بينه وبين الكيلو (نفس منطق sortingUnitFactor في movements.js)
+        if ($this->isGramUnit($unitName)) {
+            return (float) $detail->quantity / 1000;
+        }
+
+        $source = $detail->lotSource;
+
+        if (!$source) {
+            return null; // دفعة أصل غير وزنية (كرتونة/حبة بلا فرز من كيلو)
+        }
+
+        $sourceQty = (float) $source->quantity;
+        if ($sourceQty <= 0) {
+            return null;
+        }
+
+        // معامل هذه الخطوة: كمية الدفعة الناتجة ÷ كمية أصلها
+        $factor = (float) $detail->quantity / $sourceQty;
+
+        $upstream = $this->weightInKg($source, $depth + 1);
+
+        return $upstream === null ? null : $upstream * $factor;
+    }
+
+    /**
+     * تعرف الوحدة الوزنية نصيًا — نفس منهج isKiloUnit/isGram
+     * في resources/js/movements.js:1745-1756 (لا عمود رسمي للوحدات الوزنية).
+     */
+    private function isKiloUnit(string $unitName): bool
+    {
+        $n = mb_strtolower(trim($unitName));
+
+        return $n !== '' && (
+            str_contains($n, 'كيلو') || str_contains($n, 'كجم')
+            || $n === 'kg' || str_contains($n, 'kilogram')
+        );
+    }
+
+    private function isGramUnit(string $unitName): bool
+    {
+        $n = mb_strtolower(trim($unitName));
+
+        return $n !== '' && (
+            str_contains($n, 'جرام') || str_contains($n, 'جم')
+            || $n === 'g' || str_contains($n, 'gram')
+        );
     }
 
     private function dayName($date): string

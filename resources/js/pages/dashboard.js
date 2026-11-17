@@ -29,9 +29,17 @@
    ──────────────────────────────── */
 const DASH = {
     dataUrl: '/dashboard/data',
+    distributionUrl: '/dashboard/distribution/daily',
     controller: null,
+    distController: null,
     lastVersion: null,
     initialized: false,
+    /** حالة جدول التوزيع اليومي */
+    dist: {
+        date: new Date().toISOString().slice(0, 10),
+        customerId: null,
+        customers: [],
+    },
 };
 
 const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -179,6 +187,9 @@ function paintSupply(rows) {
 }
 
 function paintDistribution(rows) {
+    // الجدول القديم أُستبدل بجدول التوزيع اليومي (distributionDaily) — لا يوجد tbody
+    if (!document.getElementById('dashboardPurchaseInvoices')) return;
+
     const tbody = document.getElementById('dashboardPurchaseInvoices');
     if (!tbody) return;
 
@@ -347,6 +358,224 @@ function clearError() {
 }
 
 /* ────────────────────────────────
+   جدول التوزيع اليومي
+   ──────────────────────────────── */
+
+/**
+ * رسم جدول التوزيع اليومي من استجابة /dashboard/distribution/daily.
+ * الأعمدة الخمسة: الكمية، الرمز، سعر الحبة، الاجمالي، النوع.
+ * الرأس: اليوم + التاريخ + اسم العميل.
+ * الأسفل: الإجمالي + الإجمالي بالريال السعودي + الوزن كم بالكيلو.
+ */
+function paintDistributionDaily(data) {
+    if (!data) return;
+
+    const tbody = document.getElementById('dashboardDistributionDaily');
+    if (!tbody) return;
+
+    // الرأس
+    setText('distDayDate', data.date || '—');
+    setText('distDayName', data.day_name || '—');
+    setText('distCustomerName', data.customer?.name || 'كل العملاء');
+
+    // قائمة العملاء في الفلتر
+    const filter = document.getElementById('distCustomerFilter');
+    if (filter) {
+        const current = String(DASH.dist.customerId ?? '');
+        filter.replaceChildren();
+
+        const allOpt = document.createElement('option');
+        allOpt.value = '';
+        allOpt.textContent = 'كل العملاء';
+        filter.appendChild(allOpt);
+
+        (data.customers || []).forEach((c) => {
+            const opt = document.createElement('option');
+            opt.value = String(c.id);
+            opt.textContent = c.name;
+            filter.appendChild(opt);
+        });
+
+        filter.value = current;
+        if (filter.value !== current) filter.value = '';
+    }
+
+    // صفوف الجدول
+    tbody.replaceChildren();
+
+    const rows = Array.isArray(data.rows) ? data.rows : [];
+
+    if (rows.length === 0) {
+        tbody.appendChild(buildEmptyRow(5, 'لا توجد عمليات توزيع في هذا اليوم'));
+    } else {
+        const fragment = document.createDocumentFragment();
+
+        rows.forEach((row) => {
+            const tr = document.createElement('tr');
+            tr.className = 'text-center';
+
+            [
+                money(row.quantity),
+                textOr(row.code),
+                money(row.sale_price),
+                money(row.line_total),
+                textOr(row.type_name),
+            ].forEach((cell) => {
+                const td = document.createElement('td');
+                td.textContent = cell;
+                tr.appendChild(td);
+            });
+
+            fragment.appendChild(tr);
+        });
+
+        tbody.appendChild(fragment);
+    }
+
+    // سطر الإجماليات
+    const totals = data.totals || {};
+    setText('distTotalAmount', money(totals.total_base));
+    setText('distTotalSar', money(totals.total_sar));
+    setText('distTotalKg', totals.total_kg != null ? Number(totals.total_kg).toFixed(3) : '0.000');
+
+    const unknownEl = document.getElementById('distKgUnknown');
+    if (unknownEl) unknownEl.classList.toggle('d-none', !totals.has_unknown_kg);
+
+    const rateEl = document.getElementById('distSarRate');
+    if (rateEl && data.sar_rate) rateEl.textContent = ` (سعر الصرف: ${data.sar_rate})`;
+
+    // أزرار السهمين (تعطيل عند الأطراف)
+    DASH.dist.customers = Array.isArray(data.customers) ? data.customers : [];
+    const idx = DASH.dist.customers.findIndex((c) => String(c.id) === String(DASH.dist.customerId ?? ''));
+
+    const prevBtn = document.getElementById('distCustomerPrevBtn');
+    const nextBtn = document.getElementById('distCustomerNextBtn');
+    if (prevBtn) prevBtn.disabled = idx <= 0;
+    if (nextBtn) nextBtn.disabled = idx === -1 || idx >= DASH.dist.customers.length - 1;
+}
+
+/**
+ * جلب بيانات جدول التوزيع اليومي.
+ */
+async function fetchDistributionDaily() {
+    if (DASH.distController) DASH.distController.abort();
+    DASH.distController = new AbortController();
+
+    const params = new URLSearchParams({ date: DASH.dist.date });
+    if (DASH.dist.customerId) params.set('customer_id', String(DASH.dist.customerId));
+
+    try {
+        const response = await fetch(`${DASH.distributionUrl}?${params.toString()}`, {
+            method: 'GET',
+            signal: DASH.distController.signal,
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': CSRF_TOKEN,
+            },
+            credentials: 'same-origin',
+        });
+
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok || !payload.success) {
+            console.error('[Dashboard] distribution daily failed', response.status, payload);
+            return;
+        }
+
+        paintDistributionDaily(payload.data);
+    } catch (error) {
+        if (error.name === 'AbortError') return;
+        console.error('[Dashboard] distribution daily', error);
+    }
+}
+
+/**
+ * ربط أحداث الفلتر والسهمين.
+ */
+function bindDistributionDaily() {
+    const dateInput = document.getElementById('distDateFilter');
+    const customerFilter = document.getElementById('distCustomerFilter');
+
+    if (dateInput && !dateInput.dataset.bound) {
+        dateInput.value = DASH.dist.date;
+        dateInput.addEventListener('change', () => {
+            DASH.dist.date = dateInput.value || DASH.dist.date;
+            DASH.dist.customerId = null; // يوم جديد: أعد العرض لكل العملاء
+            fetchDistributionDaily();
+        });
+        dateInput.dataset.bound = '1';
+    }
+
+    const todayBtn = document.getElementById('distDateTodayBtn');
+    if (todayBtn && !todayBtn.dataset.bound) {
+        todayBtn.addEventListener('click', () => {
+            DASH.dist.date = new Date().toISOString().slice(0, 10);
+            DASH.dist.customerId = null;
+            if (dateInput) dateInput.value = DASH.dist.date;
+            fetchDistributionDaily();
+        });
+        todayBtn.dataset.bound = '1';
+    }
+
+    if (customerFilter && !customerFilter.dataset.bound) {
+        customerFilter.addEventListener('change', () => {
+            const v = customerFilter.value;
+            DASH.dist.customerId = v === '' ? null : parseInt(v, 10);
+            fetchDistributionDaily();
+        });
+        customerFilter.dataset.bound = '1';
+    }
+
+    // سهما اليوم (السابق/التالي)
+    const shiftDay = (days) => {
+        const d = new Date(DASH.dist.date + 'T00:00:00');
+        d.setDate(d.getDate() + days);
+        DASH.dist.date = d.toISOString().slice(0, 10);
+        DASH.dist.customerId = null;
+        if (dateInput) dateInput.value = DASH.dist.date;
+        fetchDistributionDaily();
+    };
+
+    const prevDay = document.getElementById('distDayPrevBtn');
+    const nextDay = document.getElementById('distDayNextBtn');
+    if (prevDay && !prevDay.dataset.bound) {
+        prevDay.addEventListener('click', () => shiftDay(-1));
+        prevDay.dataset.bound = '1';
+    }
+    if (nextDay && !nextDay.dataset.bound) {
+        nextDay.addEventListener('click', () => shiftDay(1));
+        nextDay.dataset.bound = '1';
+    }
+
+    // سهما العميل داخل نفس اليوم
+    const jump = (dir) => {
+        const customers = DASH.dist.customers;
+        if (!customers.length) return;
+
+        let idx = customers.findIndex((c) => String(c.id) === String(DASH.dist.customerId ?? ''));
+        idx = idx === -1
+            ? (dir > 0 ? 0 : customers.length - 1)
+            : Math.min(customers.length - 1, Math.max(0, idx + dir));
+
+        DASH.dist.customerId = customers[idx].id;
+        if (customerFilter) customerFilter.value = String(DASH.dist.customerId);
+        fetchDistributionDaily();
+    };
+
+    const prevCust = document.getElementById('distCustomerPrevBtn');
+    const nextCust = document.getElementById('distCustomerNextBtn');
+    if (prevCust && !prevCust.dataset.bound) {
+        prevCust.addEventListener('click', () => jump(-1));
+        prevCust.dataset.bound = '1';
+    }
+    if (nextCust && !nextCust.dataset.bound) {
+        nextCust.addEventListener('click', () => jump(1));
+        nextCust.dataset.bound = '1';
+    }
+}
+
+/* ────────────────────────────────
    التهيئة
    ──────────────────────────────── */
 
@@ -367,10 +596,15 @@ function initDashboard() {
     // 2) تأكيد/تحميل بقية الأجزاء من API
     fetchDashboard();
 
-    // 3) تحديث عند العودة للتبويب/النافذة (بدل polling)
+    // 3) جدول التوزيع اليومي (شاشة توزيع الأصناف المشتراة)
+    bindDistributionDaily();
+    fetchDistributionDaily();
+
+    // 4) تحديث عند العودة للتبويب/النافذة (بدل polling)
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
             fetchDashboard();
+            fetchDistributionDaily();
         }
     });
 

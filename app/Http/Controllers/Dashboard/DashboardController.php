@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\Dashboard\DashboardService;
 use App\Support\DashboardCache;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
@@ -61,6 +62,41 @@ class DashboardController extends Controller
         return view('dashboard.index', [
             'initial' => $initial,
         ]);
+    }
+
+    /**
+     * بيانات جدول التوزيع اليومي (JSON).
+     *
+     * GET /dashboard/distribution/daily?date=Y-m-d&customer_id=N
+     *
+     * بدون فلتر عميل: يعيد كل العملاء الذين لهم توزيع في اليوم
+     * مع صفوف أول عميل (للسهمين والعرض الأولي).
+     *
+     * مصادر البيانات: distribution_details + distributions فقط
+     * (العميل محفوظ مباشرة في الصف — لا اشتقاق عكسي من الفواتير).
+     */
+    public function distributionDaily(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'date'        => ['nullable', 'date_format:Y-m-d'],
+            'customer_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        try {
+            $data = $this->service->distributionDaily(
+                $validated['date'] ?? null,
+                isset($validated['customer_id']) ? (int) $validated['customer_id'] : null
+            );
+
+            return response()->json(['success' => true, 'data' => $data]);
+        } catch (\Throwable $e) {
+            Log::error('[Dashboard] distributionDaily failed', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'تعذّر تحميل بيانات جدول التوزيع',
+            ], 500);
+        }
     }
 
     /**

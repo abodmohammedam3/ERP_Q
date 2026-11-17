@@ -41,6 +41,9 @@ Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard
 
 Route::get('/dashboard/data', [DashboardController::class, 'data'])->name('dashboard.data');
 
+Route::get('/dashboard/distribution/daily',
+    [DashboardController::class, 'distributionDaily'])->name('dashboard.distribution.daily');
+
 // =====================================================
 // مركز التقارير
 // =====================================================

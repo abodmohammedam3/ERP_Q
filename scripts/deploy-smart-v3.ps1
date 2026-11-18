@@ -94,7 +94,7 @@ foreach ($folder in $FoldersToScan) {
     $folderPath = Join-Path $Source $folder
     if (-not (Test-Path $folderPath)) { continue }
 
-    $files = Get-ChildItem $folderPath -Recurse -File
+    $files = Get-ChildItem $folderPath -Recurse -File -ErrorAction SilentlyContinue
     foreach ($file in $files) {
         $relPath = $file.FullName.Substring($Source.Length + 1) -replace '\\', '/'
 

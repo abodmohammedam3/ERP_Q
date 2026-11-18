@@ -48,9 +48,17 @@ function New-FtpRequest([string]$uri, [string]$method) {
     return $req
 }
 
-function Remove-FtpFile([string]$rel) {
+function Remove-FtpFile([string]$rel, [int]$Current = 0, [int]$Total = 0) {
     $remotePath = "$RemoteRoot/$rel"
-    Write-Host "Deleting: $rel ... " -NoNewline
+    
+    if ($Total -gt 0) {
+        $Percent = [math]::Round(($Current / $Total) * 100)
+        Write-Host "Deleting [$Current/$Total] ($Percent%): $rel ... " -NoNewline
+    }
+    else {
+        Write-Host "Deleting: $rel ... " -NoNewline
+    }
+
     try {
         $req = New-FtpRequest "ftp://$FtpHost$remotePath" ([System.Net.WebRequestMethods+Ftp]::DeleteFile)
         $resp = $req.GetResponse(); $resp.Close()
@@ -125,9 +133,20 @@ function Clear-RemoteDir([string]$relDir, [string]$extensionFilter, [switch]$Dry
         return
     }
 
+    # Add Progress Bar and Counter for deletion
+    $TotalFiles = $targets.Count
+    $CurrentFile = 0
+    
     foreach ($name in $targets) {
-        Remove-FtpFile "$relDir/$name"
+        $CurrentFile++
+        $Percent = [math]::Round(($CurrentFile / $TotalFiles) * 100)
+        
+        Write-Progress -Activity "Clearing Cache: $relDir" -Status "Deleting file $CurrentFile of $TotalFiles ($Percent%)" -PercentComplete $Percent
+        
+        Remove-FtpFile "$relDir/$name" -Current $CurrentFile -Total $TotalFiles
     }
+    
+    Write-Progress -Activity "Clearing Cache: $relDir" -Completed
 }
 
 # ═══════════════════════════════

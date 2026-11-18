@@ -466,6 +466,8 @@ class DashboardService
      *   نتبع سلسلة lot_source_detail_id حتى أول دفعة دخول بوحدة كيلو،
      *   والمعامل الضمني لكل خطوة فرز = كمية الدفعة الناتجة ÷ كمية الدفعة الأصلية.
      *   الصفوف بلا أساس كيلو (لا سلسلة ترجع لوحدة كيلو) تعود بـ null.
+     *   ملاحظة: الناتج يمثل وزن الدفعة كاملة — المتصل يضربه بحصة صف
+     *   التوزيع (كمية التوزيع ÷ كمية الدفعة) قبل الجمع.
      *
      * @return array{date:string,day_name:string,customer:array,totals:array,rows:array}
      */
@@ -528,6 +530,14 @@ class DashboardService
             $lineSar  = $sarRate > 0 ? $lineBase / $sarRate : 0.0;
 
             $kg = $this->weightInKg($md);
+
+            // ✅ تصحيح: وزن الدفعة يمثل الدفعة كاملة (movementDetail->quantity)،
+            // وحصة صف التوزيع منها = كمية التوزيع ÷ كمية الدفعة × وزن الدفعة.
+            // قبل هذا التصحيح كان كل صف يُحتسب بكامل وزن الدفعة (تضاعف).
+            $batchQty = (float) ($md?->quantity ?? 0);
+            if ($kg !== null && $batchQty > 0) {
+                $kg = $kg * ($qty / $batchQty);
+            }
             if ($kg === null) {
                 $hasUnknownWeight = true;
             } else {

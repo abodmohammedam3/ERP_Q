@@ -124,14 +124,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ============================================================
-    // الحقول الفارغة
+    // الحقول الفارغة وتنظيف العملاء اليتامى
     // ============================================================
     function findEmptyAllocations() {
         const empty = [];
         Object.entries(state.allocation).forEach(([itemId, row]) => {
-            Object.entries(row).forEach(([custId, qty]) => {
+            Object.entries(row || {}).forEach(([custId, qty]) => {
                 if (num(qty) <= 0) {
-                    empty.push({ itemId: parseInt(itemId), custId: parseInt(custId) });
+                    empty.push({ itemId: parseInt(itemId, 10), custId: parseInt(custId, 10) });
                 }
             });
         });
@@ -166,6 +166,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         pruneOrphanCustomers();
         return removedCount;
+    }
+
+    function pruneOrphanCustomers() {
+        const inUse = new Set();
+        Object.values(state.allocation).forEach(row =>
+            Object.keys(row || {}).forEach(cid => inUse.add(String(cid))));
+        Object.keys(state.customerInfo).forEach(cid => {
+            if (!inUse.has(String(cid))) delete state.customerInfo[cid];
+        });
+    }
+
+    function findItem(movementDetailId) {
+        for (const invId in state.invoices) {
+            const found = (state.invoices[invId].items || []).find(it => it.id == movementDetailId);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    function findInvoiceOfItem(movementDetailId) {
+        for (const invId in state.invoices) {
+            if ((state.invoices[invId].items || []).some(it => it.id == movementDetailId)) {
+                return state.invoices[invId];
+            }
+        }
+        return null;
     }
 
     // ============================================================
@@ -264,7 +290,10 @@ document.addEventListener('DOMContentLoaded', () => {
         hideInvoiceModal();
         toastInfo(`جارٍ تحميل أصناف الفاتورة ${inv.invoice_number}...`);
         try {
-            const res = await api(ROUTES.items(inv.id));
+            const url = state.distributionId
+                ? `${ROUTES.items(inv.id)}?exclude_distribution_id=${encodeURIComponent(state.distributionId)}`
+                : ROUTES.items(inv.id);
+            const res = await api(url);
             if (!res.success) { toastError(res.message || 'تعذر التحميل.'); return; }
             state.invoices[inv.id] = {
                 id: inv.id, number: inv.invoice_number, date: inv.invoice_date,
@@ -296,7 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         delete state.invoices[invoiceId];
         Object.keys(state.allocation).forEach(mdId => {
-            if (inv.items.some(it => it.id == mdId)) {
+            if ((inv.items || []).some(it => it.id == mdId)) {
                 delete state.allocation[mdId];
                 delete state.prices[mdId];
             }
@@ -317,33 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function hasAllocationForInvoice(invoiceId) {
         const inv = state.invoices[invoiceId];
         if (!inv) return false;
-        return inv.items.some(it => getAllocatedQty(it.id) > 0);
-    }
-
-    function pruneOrphanCustomers() {
-        const inUse = new Set();
-        Object.values(state.allocation).forEach(row =>
-            Object.keys(row).forEach(cid => inUse.add(String(cid))));
-        Object.keys(state.customerInfo).forEach(cid => {
-            if (!inUse.has(String(cid))) delete state.customerInfo[cid];
-        });
-    }
-
-    function findItem(movementDetailId) {
-        for (const invId in state.invoices) {
-            const found = state.invoices[invId].items.find(it => it.id == movementDetailId);
-            if (found) return found;
-        }
-        return null;
-    }
-
-    function findInvoiceOfItem(movementDetailId) {
-        for (const invId in state.invoices) {
-            if (state.invoices[invId].items.some(it => it.id == movementDetailId)) {
-                return state.invoices[invId];
-            }
-        }
-        return null;
+        return (inv.items || []).some(it => getAllocatedQty(it.id) > 0);
     }
 
     // ============================================================
@@ -366,8 +369,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         invoices.forEach(inv => {
-            const distCount  = inv.items.filter(it => getAllocatedQty(it.id) > 0).length;
-            const totalCount = inv.items.length;
+            const distCount  = (inv.items || []).filter(it => getAllocatedQty(it.id) > 0).length;
+            const totalCount = (inv.items || []).length;
 
             let badgeClass = 'bg-secondary-subtle text-secondary';
             if (distCount === totalCount && totalCount > 0) badgeClass = 'bg-success-subtle text-success';
@@ -399,7 +402,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         box.querySelectorAll('button[data-tab-id]').forEach(btn => {
             btn.addEventListener('click', () => {
-                state.activeInvoiceId = parseInt(btn.dataset.tabId);
+                state.activeInvoiceId = parseInt(btn.dataset.tabId, 10);
                 renderTabs();
                 renderItems();
             });
@@ -506,7 +509,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const row = state.allocation[itemId] || {};
         const priceRow = state.prices[itemId] || {};
 
-        // ✅ 1. التحقق من السعر (صفر أو فارغ) للكميات المدخلة
         let invalidPrices = [];
         Object.entries(row).forEach(([cid, qty]) => {
             if (num(qty) > 0) {
@@ -520,8 +522,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (invalidPrices.length > 0) {
             e.preventDefault();
             e.stopPropagation();
-            
-            // تلوين حقول السعر الفارغة بالأحمر
+
             document.querySelectorAll('#allocationTableBody .alloc-price-input').forEach(inp => {
                 const cid = inp.dataset.customer;
                 const qty = num(row[cid]);
@@ -539,7 +540,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // ✅ 2. التحقق من الكميات الفارغة
         const emptyNames = getEmptyCustomersForItem(itemId);
         if (emptyNames.length === 0) return;
 
@@ -615,122 +615,153 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderAllocationModal() {
-    const itemId = state.modalItemId;
-    const item   = findItem(itemId);
-    const inv    = state.modalInvoiceId ? state.invoices[state.modalInvoiceId] : null;
-    if (!item || !inv) return;
+        const itemId = state.modalItemId;
+        const item   = findItem(itemId);
+        const inv    = state.modalInvoiceId ? state.invoices[state.modalInvoiceId] : null;
+        if (!item || !inv) return;
 
-    const alloc       = getAllocatedQty(itemId);
-    const remaining   = Math.max(0, num(item.available) - alloc);
-    const noRemaining = remaining <= 0;
+        const alloc       = getAllocatedQty(itemId);
+        const remaining   = Math.max(0, num(item.available) - alloc);
+        const noRemaining = remaining <= 0;
 
-    if ($('allocItemName'))      $('allocItemName').textContent      = item.item_name;
-    if ($('allocInvoiceNumber')) $('allocInvoiceNumber').textContent = inv.number;
-    if ($('allocAvailable'))     $('allocAvailable').textContent     = fmt(item.available, 3);
-    if ($('allocAllocated'))     $('allocAllocated').textContent     = fmt(alloc, 3);
-    if ($('allocRemaining'))     $('allocRemaining').textContent     = fmt(remaining, 3);
-    if ($('allocUnitCost'))      $('allocUnitCost').textContent      = fmt(item.unit_cost);
+        if ($('allocItemName'))      $('allocItemName').textContent      = item.item_name;
+        if ($('allocInvoiceNumber')) $('allocInvoiceNumber').textContent = inv.number;
+        if ($('allocAvailable'))     $('allocAvailable').textContent     = fmt(item.available, 3);
+        if ($('allocAllocated'))     $('allocAllocated').textContent     = fmt(alloc, 3);
+        if ($('allocRemaining'))     $('allocRemaining').textContent     = fmt(remaining, 3);
+        if ($('allocUnitCost'))      $('allocUnitCost').textContent      = fmt(item.unit_cost);
 
-    const idx   = inv.items.findIndex(it => it.id == itemId);
-    const total = inv.items.length;
-    if ($('allocItemCounter')) $('allocItemCounter').textContent = `${idx + 1} من ${total}`;
-    if ($('btnPrevItem'))      $('btnPrevItem').disabled = idx <= 0;
-    if ($('btnNextItem'))      $('btnNextItem').disabled = idx >= total - 1;
+        const idx   = inv.items.findIndex(it => it.id == itemId);
+        const total = inv.items.length;
+        if ($('allocItemCounter')) $('allocItemCounter').textContent = `${idx + 1} من ${total}`;
+        if ($('btnPrevItem'))      $('btnPrevItem').disabled = idx <= 0;
+        if ($('btnNextItem'))      $('btnNextItem').disabled = idx >= total - 1;
 
-    const tbody = $('allocationTableBody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
+        const tbody = $('allocationTableBody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
 
-    const row = state.allocation[itemId] || {};
-    const priceRow = state.prices[itemId] || {};
-    const customerIds = Object.keys(row);
+        const row = state.allocation[itemId] || {};
+        const priceRow = state.prices[itemId] || {};
+        const customerIds = Object.keys(row);
 
-    if (!customerIds.length) {
-        tbody.innerHTML = `
-            <tr><td colspan="5" class="text-center text-muted py-3 small">
-                <i class="bi bi-person-plus fs-4 d-block mb-1 opacity-50"></i>
-                أضف عميلًا لتوزيع الكميات.
-            </td></tr>`;
-        return;
-    }
+        if (!customerIds.length) {
+            tbody.innerHTML = `
+                <tr><td colspan="5" class="text-center text-muted py-3 small">
+                    <i class="bi bi-person-plus fs-4 d-block mb-1 opacity-50"></i>
+                    أضف عميلًا لتوزيع الكميات.
+                </td></tr>`;
+            return;
+        }
 
-    customerIds.forEach(cid => {
-        const info     = state.customerInfo[cid] || { name: '—', phone: '' };
-        const curQty   = num(row[cid]);
-        const curPrice = priceRow[cid] !== undefined ? num(priceRow[cid]) : num(item.sale_price);
-        const curTotal = curQty * curPrice;
-        
-        const isEmpty  = curQty <= 0;
-        const editable = !isEmpty || !noRemaining;
+        customerIds.forEach(cid => {
+            const info     = state.customerInfo[cid] || { name: '—', phone: '' };
+            const curQty   = num(row[cid]);
+            const curPrice = priceRow[cid] !== undefined ? num(priceRow[cid]) : num(item.sale_price);
+            const curTotal = curQty * curPrice;
 
-        const isPriceInvalid = curPrice <= 0;
-        const priceWarningClass = (curPrice > 0 && curPrice < num(item.unit_cost)) ? 'border-warning bg-warning-subtle' : '';
-        const priceInvalidClass = isPriceInvalid ? 'border-danger' : '';
-        
-        const showPrice = curQty > 0;
+            const isEmpty  = curQty <= 0;
+            const editable = !isEmpty || !noRemaining;
 
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>
-                <div class="fw-semibold small">
-                    ${escapeHtml(info.name)}
-                    ${isEmpty ? '<i class="bi bi-exclamation-circle-fill text-danger ms-1" title="لم تُدخل كمية"></i>' : ''}
-                </div>
-                ${info.phone ? `<div class="text-muted" style="font-size:0.7rem;">${escapeHtml(info.phone)}</div>` : ''}
-            </td>
-            <td>
-                <input type="text"
-                       inputmode="decimal"
-                       autocomplete="off"
-                       dir="ltr"
-                       class="form-control form-control-sm text-center alloc-input ${editable ? '' : 'bg-body-secondary'} ${isEmpty && editable ? 'border-danger' : ''}"
-                       data-customer="${cid}"
-                       value="${curQty || ''}"
-                       ${editable ? '' : 'readonly'}
-                       placeholder="${editable ? 'الكمية' : 'لا يوجد'}">
-            </td>
-            <td class="text-center">
-                <span class="price-placeholder text-muted small ${showPrice ? 'd-none' : ''}">أدخل الكمية</span>
-                <input type="text"
-                       inputmode="decimal"
-                       autocomplete="off"
-                       dir="ltr"
-                       class="form-control form-control-sm text-center alloc-price-input ${showPrice ? '' : 'd-none'} ${editable ? '' : 'bg-body-secondary'} ${priceWarningClass} ${priceInvalidClass}"
-                       data-customer="${cid}"
-                       value="${curPrice || ''}"
-                       ${editable ? '' : 'readonly'}
-                       placeholder="">
-            </td>
-            <td class="text-center">
-                <input type="text"
-                       class="form-control form-control-sm text-center bg-light fw-bold text-success alloc-total-input ${showPrice ? '' : 'd-none'}"
-                       value="${curTotal > 0 ? fmt(curTotal) : ''}"
-                       readonly
-                       tabindex="-1"
-                       dir="ltr">
-            </td>
-            <td class="text-center">
-                <button type="button" class="btn btn-sm btn-link text-danger p-0 alloc-remove"
-                        data-customer="${cid}" title="إزالة العميل">
-                    <i class="bi bi-x-lg"></i>
-                </button>
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
+            const isPriceInvalid = curPrice <= 0;
+            const priceWarningClass = (curPrice > 0 && curPrice < num(item.unit_cost)) ? 'border-warning bg-warning-subtle' : '';
+            const priceInvalidClass = isPriceInvalid ? 'border-danger' : '';
 
-    // ============================================================
-    // إعداد مستمعي أحداث الكمية
-    // ============================================================
-    tbody.querySelectorAll('.alloc-input').forEach(inp => {
-        if (inp.readOnly) {
-            inp.addEventListener('click', (e) => {
-                e.preventDefault();
-                toastWarning('لا توجد كمية متبقية من هذا الصنف');
-                inp.blur();
-            });
-            inp.addEventListener('focus', () => inp.blur());
-        } else {
+            const showPrice = curQty > 0;
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>
+                    <div class="fw-semibold small">
+                        ${escapeHtml(info.name)}
+                        ${isEmpty ? '<i class="bi bi-exclamation-circle-fill text-danger ms-1" title="لم تُدخل كمية"></i>' : ''}
+                    </div>
+                    ${info.phone ? `<div class="text-muted" style="font-size:0.7rem;">${escapeHtml(info.phone)}</div>` : ''}
+                </td>
+                <td>
+                    <input type="text"
+                           inputmode="decimal"
+                           autocomplete="off"
+                           dir="ltr"
+                           class="form-control form-control-sm text-center alloc-input ${editable ? '' : 'bg-body-secondary'} ${isEmpty && editable ? 'border-danger' : ''}"
+                           data-customer="${cid}"
+                           value="${curQty || ''}"
+                           ${editable ? '' : 'readonly'}
+                           placeholder="${editable ? 'الكمية' : 'لا يوجد'}">
+                </td>
+                <td class="text-center">
+                    <span class="price-placeholder text-muted small ${showPrice ? 'd-none' : ''}">أدخل الكمية</span>
+                    <input type="text"
+                           inputmode="decimal"
+                           autocomplete="off"
+                           dir="ltr"
+                           class="form-control form-control-sm text-center alloc-price-input ${showPrice ? '' : 'd-none'} ${editable ? '' : 'bg-body-secondary'} ${priceWarningClass} ${priceInvalidClass}"
+                           data-customer="${cid}"
+                           value="${curPrice || ''}"
+                           ${editable ? '' : 'readonly'}
+                           placeholder="">
+                </td>
+                <td class="text-center">
+                    <input type="text"
+                           class="form-control form-control-sm text-center bg-light fw-bold text-success alloc-total-input ${showPrice ? '' : 'd-none'}"
+                           value="${curTotal > 0 ? fmt(curTotal) : ''}"
+                           readonly
+                           tabindex="-1"
+                           dir="ltr">
+                </td>
+                <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-link text-danger p-0 alloc-remove"
+                            data-customer="${cid}" title="إزالة العميل">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        tbody.querySelectorAll('.alloc-input').forEach(inp => {
+            if (inp.readOnly) {
+                inp.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    toastWarning('لا توجد كمية متبقية من هذا الصنف');
+                    inp.blur();
+                });
+                inp.addEventListener('focus', () => inp.blur());
+            } else {
+                inp.addEventListener('keydown', (e) => {
+                    const ch = e.key;
+                    if (ch === 'Enter') { e.preventDefault(); inp.blur(); return; }
+                    if (['Backspace','Delete','Tab','Escape','ArrowLeft','ArrowRight','Home','End'].includes(ch)) return;
+                    if ((e.ctrlKey || e.metaKey) && ['a','c','v','x','z','y'].includes(String(ch).toLowerCase())) return;
+                    if (/[0-9]/.test(ch)) return;
+                    if (ch === '.') {
+                        if (inp.value.includes('.')) e.preventDefault();
+                        return;
+                    }
+                    e.preventDefault();
+                });
+
+                inp.addEventListener('paste', (e) => {
+                    const txt = (e.clipboardData || window.clipboardData).getData('text');
+                    if (!/^\d*\.?\d*$/.test(txt.trim())) {
+                        e.preventDefault();
+                        toastWarning('يُسمح فقط بالأرقام والنقطة العشرية.');
+                    }
+                });
+
+                inp.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    toastWarning('لا يمكن إفلات نص هنا.');
+                });
+
+                inp.addEventListener('input', () => handleModalAllocLiveInput(inp));
+                inp.addEventListener('blur', () => handleModalAllocInput(inp));
+            }
+        });
+
+        tbody.querySelectorAll('.alloc-price-input').forEach(inp => {
+            if (inp.readOnly) return;
+
             inp.addEventListener('keydown', (e) => {
                 const ch = e.key;
                 if (ch === 'Enter') { e.preventDefault(); inp.blur(); return; }
@@ -744,139 +775,108 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault();
             });
 
-            inp.addEventListener('paste', (e) => {
-                const txt = (e.clipboardData || window.clipboardData).getData('text');
-                if (!/^\d*\.?\d*$/.test(txt.trim())) {
-                    e.preventDefault();
-                    toastWarning('يُسمح فقط بالأرقام والنقطة العشرية.');
+            inp.addEventListener('input', () => handleModalPriceInput(inp));
+
+            inp.addEventListener('blur', () => {
+                const currentItemId = state.modalItemId;
+                const currentItem = findItem(currentItemId);
+                if (!currentItem) return;
+
+                const price = num(inp.value);
+                if (price > 0 && price < num(currentItem.unit_cost)) {
+                    toastWarning(`السعر (${price}) أقل من سعر التكلفة (${currentItem.unit_cost})`);
                 }
             });
+        });
 
-            inp.addEventListener('drop', (e) => {
-                e.preventDefault();
-                toastWarning('لا يمكن إفلات نص هنا.');
-            });
+        tbody.querySelectorAll('.alloc-remove').forEach(btn =>
+            btn.addEventListener('click', async () => {
+                const cid  = btn.dataset.customer;
+                const info = state.customerInfo[cid];
+                const qty  = num(state.allocation[itemId]?.[cid] || 0);
 
-            inp.addEventListener('input', () => handleModalAllocLiveInput(inp));
-            inp.addEventListener('blur', () => handleModalAllocInput(inp));
+                if (qty > 0) {
+                    const ok = await confirmDialog(
+                        `العميل «${info?.name || ''}» لديه كمية ${fmt(qty, 3)}. إزالة العميل ستحذف هذه الكمية. متابعة؟`,
+                        { title: 'إزالة عميل', okText: 'إزالة', danger: true }
+                    );
+                    if (!ok) return;
+                }
+
+                if (state.allocation[itemId]) delete state.allocation[itemId][cid];
+                if (state.prices[itemId]) delete state.prices[itemId][cid];
+
+                if (Object.keys(state.allocation[itemId] || {}).length === 0) {
+                    delete state.allocation[itemId];
+                    delete state.prices[itemId];
+                }
+
+                pruneOrphanCustomers();
+                renderAllocationModal();
+                renderItems();
+                renderSummary();
+                renderTabs();
+            }));
+    }
+
+    function handleModalAllocLiveInput(input) {
+        const itemId = state.modalItemId;
+        const custId = input.dataset.customer;
+        const item   = findItem(itemId);
+        if (!item) return;
+
+        let qty = num(input.value);
+        if (qty < 0) qty = 0;
+
+        const others = Object.entries(state.allocation[itemId] || {})
+            .filter(([cid]) => cid != custId)
+            .reduce((s, [, q]) => s + num(q), 0);
+
+        const maxForField = num(item.available) - others;
+
+        if (qty > maxForField) {
+            qty = Math.max(0, maxForField);
+            setTimeout(() => {
+                input.value = qty;
+            }, 0);
         }
-    });
 
-    // ============================================================
-    // إعداد مستمعي أحداث السعر
-    // ============================================================
-    tbody.querySelectorAll('.alloc-price-input').forEach(inp => {
-        if (inp.readOnly) return;
+        state.allocation[itemId] = state.allocation[itemId] || {};
+        state.allocation[itemId][custId] = qty;
 
-        inp.addEventListener('keydown', (e) => {
-            const ch = e.key;
-            if (ch === 'Enter') { e.preventDefault(); inp.blur(); return; }
-            if (['Backspace','Delete','Tab','Escape','ArrowLeft','ArrowRight','Home','End'].includes(ch)) return;
-            if ((e.ctrlKey || e.metaKey) && ['a','c','v','x','z','y'].includes(String(ch).toLowerCase())) return;
-            if (/[0-9]/.test(ch)) return;
-            if (ch === '.') {
-                if (inp.value.includes('.')) e.preventDefault();
-                return;
-            }
-            e.preventDefault();
-        });
+        const totalAlloc = getAllocatedQty(itemId);
+        const remaining  = Math.max(0, num(item.available) - totalAlloc);
+        if ($('allocAllocated')) $('allocAllocated').textContent = fmt(totalAlloc, 3);
+        if ($('allocRemaining')) $('allocRemaining').textContent = fmt(remaining, 3);
 
-        // 1. أثناء الكتابة: تحديث الإجمالي واللون فقط (بدون رسالة)
-        inp.addEventListener('input', () => handleModalPriceInput(inp));
-        
-        // 2. عند الخروج من الحقل: إظهار الرسالة إذا كان السعر أقل من التكلفة
-        inp.addEventListener('blur', () => {
-            const currentItemId = state.modalItemId;
-            const currentItem = findItem(currentItemId);
-            if (!currentItem) return;
-
-            const price = num(inp.value);
-            if (price > 0 && price < num(currentItem.unit_cost)) {
-                toastWarning(`السعر (${price}) أقل من سعر التكلفة (${currentItem.unit_cost})`);
-            }
-        });
-    });
-
-    // ============================================================
-    // إعداد زر الحذف
-    // ============================================================
-    tbody.querySelectorAll('.alloc-remove').forEach(btn =>
-        btn.addEventListener('click', async () => {
-            const cid  = btn.dataset.customer;
-            const info = state.customerInfo[cid];
-            const qty  = num(state.allocation[itemId]?.[cid] || 0);
+        const tr = input.closest('tr');
+        if (tr) {
+            const priceInput = tr.querySelector('.alloc-price-input');
+            const totalInput = tr.querySelector('.alloc-total-input');
+            const placeholder = tr.querySelector('.price-placeholder');
 
             if (qty > 0) {
-                const ok = await confirmDialog(
-                    `العميل «${info?.name || ''}» لديه كمية ${fmt(qty, 3)}. إزالة العميل ستحذف هذه الكمية. متابعة؟`,
-                    { title: 'إزالة عميل', okText: 'إزالة', danger: true }
-                );
-                if (!ok) return;
-            }
+                if (priceInput) priceInput.classList.remove('d-none');
+                if (totalInput) totalInput.classList.remove('d-none');
+                if (placeholder) placeholder.classList.add('d-none');
 
-            if (state.allocation[itemId]) delete state.allocation[itemId][cid];
-            if (state.prices[itemId]) delete state.prices[itemId][cid];
-            
-            if (Object.keys(state.allocation[itemId] || {}).length === 0) {
-                delete state.allocation[itemId];
-                delete state.prices[itemId];
-            }
+                let currentPrice = state.prices[itemId]?.[custId];
+                if (currentPrice === undefined || currentPrice <= 0) {
+                    state.prices[itemId] = state.prices[itemId] || {};
+                    state.prices[itemId][custId] = num(item.sale_price);
+                    if (priceInput) {
+                        priceInput.value = num(item.sale_price);
+                        priceInput.classList.remove('border-warning', 'bg-warning-subtle', 'border-danger');
+                    }
+                }
 
-            pruneOrphanCustomers();
-            renderAllocationModal();
-            renderItems();
-            renderSummary();
-            renderTabs();
-        }));
-}
+                const price = num(priceInput?.value);
+                if (totalInput) totalInput.value = (qty * price) > 0 ? fmt(qty * price) : '';
+            } else {
+                if (priceInput) priceInput.classList.add('d-none');
+                if (totalInput) totalInput.classList.add('d-none');
+                if (placeholder) placeholder.classList.remove('d-none');
 
-function handleModalAllocLiveInput(input) {
-    const itemId = state.modalItemId;
-    const custId = input.dataset.customer;
-    const item   = findItem(itemId);
-    if (!item) return;
-
-    let qty = num(input.value);
-    if (qty < 0) qty = 0;
-
-    const others = Object.entries(state.allocation[itemId] || {})
-        .filter(([cid]) => cid != custId)
-        .reduce((s, [, q]) => s + num(q), 0);
-
-    const maxForField = num(item.available) - others;
-    
-    if (qty > maxForField) {
-        qty = Math.max(0, maxForField);
-        // ✅ هذا السطر يضمن أن الحقل سيتم تصحيحه بصرياً إلى 0.2 بعد أن ينتهي المتصفح من معالجة الكتابة
-        setTimeout(() => {
-            input.value = qty;
-        }, 0);
-    }
-    
-    state.allocation[itemId] = state.allocation[itemId] || {};
-    state.allocation[itemId][custId] = qty;
-
-    // ✅ تحديث البطاقات العلوية (متاح / موزع / متبقي) لحظياً
-    const totalAlloc = getAllocatedQty(itemId);
-    const remaining  = Math.max(0, num(item.available) - totalAlloc);
-    if ($('allocAllocated')) $('allocAllocated').textContent = fmt(totalAlloc, 3);
-    if ($('allocRemaining')) $('allocRemaining').textContent = fmt(remaining, 3);
-
-    // ✅ إظهار/إخفاء حقل السعر بناءً على الكمية
-    const tr = input.closest('tr');
-    if (tr) {
-        const priceInput = tr.querySelector('.alloc-price-input');
-        const totalInput = tr.querySelector('.alloc-total-input');
-        const placeholder = tr.querySelector('.price-placeholder');
-        
-        if (qty > 0) {
-            if (priceInput) priceInput.classList.remove('d-none');
-            if (totalInput) totalInput.classList.remove('d-none');
-            if (placeholder) placeholder.classList.add('d-none');
-
-            // ✅ إذا كانت الكمية أكبر من صفر، والسعر صفر أو فارغ، نعيده للقيمة الافتراضية
-            let currentPrice = state.prices[itemId]?.[custId];
-            if (currentPrice === undefined || currentPrice <= 0) {
                 state.prices[itemId] = state.prices[itemId] || {};
                 state.prices[itemId][custId] = num(item.sale_price);
                 if (priceInput) {
@@ -884,27 +884,11 @@ function handleModalAllocLiveInput(input) {
                     priceInput.classList.remove('border-warning', 'bg-warning-subtle', 'border-danger');
                 }
             }
-            
-            const price = num(priceInput?.value);
-            if (totalInput) totalInput.value = (qty * price) > 0 ? fmt(qty * price) : '';
-        } else {
-            if (priceInput) priceInput.classList.add('d-none');
-            if (totalInput) totalInput.classList.add('d-none');
-            if (placeholder) placeholder.classList.remove('d-none');
-
-            // ✅ إعادة تعيين السعر للقيمة الافتراضية عند مسح الكمية
-            state.prices[itemId] = state.prices[itemId] || {};
-            state.prices[itemId][custId] = num(item.sale_price);
-            if (priceInput) {
-                priceInput.value = num(item.sale_price);
-                priceInput.classList.remove('border-warning', 'bg-warning-subtle', 'border-danger');
-            }
         }
-    }
 
-    renderSummary();
-    renderTabs();
-}
+        renderSummary();
+        renderTabs();
+    }
 
     function handleModalAllocInput(input) {
         const itemId = state.modalItemId;
@@ -917,8 +901,7 @@ function handleModalAllocLiveInput(input) {
         if (raw === '' || num(raw) === 0) {
             state.allocation[itemId] = state.allocation[itemId] || {};
             state.allocation[itemId][custId] = 0;
-            
-            // ✅ إعادة تعيين السعر عند مسح الكمية
+
             state.prices[itemId] = state.prices[itemId] || {};
             state.prices[itemId][custId] = num(item.sale_price);
 
@@ -934,11 +917,10 @@ function handleModalAllocLiveInput(input) {
             input.value = '';
             state.allocation[itemId] = state.allocation[itemId] || {};
             state.allocation[itemId][custId] = 0;
-            
-            // ✅ إعادة تعيين السعر
+
             state.prices[itemId] = state.prices[itemId] || {};
             state.prices[itemId][custId] = num(item.sale_price);
-            
+
             renderAllocationModal();
             renderItems();
             renderSummary();
@@ -985,14 +967,11 @@ function handleModalAllocLiveInput(input) {
         input.classList.remove('border-warning', 'bg-warning-subtle', 'border-danger');
 
         if (price <= 0) {
-            // السعر صفر أو فارغ (تنبيه بصري أحمر)
             input.classList.add('border-danger');
         } else if (price < num(item.unit_cost)) {
-            // السعر أقل من التكلفة (تنبيه بصري أصفر فقط، بدون رسالة)
             input.classList.add('border-warning', 'bg-warning-subtle');
         }
 
-        // ✅ تحديث الإجمالي
         const tr = input.closest('tr');
         if (tr) {
             const qtyInput = tr.querySelector('.alloc-input');
@@ -1263,7 +1242,7 @@ function handleModalAllocLiveInput(input) {
     function addCustomersToItem(customers) {
         const itemId = state.modalItemId;
         if (!itemId) return;
-        
+
         const item = findItem(itemId);
         if (!item) return;
 
@@ -1400,7 +1379,7 @@ function handleModalAllocLiveInput(input) {
 
         if (invalidPrice) {
             toastError(`لا يمكن الحفظ — السعر فارغ أو صفر للعميل «${invalidPrice.cust?.name || ''}» على الصنف «${invalidPrice.item.item_name}».`);
-            
+
             const invOfItem = findInvoiceOfItem(invalidPrice.mdId);
             if (invOfItem) {
                 state.activeInvoiceId = invOfItem.id;
@@ -1430,10 +1409,10 @@ function handleModalAllocLiveInput(input) {
                 if (num(qty) > 0) {
                     const price = state.prices[mdId]?.[custId] ?? num(item.sale_price);
                     details.push({
-                        movement_detail_id:  parseInt(mdId),
-                        purchase_invoice_id: parseInt(item.purchase_invoice_id),
-                        movement_id:         parseInt(item.movement_id),
-                        customer_id:         parseInt(custId),
+                        movement_detail_id:  parseInt(mdId, 10),
+                        purchase_invoice_id: parseInt(item.purchase_invoice_id, 10),
+                        movement_id:         parseInt(item.movement_id, 10),
+                        customer_id:         parseInt(custId, 10),
                         quantity:            num(qty),
                         sale_price:          num(price),
                     });
@@ -1466,6 +1445,9 @@ function handleModalAllocLiveInput(input) {
             const url = new URL(window.location);
             url.searchParams.set('id', res.id);
             window.history.replaceState({}, '', url);
+
+            // إعادة مزامنة الحالة مع قاعدة البيانات لضمان تطابق الصفوف والكميات
+            await loadExisting(res.id);
         } catch (e) {
             toastError('فشل الحفظ: ' + e.message);
         } finally {
@@ -1474,22 +1456,31 @@ function handleModalAllocLiveInput(input) {
     }
 
     // ============================================================
-    // تحميل توزيع للتعديل
+    // تحميل توزيع للتعديل (مع تصفير الحالة السابقة بالكامل)
     // ============================================================
     async function loadExisting(id) {
         try {
             const res = await api(ROUTES.show(id));
             if (!res.success) return;
 
+            // تصفير البيانات السابقة لتفادي بقاء عملاء أو صفوف محذوفة من جلسة سابقة
+            state.invoices        = {};
+            state.activeInvoiceId = null;
+            state.customerInfo    = {};
+            state.allocation      = {};
+            state.prices          = {};
+            state.modalItemId     = null;
+            state.modalInvoiceId  = null;
+
             state.distributionId = res.header.id;
             updateModeBadge();
             if ($('distributionDate'))  $('distributionDate').value  = res.header.distribution_date || '';
             if ($('distributionNotes')) $('distributionNotes').value = res.header.notes || '';
 
-            const invoiceIds = [...new Set(res.details.map(d => d.purchase_invoice_id))];
+            const invoiceIds = [...new Set((res.details || []).map(d => d.purchase_invoice_id).filter(Boolean))];
             for (const invId of invoiceIds) {
                 try {
-                    const invRes = await api(ROUTES.items(invId) + `?exclude_distribution_id=${id}`);
+                    const invRes = await api(ROUTES.items(invId) + `?exclude_distribution_id=${encodeURIComponent(id)}`);
                     if (invRes.success) {
                         state.invoices[invId] = {
                             id: invId,
@@ -1502,9 +1493,14 @@ function handleModalAllocLiveInput(input) {
                 } catch (e) { /* تخطي */ }
             }
 
-            res.details.forEach(d => {
+            (res.details || []).forEach(d => {
+                if (num(d.quantity) <= 0) return;
+
                 state.customerInfo[d.customer_id] = {
-                    id: d.customer_id, name: d.customer_name, phone: '', code: '',
+                    id: d.customer_id,
+                    name: d.customer_name || `#${d.customer_id}`,
+                    phone: d.customer_phone || '',
+                    code: d.customer_code || '',
                 };
                 state.allocation[d.movement_detail_id] = state.allocation[d.movement_detail_id] || {};
                 state.allocation[d.movement_detail_id][d.customer_id] = num(d.quantity);
@@ -1513,8 +1509,10 @@ function handleModalAllocLiveInput(input) {
                 state.prices[d.movement_detail_id][d.customer_id] = num(d.sale_price);
             });
 
+            pruneOrphanCustomers();
+
             const firstInvId = Object.keys(state.invoices)[0];
-            state.activeInvoiceId = firstInvId ? parseInt(firstInvId) : null;
+            state.activeInvoiceId = firstInvId ? parseInt(firstInvId, 10) : null;
 
             renderTabs();
             renderItems();

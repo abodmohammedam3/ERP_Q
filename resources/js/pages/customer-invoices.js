@@ -27,12 +27,12 @@ document.addEventListener('DOMContentLoaded', () => {
         paymentAccountId: null,
     };
 
-    const $   = (id) => document.getElementById(id);
-    const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
-    const fmt = (v, d = 2) => num(v).toFixed(d);
+    const $          = (id) => document.getElementById(id);
+    const num        = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+    const fmt        = (v, d = 2) => num(v).toFixed(d);
     const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
         ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-    const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+    const debounce   = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
     async function api(url, opts = {}) {
         const res = await fetch(url, {
@@ -80,6 +80,28 @@ document.addEventListener('DOMContentLoaded', () => {
             catch (e) { /* fallback */ }
         }
         return window.confirm(msg);
+    }
+
+    /**
+     * تحديث رأس جدول التفاصيل ليطابق الأعمدة السبعة المطلوبة بدقة.
+     */
+    function ensureDetailsTableHeader() {
+        const tbody = $('invDetailsTbody');
+        const table = tbody?.closest('table');
+        const thead = table?.querySelector('thead');
+        if (!thead) return;
+
+        thead.innerHTML = `
+            <tr class="small text-muted">
+                <th class="fw-semibold">الصنف</th>
+                <th class="fw-semibold">النوع</th>
+                <th class="fw-semibold">الرمز</th>
+                <th class="text-end fw-semibold">الكمية</th>
+                <th class="text-center fw-semibold">الوحدة</th>
+                <th class="text-end fw-semibold">سعر البيع</th>
+                <th class="text-end fw-semibold">الإجمالي</th>
+            </tr>
+        `;
     }
 
     // ============================================================
@@ -143,7 +165,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const res = await api(ROUTES.distributions);
-            distListData = res.data || [];
+            if (res?.success === false) {
+                throw new Error(res.message || 'تعذر تحميل التوزيعات.');
+            }
+            distListData = Array.isArray(res?.data) ? res.data : [];
             renderDistList();
         } catch (e) {
             if ($('distError')) {
@@ -186,7 +211,6 @@ document.addEventListener('DOMContentLoaded', () => {
         rows.forEach((d, i) => {
             const tr = document.createElement('tr');
             tr.style.cursor = 'pointer';
-            // ✅ 6 خلايا تطابق رأس الجدول
             tr.innerHTML = `
                 <td class="text-muted">${i + 1}</td>
                 <td class="fw-semibold text-primary">${escapeHtml(d.code)}</td>
@@ -204,6 +228,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function selectDistribution(d) {
+        if (!d || !d.id) {
+            toastError('بيانات التوزيع غير صالحة.');
+            return;
+        }
+
         state.distribution = { id: d.id, code: d.code, date: d.date };
         state.customer = null;
         state.details  = [];
@@ -214,7 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if ($('selectedDistributionLabel')) {
             $('selectedDistributionLabel').innerHTML = `
                 <span class="text-primary">${escapeHtml(d.code)}</span>
-                <span class="text-muted small"> · ${escapeHtml(d.date)}</span>
+                <span class="text-muted small"> · ${escapeHtml(d.date || '—')}</span>
             `;
         }
         if ($('selectedCustomerLabel')) {
@@ -289,7 +318,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const res = await api(ROUTES.distCustomers(state.distribution.id));
-            custListData = res.data || [];
+            if (res?.success === false) {
+                throw new Error(res.message || 'تعذر تحميل العملاء.');
+            }
+            custListData = Array.isArray(res?.data) ? res.data : [];
             renderCustList();
         } catch (e) {
             if ($('custError')) {
@@ -337,7 +369,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     ${c.customer_phone ? `<div class="text-muted small">${escapeHtml(c.customer_phone)}</div>` : ''}
                 </td>
-                <td class="text-center">${c.details_count}</td>
+                <td class="text-center">${c.details_count ?? 0}</td>
                 <td class="text-end text-success fw-semibold">${fmt(c.total_sale)}</td>
             `;
             tr.addEventListener('click', () => {
@@ -349,6 +381,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function selectCustomer(c) {
+        if (!c || !c.customer_id) {
+            toastError('بيانات العميل غير مكتملة.');
+            return;
+        }
+
         state.customer = c;
 
         if ($('selectedCustomerLabel')) {
@@ -360,12 +397,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const res = await api(ROUTES.distCustomerDetails(state.distribution.id, c.customer_id));
-            if (!res.success) {
+            if (res?.success === false) {
                 toastError(res.message || 'لا توجد تفاصيل.');
                 return;
             }
-            state.details = res.data || [];
-            renderDetails(res.summary);
+            state.details = Array.isArray(res?.data) ? res.data : [];
+            renderDetails(res?.summary || {});
             updateSummaryAndIssueButton();
             toastSuccess(`تم اختيار العميل «${c.customer_name}».`);
         } catch (e) {
@@ -374,58 +411,74 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ============================================================
-    // 3. رسم التفاصيل (13 عمود)
+    // 3. رسم التفاصيل (7 أعمدة: الصنف، النوع، الرمز، الكمية، الوحدة، سعر البيع، الإجمالي)
     // ============================================================
-    function renderDetails(summary) {
+    function renderDetails(summary = {}) {
+        ensureDetailsTableHeader();
+
         const tbody = $('invDetailsTbody');
         if (!tbody) return;
         tbody.innerHTML = '';
 
         if (!state.details.length) {
             tbody.innerHTML = `
-                <tr><td colspan="13" class="text-center text-muted py-4">
+                <tr><td colspan="7" class="text-center text-muted py-4">
                     <i class="bi bi-inbox fs-3 d-block mb-1 opacity-50"></i>
                     لا توجد تفاصيل غير مفوترة.
                 </td></tr>`;
+            updateSummaryValues(summary, 0);
             return;
         }
 
+        let computedSaleSum = 0;
+
         state.details.forEach(d => {
+            const qty = num(d?.quantity);
+            const salePrice = num(d?.sale_price);
+            const hasExplicitTotal = d?.total_sale !== undefined && d?.total_sale !== null && d?.total_sale !== '';
+            const rowTotal = hasExplicitTotal ? num(d.total_sale) : (qty * salePrice);
+            computedSaleSum += rowTotal;
+
+            const codeVal = d?.code || d?.item_code || '—';
+
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td class="fw-semibold small">${escapeHtml(d.item_name)}</td>
-                <td class="small text-muted">${escapeHtml(d.type_name || '—')}</td>
-                <td class="text-muted small">${escapeHtml(d.invoice_number || '—')}</td>
-                <td class="text-end fw-semibold text-success">${fmt(d.quantity, 3)}</td>
-                <td class="text-center small text-muted">${escapeHtml(d.unit_name || '—')}</td>
-                <td class="text-end fw-semibold text-primary">${fmt(d.batch_quantity, 3)}</td>
-                <td class="text-end fw-semibold text-info">${fmt(d.converted_quantity, 3)}</td>
-                <td class="text-end fw-semibold text-warning">${fmt(d.sorted_quantity, 3)}</td>
-                <td class="text-end fw-semibold text-danger">${fmt(d.remaining_quantity, 3)}</td>
-                <td class="text-end text-muted">${fmt(d.unit_cost)}</td>
-                <td class="text-end text-muted">${fmt(d.sale_price)}</td>
-                <td class="text-end text-muted">${fmt(d.total_cost)} ر.ي</td>
-                <td class="text-end text-muted">${fmt(d.total_sale)} ر.ي</td>
+                <td class="fw-semibold small">${escapeHtml(d?.item_name || '—')}</td>
+                <td class="small text-muted">${escapeHtml(d?.type_name || '—')}</td>
+                <td class="text-muted small">${escapeHtml(codeVal)}</td>
+                <td class="text-end fw-semibold text-success">${fmt(qty, 3)}</td>
+                <td class="text-center small text-muted">${escapeHtml(d?.unit_name || '—')}</td>
+                <td class="text-end text-muted">${fmt(salePrice)}</td>
+                <td class="text-end fw-semibold">${fmt(rowTotal)} ر.ي</td>
             `;
             tbody.appendChild(tr);
         });
 
+        const totalSaleVal = (summary?.total_sale !== undefined && summary?.total_sale !== null)
+            ? num(summary.total_sale)
+            : computedSaleSum;
+
+        updateSummaryValues(summary, totalSaleVal);
+    }
+
+    function updateSummaryValues(summary = {}, totalSaleVal = 0) {
         if ($('invItemsCount')) $('invItemsCount').textContent = summary?.rows_count ?? state.details.length;
 
         const qtyParts = Object.entries(summary?.qty_by_unit || {})
-            .map(([u, q]) => `${fmt(q, 3)} ${u}`).join(' + ');
-        if ($('invQty')) $('invQty').textContent = qtyParts || '—';
+            .filter(([, q]) => num(q) > 0)
+            .map(([u, q]) => `${fmt(q, 3)} ${escapeHtml(u)}`);
+        if ($('invQty')) $('invQty').textContent = qtyParts.length ? qtyParts.join(' + ') : '—';
 
-        if ($('invTotalCost')) $('invTotalCost').textContent = `${fmt(summary?.total_cost || 0)} ر.ي`;
-        if ($('invTotalSale')) $('invTotalSale').textContent = `${fmt(summary?.total_sale || 0)} ر.ي`;
+        if ($('invTotalSale')) $('invTotalSale').textContent = `${fmt(totalSaleVal)} ر.ي`;
     }
 
     function updateSummaryAndIssueButton() {
-        const hasDetails = state.details.length > 0;
+        const hasDetails = Array.isArray(state.details) && state.details.length > 0;
         if ($('btnIssue')) $('btnIssue').disabled = !hasDetails;
     }
 
     function resetCustomerSection() {
+        ensureDetailsTableHeader();
         state.customer = null;
         state.details  = [];
 
@@ -435,7 +488,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tbody) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="13" class="text-center text-muted py-4">
+                    <td colspan="7" class="text-center text-muted py-4">
                         اختر عميلًا من التوزيع لعرض تفاصيله.
                     </td>
                 </tr>`;
@@ -443,7 +496,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if ($('invItemsCount')) $('invItemsCount').textContent = 0;
         if ($('invQty'))        $('invQty').textContent = '—';
-        if ($('invTotalCost'))  $('invTotalCost').textContent = '0.00';
         if ($('invTotalSale'))  $('invTotalSale').textContent = '0.00';
         if ($('btnIssue'))      $('btnIssue').disabled = true;
     }
@@ -457,16 +509,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         if (!ok) return;
 
-        state.distribution = null;
-        state.customer     = null;
-        state.details      = [];
+        state.distribution     = null;
+        state.customer         = null;
+        state.details          = [];
+        state.paymentMethod    = 2;
         state.paymentAccountId = null;
+
+        const cashRadio = $('pmCash');
+        if (cashRadio) cashRadio.checked = true;
 
         if ($('selectedDistributionLabel')) $('selectedDistributionLabel').textContent = 'لم يتم اختيار توزيع';
         const accountInput = $('paymentAccountTrigger');
         if (accountInput) accountInput.value = '';
 
         resetCustomerSection();
+        updatePaymentAccountVisibility();
         if ($('btnPickCustomer')) $('btnPickCustomer').disabled = true;
 
         toastInfo('تم إلغاء العملية.');
@@ -503,7 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.querySelectorAll('input[name="paymentMethod"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
-            state.paymentMethod = parseInt(e.target.value);
+            state.paymentMethod = parseInt(e.target.value, 10) || 2;
             state.paymentAccountId = null;
             const input = $('paymentAccountTrigger');
             if (input) input.value = '';
@@ -559,18 +616,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 setTimeout(() => toastSuccess(`فاتورة البيع رقم: ${res.invoice_number}`), 500);
             }
 
-            state.customer = null;
-            state.details  = [];
+            ensureDetailsTableHeader();
+            state.customer         = null;
+            state.details          = [];
+            state.paymentAccountId = null;
+
+            const accountInput = $('paymentAccountTrigger');
+            if (accountInput) accountInput.value = '';
+
             if ($('selectedCustomerLabel')) $('selectedCustomerLabel').textContent = 'اختر عميلًا آخر';
             if ($('invDetailsTbody')) {
                 $('invDetailsTbody').innerHTML = `
-                    <tr><td colspan="13" class="text-center text-muted py-4">
+                    <tr><td colspan="7" class="text-center text-muted py-4">
                         تمت الفوترة. اختر عميلًا جديدًا لعرض تفاصيله.
                     </td></tr>`;
             }
             if ($('invItemsCount')) $('invItemsCount').textContent = 0;
             if ($('invQty'))        $('invQty').textContent = '—';
-            if ($('invTotalCost'))  $('invTotalCost').textContent = '0.00';
             if ($('invTotalSale'))  $('invTotalSale').textContent = '0.00';
 
         } catch (e) {
@@ -583,5 +645,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============================================================
     // التهيئة
     // ============================================================
+    ensureDetailsTableHeader();
     updatePaymentAccountVisibility();
 });

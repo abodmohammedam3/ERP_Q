@@ -1,3 +1,4 @@
+{{-- بطاقة جدول تفاصيل توزيعات العميل (7 أعمدة متوافقة مع customer-invoices.js) --}}
 <div class="card border-0 shadow-sm">
     <div class="card-header bg-white border-0 py-2">
         <h6 class="mb-0 fw-semibold small">
@@ -11,22 +12,16 @@
                     <tr class="small text-muted">
                         <th class="fw-semibold">الصنف</th>
                         <th class="fw-semibold">النوع</th>
-                        <th class="text-muted small">الفاتورة</th>
-                        <th class="text-end fw-semibold">كمية العميل</th>
+                        <th class="fw-semibold">الرمز</th>
+                        <th class="text-end fw-semibold">الكمية</th>
                         <th class="text-center fw-semibold">الوحدة</th>
-                        <th class="text-end fw-semibold text-primary">إجمالي الدفعة</th>
-                        <th class="text-end fw-semibold text-info">المفرزة</th>
-                        <th class="text-end fw-semibold text-warning">الموزّعة</th>
-                        <th class="text-end fw-semibold text-danger">غير الموزّعة</th>
-                        <th class="text-end fw-semibold">تكلفة الوحدة</th>
                         <th class="text-end fw-semibold">سعر البيع</th>
-                        <th class="text-end fw-semibold">إجمالي التكلفة</th>
-                        <th class="text-end fw-semibold">إجمالي البيع</th>
+                        <th class="text-end fw-semibold">الإجمالي</th>
                     </tr>
                 </thead>
                 <tbody id="invDetailsTbody">
                     <tr>
-                        <td colspan="13" class="text-center text-muted py-4">
+                        <td colspan="7" class="text-center text-muted py-4">
                             اختر توزيعًا ثم عميلًا لعرض التفاصيل.
                         </td>
                     </tr>

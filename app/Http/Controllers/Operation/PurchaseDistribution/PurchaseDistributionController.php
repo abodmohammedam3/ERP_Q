@@ -149,7 +149,6 @@ class PurchaseDistributionController extends Controller
             ->whereIn('movement_detail_id', $allDetails->pluck('movement_detail_id'))
             ->whereHas('distribution');
 
-        // ✅ استثناء التوزيع الحالي عند التعديل
         if ($excludeId) {
             $distributedQuery->where('distribution_id', '!=', $excludeId);
         }
@@ -166,7 +165,7 @@ class PurchaseDistributionController extends Controller
             ->pluck('total', 'lot_source_detail_id');
 
         // 7) بناء الصفوف
-        $rows = $allDetails->map(function ($d) use ($distributed, $sortedOut, $invoice, $originalDetails, $sortedIds) {
+        $rows = $allDetails->map(function ($d) use ($distributed, $sortedOut, $invoice, $sortedIds) {
             $dist = (float) ($distributed[$d->movement_detail_id] ?? 0);
             $sort = (float) ($sortedOut[$d->movement_detail_id] ?? 0);
             $avail = max(0, (float) $d->quantity - $dist - $sort);
@@ -268,6 +267,9 @@ class PurchaseDistributionController extends Controller
         return response()->json(['success' => true, 'data' => $rows]);
     }
 
+    // ============================================================
+    // حفظ / تحديث توزيع كامل
+    // ============================================================
     public function save(Request $request)
     {
         $validated = $request->validate([
@@ -283,7 +285,6 @@ class PurchaseDistributionController extends Controller
         $isUpdate = ! empty($validated['id']);
         $existing = $isUpdate ? Distribution::findOrFail($validated['id']) : null;
 
-        // جمع الكميات المطلوبة لكل دفعة
         $requested = [];
         foreach ($validated['details'] as $row) {
             $mdId = (int) $row['movement_detail_id'];
@@ -295,7 +296,6 @@ class PurchaseDistributionController extends Controller
             ->get()
             ->keyBy('movement_detail_id');
 
-        // ✅ 1) حدد الفاتورة الأصلية لكل دفعة (يتتبع سلسلة الفرز)
         $rootInvoices = [];
         foreach ($movementDetails as $mdId => $md) {
             $rootId = $this->resolveRootPurchaseInvoiceId($md);
@@ -308,7 +308,6 @@ class PurchaseDistributionController extends Controller
             $rootInvoices[$mdId] = $rootId;
         }
 
-        // ✅ 2) الكمية المصروفة بالفرز من كل دفعة (sorting_out)
         $sortedOutQty = DB::table('inventory_movement_details as imd')
             ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
             ->whereIn('imd.lot_source_detail_id', array_keys($requested))
@@ -318,7 +317,6 @@ class PurchaseDistributionController extends Controller
             ->pluck('total', 'lot_source_detail_id')
             ->toArray();
 
-        // 3) الكمية الموزعة مسبقًا (باستثناء التوزيع الحالي عند التعديل)
         $query = DistributionDetail::query()
             ->select('movement_detail_id', DB::raw('SUM(quantity) as total'))
             ->whereIn('movement_detail_id', array_keys($requested))
@@ -329,7 +327,6 @@ class PurchaseDistributionController extends Controller
         }
         $alreadyDistributed = $query->groupBy('movement_detail_id')->pluck('total', 'movement_detail_id');
 
-        // 4) تحقق من الكميات المتاحة = quantity - distributed - sorted_out
         foreach ($requested as $mdId => $qty) {
             $source = $movementDetails->get($mdId);
             if (! $source) {
@@ -360,7 +357,6 @@ class PurchaseDistributionController extends Controller
                     'notes'             => $validated['notes'] ?? null,
                 ];
 
-                // ✅ إرجاع التعديل على المفوتر (تحويله لمسودة)
                 if ($distribution->status === Distribution::STATUS_INVOICED) {
                     $updateData['status']      = Distribution::STATUS_DRAFT;
                     $updateData['invoiced_at'] = null;
@@ -385,7 +381,7 @@ class PurchaseDistributionController extends Controller
 
                 DistributionDetail::create([
                     'distribution_id'     => $distribution->id,
-                    'purchase_invoice_id' => $rootInvoices[$mdId],   // ✅ الفاتورة الأصلية
+                    'purchase_invoice_id' => $rootInvoices[$mdId],
                     'movement_id'         => $source->movement_id,
                     'movement_detail_id'  => $mdId,
                     'customer_id'         => (int) $row['customer_id'],
@@ -409,10 +405,6 @@ class PurchaseDistributionController extends Controller
         ]);
     }
 
-    /**
-     * يتتبع سلسلة lot_source_detail_id للوصول إلى رقم فاتورة الشراء الأصلية.
-     * يعيد null إذا لم يكن للدفعة أصل فاتورة شراء.
-     */
     private function resolveRootPurchaseInvoiceId(InventoryMovementDetail $md): ?int
     {
         $current = $md;
@@ -421,7 +413,7 @@ class PurchaseDistributionController extends Controller
 
         while ($current && $maxDepth-- > 0) {
             if (in_array($current->movement_detail_id, $visited, true)) {
-                return null; // حلقة دائرية
+                return null;
             }
             $visited[] = $current->movement_detail_id;
 
@@ -433,7 +425,7 @@ class PurchaseDistributionController extends Controller
             }
 
             if (!$current->lot_source_detail_id) {
-                return null; // وصلنا لدفعة لا فاتورة لها
+                return null;
             }
 
             $current = InventoryMovementDetail::with('movement')
@@ -515,35 +507,31 @@ class PurchaseDistributionController extends Controller
     }
 
     // ============================================================
-    // حذف توزيع
+    // حذف توزيع بالكامل (مسموح حتى لو كان يحتوي على صفوف مفوترة)
     // ============================================================
     public function destroy(int $id)
     {
-        $dist = Distribution::findOrFail($id);
+        $dist = Distribution::with('details')->findOrFail($id);
 
-        $hasInvoiced = DistributionDetail::where('distribution_id', $id)
-            ->where(function ($q) {
-                $q->whereNotNull('sales_invoice_id')
-                  ->orWhereNotNull('invoiced_at');
-            })
-            ->exists();
+        DB::beginTransaction();
+        try {
+            $dist->details()->delete();
+            $dist->delete();
 
-        if ($hasInvoiced) {
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم حذف التوزيع بنجاح.',
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'لا يمكن حذف توزيع يحتوي صفوفًا مفوترة.',
-            ], 422);
+                'message' => 'تعذر حذف التوزيع: ' . $e->getMessage(),
+            ], 500);
         }
-
-        if (! $dist->isDraft()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'لا يمكن حذف توزيع بحالة غير مسودة.',
-            ], 422);
-        }
-
-        $dist->delete();
-        return response()->json(['success' => true, 'message' => 'تم حذف التوزيع.']);
     }
 
     // ============================================================
@@ -552,13 +540,12 @@ class PurchaseDistributionController extends Controller
     public function list(Request $request)
     {
         $q = Distribution::query()
-            ->with(['details:id,distribution_id,customer_id,quantity,unit_cost,sale_price']);
+            ->with(['details:id,distribution_id,customer_id,quantity,unit_cost,sale_price,sales_invoice_id,invoiced_at']);
 
-        // ✅ إرجاع فلتر الحالة (لعرض المفوتر والمسودات)
         if ($request->filled('status')) {
             $q->where('status', $request->input('status'));
         }
-        
+
         if ($request->filled('date_from')) {
             $q->whereDate('distribution_date', '>=', $request->input('date_from'));
         }
@@ -569,7 +556,7 @@ class PurchaseDistributionController extends Controller
             $q->where('code', 'like', '%' . $request->input('search') . '%');
         }
         if ($request->filled('customer_id')) {
-            $q->whereHas('details', fn($d) => $d->where('customer_id', (int)$request->input('customer_id')));
+            $q->whereHas('details', fn($d) => $d->where('customer_id', (int) $request->input('customer_id')));
         }
 
         $rows = $q->orderByDesc('id')
@@ -579,9 +566,14 @@ class PurchaseDistributionController extends Controller
                 $customersCount = $d->details->pluck('customer_id')->unique()->count();
                 $totalCost = 0.0;
                 $totalSale = 0.0;
+                $invoicedCount = 0;
+
                 foreach ($d->details as $r) {
-                    $totalCost += (float)$r->quantity * (float)$r->unit_cost;
-                    $totalSale += (float)$r->quantity * (float)$r->sale_price;
+                    $totalCost += (float) $r->quantity * (float) $r->unit_cost;
+                    $totalSale += (float) $r->quantity * (float) $r->sale_price;
+                    if ($r->sales_invoice_id !== null || $r->invoiced_at !== null) {
+                        $invoicedCount++;
+                    }
                 }
 
                 return [
@@ -592,6 +584,8 @@ class PurchaseDistributionController extends Controller
                     'status_label'      => $d->isDraft() ? 'مسودة' : 'مفوتر',
                     'details_count'     => $d->details->count(),
                     'customers_count'   => $customersCount,
+                    'invoiced_count'    => $invoicedCount,
+                    'has_invoiced'      => $invoicedCount > 0 || $d->status === Distribution::STATUS_INVOICED,
                     'total_cost'        => $totalCost,
                     'total_sale'        => $totalSale,
                 ];
@@ -757,13 +751,13 @@ class PurchaseDistributionController extends Controller
                 'code'  => $customer->account?->accCode ?? '',
             ],
             'summary' => [
-                'rows_count'           => $rows->count(),
-                'qty_by_unit'          => $qtyByUnit,
-                'total_cost'           => $totalCost,
-                'total_sale'           => $totalSale,
-                'not_invoiced_count'   => $rows->where('is_invoiced', false)->count(),
-                'not_invoiced_qty'     => $notInvoicedQtyByUnit,
-                'not_invoiced_cost'    => $notInvoicedCost,
+                'rows_count'         => $rows->count(),
+                'qty_by_unit'        => $qtyByUnit,
+                'total_cost'         => $totalCost,
+                'total_sale'         => $totalSale,
+                'not_invoiced_count' => $rows->where('is_invoiced', false)->count(),
+                'not_invoiced_qty'   => $notInvoicedQtyByUnit,
+                'not_invoiced_cost'  => $notInvoicedCost,
             ],
             'data' => $rows,
         ]);
@@ -1009,18 +1003,18 @@ class PurchaseDistributionController extends Controller
                 })->all();
 
                 $data = [
-                    'invoice_date'       => now()->toDateString(),
-                    'account_id'         => (int) $customer->accountID,
-                    'payment_account_id' => $paymentMethod === SalesInvoice::PAYMENT_CREDIT
-                                            ? null
-                                            : (int) $validated['payment_account_id'],
-                    'coin_id'            => $coinId,
-                    'exchange_rate'      => $exchangeRate,
-                    'payment_method'     => $paymentMethod,
-                    'statement'          => $validated['statement'] ?? null,
-                    'reference'          => $validated['reference'] ?? null,
-                    'details'            => $items,
-                    'skip_stock_validation' => true, // ✅ إضافة هذا السطر
+                    'invoice_date'          => now()->toDateString(),
+                    'account_id'            => (int) $customer->accountID,
+                    'payment_account_id'    => $paymentMethod === SalesInvoice::PAYMENT_CREDIT
+                                               ? null
+                                               : (int) $validated['payment_account_id'],
+                    'coin_id'               => $coinId,
+                    'exchange_rate'         => $exchangeRate,
+                    'payment_method'        => $paymentMethod,
+                    'statement'             => $validated['statement'] ?? null,
+                    'reference'             => $validated['reference'] ?? null,
+                    'details'               => $items,
+                    'skip_stock_validation' => true,
                 ];
 
                 /** @var SalesInvoice $invoice */
@@ -1076,6 +1070,188 @@ class PurchaseDistributionController extends Controller
         } finally {
             $lock->release();
         }
+    }
+
+    // ============================================================
+    // تحديث بيانات عميل داخل توزيع (كمية، سعر بيع، حذف صفوف)
+    // مسموح سواء كان مفوترًا أو غير مفوتر مع التحقق من الدفعة
+    // ============================================================
+    public function updateDistributionCustomer(Request $request, int $distributionId, int $customerId)
+    {
+        $validated = $request->validate([
+            'items'              => ['nullable', 'array'],
+            'items.*.id'         => ['required', 'integer', 'exists:distribution_details,id'],
+            'items.*.quantity'   => ['required', 'numeric', 'min:0.000001'],
+            'items.*.sale_price' => ['required', 'numeric', 'min:0.000001'],
+            'deleted_ids'        => ['nullable', 'array'],
+            'deleted_ids.*'      => ['integer', 'exists:distribution_details,id'],
+        ]);
+
+        $distribution = Distribution::findOrFail($distributionId);
+        Customer::findOrFail($customerId);
+
+        $deletedIds = collect($validated['deleted_ids'] ?? [])
+            ->map(fn($v) => (int) $v)
+            ->unique()
+            ->values();
+
+        $updatedItems = collect($validated['items'] ?? [])
+            ->reject(fn($row) => $deletedIds->contains((int) $row['id']))
+            ->values();
+
+        $allTargetIds = $updatedItems->pluck('id')
+            ->merge($deletedIds)
+            ->unique()
+            ->values();
+
+        $existingDetails = DistributionDetail::query()
+            ->where('distribution_id', $distributionId)
+            ->where('customer_id', $customerId)
+            ->whereIn('id', $allTargetIds)
+            ->with(['movementDetail.item'])
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
+
+        if ($existingDetails->count() !== $allTargetIds->count()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'بعض الصفوف المحددة لا تتبع هذا التوزيع أو هذا العميل.',
+            ], 422);
+        }
+
+        $involvedMdIds = $existingDetails->pluck('movement_detail_id')->unique()->values()->all();
+
+        $currentInThisDistByMd = DistributionDetail::query()
+            ->where('distribution_id', $distributionId)
+            ->whereIn('movement_detail_id', $involvedMdIds)
+            ->select('movement_detail_id', DB::raw('SUM(quantity) as total'))
+            ->groupBy('movement_detail_id')
+            ->pluck('total', 'movement_detail_id')
+            ->map(fn($v) => (float) $v)
+            ->toArray();
+
+        $otherDistByMd = DistributionDetail::query()
+            ->where('distribution_id', '!=', $distributionId)
+            ->whereIn('movement_detail_id', $involvedMdIds)
+            ->whereHas('distribution')
+            ->select('movement_detail_id', DB::raw('SUM(quantity) as total'))
+            ->groupBy('movement_detail_id')
+            ->pluck('total', 'movement_detail_id')
+            ->map(fn($v) => (float) $v)
+            ->toArray();
+
+        $sortedOutByMd = DB::table('inventory_movement_details as imd')
+            ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
+            ->whereIn('imd.lot_source_detail_id', $involvedMdIds)
+            ->where('im.movement_type', InventoryMovement::TYPE_SORTING_OUT)
+            ->select('imd.lot_source_detail_id', DB::raw('SUM(imd.quantity) as total'))
+            ->groupBy('imd.lot_source_detail_id')
+            ->pluck('total', 'lot_source_detail_id')
+            ->map(fn($v) => (float) $v)
+            ->toArray();
+
+        $newInThisDistByMd = $currentInThisDistByMd;
+
+        foreach ($deletedIds as $delId) {
+            $detail = $existingDetails->get($delId);
+            if ($detail) {
+                $mdId = (int) $detail->movement_detail_id;
+                $newInThisDistByMd[$mdId] = max(0.0, ($newInThisDistByMd[$mdId] ?? 0.0) - (float) $detail->quantity);
+            }
+        }
+
+        foreach ($updatedItems as $row) {
+            $detail = $existingDetails->get((int) $row['id']);
+            if ($detail) {
+                $mdId = (int) $detail->movement_detail_id;
+                $diff = (float) $row['quantity'] - (float) $detail->quantity;
+                $newInThisDistByMd[$mdId] = max(0.0, ($newInThisDistByMd[$mdId] ?? 0.0) + $diff);
+            }
+        }
+
+        $movementDetails = InventoryMovementDetail::with('item')
+            ->whereIn('movement_detail_id', $involvedMdIds)
+            ->get()
+            ->keyBy('movement_detail_id');
+
+        foreach ($newInThisDistByMd as $mdId => $newQtyInDist) {
+            $md = $movementDetails->get($mdId);
+            if (!$md) continue;
+
+            $batchQty       = (float) $md->quantity;
+            $otherDistQty   = (float) ($otherDistByMd[$mdId] ?? 0.0);
+            $sortedOutQty   = (float) ($sortedOutByMd[$mdId] ?? 0.0);
+            $maxAllowedDist = max(0.0, $batchQty - $otherDistQty - $sortedOutQty);
+
+            if ($newQtyInDist > $maxAllowedDist + 0.000001) {
+                $itemName = $md->item?->itemName2 ?? "الدفعة #{$mdId}";
+                $availableForThisDist = max(0.0, $maxAllowedDist - ($currentInThisDistByMd[$mdId] ?? 0.0));
+                throw ValidationException::withMessages([
+                    'items' => "الكمية المطلوبة للصنف «{$itemName}» تتجاوز المتاح في الدفعة. المتاح الإضافي لهذا التوزيع هو: "
+                        . number_format($availableForThisDist, 3, '.', ''),
+                ]);
+            }
+        }
+
+        DB::beginTransaction();
+        try {
+            if ($deletedIds->isNotEmpty()) {
+                DistributionDetail::query()
+                    ->where('distribution_id', $distributionId)
+                    ->where('customer_id', $customerId)
+                    ->whereIn('id', $deletedIds)
+                    ->delete();
+            }
+
+            foreach ($updatedItems as $row) {
+                $detail = $existingDetails->get((int) $row['id']);
+                if ($detail) {
+                    $detail->update([
+                        'quantity'   => (float) $row['quantity'],
+                        'sale_price' => (float) $row['sale_price'],
+                    ]);
+                }
+            }
+
+            $remainingDetailsCount = DistributionDetail::where('distribution_id', $distributionId)->count();
+            if ($remainingDetailsCount === 0) {
+                $distribution->update([
+                    'status'      => Distribution::STATUS_DRAFT,
+                    'invoiced_at' => null,
+                    'invoiced_by' => null,
+                ]);
+            } else {
+                $unInvoicedCount = DistributionDetail::where('distribution_id', $distributionId)
+                    ->whereNull('sales_invoice_id')
+                    ->whereNull('invoiced_at')
+                    ->count();
+
+                if ($unInvoicedCount === 0 && $distribution->status !== Distribution::STATUS_INVOICED) {
+                    $distribution->update([
+                        'status'      => Distribution::STATUS_INVOICED,
+                        'invoiced_at' => $distribution->invoiced_at ?? now(),
+                        'invoiced_by' => $distribution->invoiced_by ?? auth()->id(),
+                    ]);
+                } elseif ($unInvoicedCount > 0 && $distribution->status === Distribution::STATUS_INVOICED) {
+                    $distribution->update([
+                        'status'      => Distribution::STATUS_DRAFT,
+                        'invoiced_at' => null,
+                        'invoiced_by' => null,
+                    ]);
+                }
+            }
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم تحديث بيانات العميل في التوزيع بنجاح.',
+        ]);
     }
 
     // ============================================================
@@ -1166,14 +1342,13 @@ class PurchaseDistributionController extends Controller
     }
 
     // ============================================================
-    // تفاصيل عميل معين داخل توزيع معين (غير مفوترة) — مع الكمية المفرزة
+    // تفاصيل عميل معين داخل توزيع معين (مفوتر وغير مفوتر) + المتاح بالدفعة
     // ============================================================
     public function distributionCustomerDetails(int $distributionId, int $customerId)
     {
         $details = DistributionDetail::query()
             ->where('distribution_id', $distributionId)
             ->where('customer_id', $customerId)
-            ->whereNull('sales_invoice_id')
             ->with([
                 'movementDetail.item',
                 'movementDetail.type',
@@ -1185,18 +1360,28 @@ class PurchaseDistributionController extends Controller
         if ($details->isEmpty()) {
             return response()->json([
                 'success' => false,
-                'message' => 'لا توجد تفاصيل غير مفوترة لهذا العميل في هذا التوزيع.',
+                'message' => 'لا توجد تفاصيل لهذا العميل في هذا التوزيع.',
                 'data'    => [],
             ]);
         }
 
-        $movementDetailIds = $details->pluck('movement_detail_id')->unique();
+        $movementDetailIds = $details->pluck('movement_detail_id')->unique()->values()->all();
 
-        $sortedByMD = DistributionDetail::query()
+        $otherDistByMD = DistributionDetail::query()
             ->select('movement_detail_id', DB::raw('SUM(quantity) as total'))
+            ->where('distribution_id', '!=', $distributionId)
             ->whereIn('movement_detail_id', $movementDetailIds)
+            ->whereHas('distribution')
             ->groupBy('movement_detail_id')
             ->pluck('total', 'movement_detail_id');
+
+        $sortedOutByMD = DB::table('inventory_movement_details as imd')
+            ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
+            ->whereIn('imd.lot_source_detail_id', $movementDetailIds)
+            ->where('im.movement_type', InventoryMovement::TYPE_SORTING_OUT)
+            ->select('imd.lot_source_detail_id', DB::raw('SUM(imd.quantity) as total'))
+            ->groupBy('imd.lot_source_detail_id')
+            ->pluck('total', 'lot_source_detail_id');
 
         $convertedByMD = InventoryMovementDetail::query()
             ->join('inventory_movements', 'inventory_movements.movement_id', '=', 'inventory_movement_details.movement_id')
@@ -1205,17 +1390,21 @@ class PurchaseDistributionController extends Controller
                 DB::raw('SUM(inventory_movement_details.quantity) as total')
             )
             ->whereIn('inventory_movement_details.lot_source_detail_id', $movementDetailIds)
-            ->where('inventory_movements.movement_type', 'sorting_in')
+            ->where('inventory_movements.movement_type', InventoryMovement::TYPE_SORTING_IN)
             ->groupBy('inventory_movement_details.lot_source_detail_id')
             ->pluck('total', 'lot_source_detail_id');
 
-        $rows = $details->map(function ($d) use ($sortedByMD, $convertedByMD) {
+        $rows = $details->map(function ($d) use ($otherDistByMD, $sortedOutByMD, $convertedByMD) {
             $md = $d->movementDetail;
 
             $batchQty     = (float) ($md?->quantity ?? 0);
-            $sortedQty    = (float) ($sortedByMD[$d->movement_detail_id] ?? 0);
+            $otherDistQty = (float) ($otherDistByMD[$d->movement_detail_id] ?? 0);
+            $sortedOutQty = (float) ($sortedOutByMD[$d->movement_detail_id] ?? 0);
             $convertedQty = (float) ($convertedByMD[$d->movement_detail_id] ?? 0);
-            $remainingQty = max(0, $batchQty - $sortedQty);
+
+            // الكمية الإضافية المتاحة لهذا التوزيع بعد خصم التوزيعات الأخرى والفرز الخارج
+            $extraAvailableInBatch = max(0.0, $batchQty - $otherDistQty - $sortedOutQty - (float) $d->quantity);
+            $isInvoiced = $d->sales_invoice_id !== null || $d->invoiced_at !== null;
 
             return [
                 'id'                 => $d->id,
@@ -1226,14 +1415,15 @@ class PurchaseDistributionController extends Controller
                 'unit_name'          => $md?->unit?->UnitName ?? '—',
                 'code'               => $md?->code ?? '—',
                 'batch_quantity'     => $batchQty,
-                'sorted_quantity'    => $sortedQty,
+                'sorted_out_qty'     => $sortedOutQty,
                 'converted_quantity' => $convertedQty,
-                'remaining_quantity' => $remainingQty,
+                'remaining_quantity' => $extraAvailableInBatch,
                 'quantity'           => (float) $d->quantity,
                 'unit_cost'          => (float) $d->unit_cost,
                 'sale_price'         => (float) $d->sale_price,
                 'total_cost'         => (float) $d->quantity * (float) $d->unit_cost,
                 'total_sale'         => (float) $d->quantity * (float) $d->sale_price,
+                'is_invoiced'        => $isInvoiced,
             ];
         });
 

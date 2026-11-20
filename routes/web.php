@@ -1122,35 +1122,46 @@ Route::prefix('settings/system')
             });
     });
 
-    
+
+
 // ═══════════════════════════════════════
-// — شاشة التوزيع
+// — شاشة التوزيع وسجل التوزيعات
 // ═══════════════════════════════════════
 Route::prefix('operation/purchases/distribution')
     ->name('purchases.distribution.')
     ->group(function () {
-        Route::get('/',                       [PurchaseDistributionController::class, 'index'])->name('index');
-        Route::get('/customer-invoices',      [PurchaseDistributionController::class, 'customerInvoicesPage'])->name('customer-invoices.page');
-        Route::get('/history',                [PurchaseDistributionController::class, 'historyPage'])->name('history');
-        Route::get('/customer-summary',       [PurchaseDistributionController::class, 'customerSummary'])->name('customer-summary');
-        Route::get('/item-summary',           [PurchaseDistributionController::class, 'itemSummary'])->name('item-summary');
-        Route::get('/items-search',           [PurchaseDistributionController::class, 'searchItems'])->name('items-search');
-        Route::get('/invoices',               [PurchaseDistributionController::class, 'invoices'])->name('invoices');
-        Route::get('/invoices/{id}/items',    [PurchaseDistributionController::class, 'items'])->name('items');
-        Route::get('/customers',              [PurchaseDistributionController::class, 'customers'])->name('customers');
-        Route::get('/payment-accounts',       [PurchaseDistributionController::class, 'paymentAccounts'])->name('payment-accounts');
-        Route::post('/save',                  [PurchaseDistributionController::class, 'save'])->name('save');
-        Route::get('/list/all',               [PurchaseDistributionController::class, 'list'])->name('list');
-        Route::post('/issue-invoice',         [PurchaseDistributionController::class, 'issueInvoice'])->name('issue-invoice');
-        Route::get('/customer/{customerId}/distributions', [PurchaseDistributionController::class, 'customerDistributions'])->name('customer-distributions');
-        Route::get('/invoices-search',        [PurchaseDistributionController::class, 'searchInvoices'])->name('invoices-search');
-        Route::get('/invoice-summary',        [PurchaseDistributionController::class, 'invoiceSummary'])->name('invoice-summary');
-        Route::get('/stats',                  [PurchaseDistributionController::class, 'stats'])->name('stats');
+        // الصفحات الرئيسية وشاشة السجل وفواتير العملاء
+        Route::get('/',                  [PurchaseDistributionController::class, 'index'])->name('index');
+        Route::get('/customer-invoices', [PurchaseDistributionController::class, 'customerInvoicesPage'])->name('customer-invoices.page');
+        Route::get('/history',           [PurchaseDistributionController::class, 'historyPage'])->name('history');
 
-        // ✅ مسارات جديدة — يجب أن تكون قبل /{id}
+        // البحث وبيانات الفواتير والأصناف والعملاء والحسابات
+        Route::get('/customer-summary',  [PurchaseDistributionController::class, 'customerSummary'])->name('customer-summary');
+        Route::get('/item-summary',      [PurchaseDistributionController::class, 'itemSummary'])->name('item-summary');
+        Route::get('/items-search',      [PurchaseDistributionController::class, 'searchItems'])->name('items-search');
+        Route::get('/invoices',          [PurchaseDistributionController::class, 'invoices'])->name('invoices');
+        Route::get('/invoices/{id}/items', [PurchaseDistributionController::class, 'items'])->name('items')->where('id', '[0-9]+');
+        Route::get('/customers',         [PurchaseDistributionController::class, 'customers'])->name('customers');
+        Route::get('/payment-accounts',  [PurchaseDistributionController::class, 'paymentAccounts'])->name('payment-accounts');
+
+        // الحفظ، الفوترة، الإحصائيات، والقوائم
+        Route::post('/save',             [PurchaseDistributionController::class, 'save'])->name('save');
+        Route::get('/list/all',          [PurchaseDistributionController::class, 'list'])->name('list');
+        Route::post('/issue-invoice',    [PurchaseDistributionController::class, 'issueInvoice'])->name('issue-invoice');
+        Route::get('/invoices-search',   [PurchaseDistributionController::class, 'searchInvoices'])->name('invoices-search');
+        Route::get('/invoice-summary',   [PurchaseDistributionController::class, 'invoiceSummary'])->name('invoice-summary');
+        Route::get('/stats',             [PurchaseDistributionController::class, 'stats'])->name('stats');
+
+        // مسارات التوزيعات حسب الفاتورة أو العميل وتعديل بيانات عميل داخل التوزيع
+        // يجب أن تبقى جميعها قبل /{id}
         Route::get('/distributions-for-invoice',
             [PurchaseDistributionController::class, 'distributionsForInvoice'])
             ->name('distributions-for-invoice');
+
+        Route::get('/customer/{customerId}/distributions',
+            [PurchaseDistributionController::class, 'customerDistributions'])
+            ->name('customer-distributions')
+            ->where('customerId', '[0-9]+');
 
         Route::get('/distribution/{id}/customers',
             [PurchaseDistributionController::class, 'distributionCustomers'])
@@ -1162,6 +1173,12 @@ Route::prefix('operation/purchases/distribution')
             ->name('distribution-customer-details')
             ->where(['id' => '[0-9]+', 'customerId' => '[0-9]+']);
 
+        Route::put('/distribution/{id}/customer/{customerId}/update',
+            [PurchaseDistributionController::class, 'updateDistributionCustomer'])
+            ->name('distribution-customer-update')
+            ->where(['id' => '[0-9]+', 'customerId' => '[0-9]+']);
+
+        // سجل التتبع، عرض التوزيع، وحذف التوزيع
         Route::get('/{id}/logs', [PurchaseDistributionController::class, 'logs'])->name('logs')->where('id', '[0-9]+');
         Route::get('/{id}',      [PurchaseDistributionController::class, 'show'])->name('show')->where('id', '[0-9]+');
         Route::delete('/{id}',   [PurchaseDistributionController::class, 'destroy'])->name('destroy')->where('id', '[0-9]+');

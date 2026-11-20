@@ -13,12 +13,6 @@
     </div>
     <div class="col">
         <div class="bg-light rounded-2 py-2">
-            <div class="text-muted small">إجمالي التكلفة</div>
-            <div class="fw-bold text-danger" id="invTotalCost">0.00</div>
-        </div>
-    </div>
-    <div class="col">
-        <div class="bg-light rounded-2 py-2">
             <div class="text-muted small">إجمالي البيع</div>
             <div class="fw-bold text-success" id="invTotalSale">0.00</div>
         </div>

@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
         activeInvoiceId: null,
         customerInfo:    {},
         allocation:      {},
+        prices:          {},
         modalItemId:     null,
         modalInvoiceId:  null,
     };
@@ -151,11 +152,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function removeEmptyCustomersForItem(itemId) {
         const row = state.allocation[itemId] || {};
+        const priceRow = state.prices[itemId] || {};
         const removedCount = Object.keys(row).filter(cid => num(row[cid]) <= 0).length;
         Object.keys(row).forEach(cid => {
-            if (num(row[cid]) <= 0) delete row[cid];
+            if (num(row[cid]) <= 0) {
+                delete row[cid];
+                if (priceRow[cid] !== undefined) delete priceRow[cid];
+            }
         });
-        if (Object.keys(row).length === 0) delete state.allocation[itemId];
+        if (Object.keys(row).length === 0) {
+            delete state.allocation[itemId];
+            delete state.prices[itemId];
+        }
         pruneOrphanCustomers();
         return removedCount;
     }
@@ -288,7 +296,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         delete state.invoices[invoiceId];
         Object.keys(state.allocation).forEach(mdId => {
-            if (inv.items.some(it => it.id == mdId)) delete state.allocation[mdId];
+            if (inv.items.some(it => it.id == mdId)) {
+                delete state.allocation[mdId];
+                delete state.prices[mdId];
+            }
         });
         pruneOrphanCustomers();
 
@@ -489,6 +500,46 @@ document.addEventListener('DOMContentLoaded', () => {
         const itemId = state.modalItemId;
         if (!itemId) return;
 
+        const item = findItem(itemId);
+        if (!item) return;
+
+        const row = state.allocation[itemId] || {};
+        const priceRow = state.prices[itemId] || {};
+
+        // ✅ 1. التحقق من السعر (صفر أو فارغ) للكميات المدخلة
+        let invalidPrices = [];
+        Object.entries(row).forEach(([cid, qty]) => {
+            if (num(qty) > 0) {
+                const price = priceRow[cid];
+                if (price === undefined || num(price) <= 0) {
+                    invalidPrices.push(state.customerInfo[cid]?.name || `#${cid}`);
+                }
+            }
+        });
+
+        if (invalidPrices.length > 0) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // تلوين حقول السعر الفارغة بالأحمر
+            document.querySelectorAll('#allocationTableBody .alloc-price-input').forEach(inp => {
+                const cid = inp.dataset.customer;
+                const qty = num(row[cid]);
+                const price = priceRow[cid];
+                if (qty > 0 && (price === undefined || num(price) <= 0)) {
+                    inp.classList.add('border-danger');
+                } else {
+                    inp.classList.remove('border-danger');
+                }
+            });
+
+            const preview = invalidPrices.slice(0, 3).join('، ');
+            const more    = invalidPrices.length > 3 ? ` و${invalidPrices.length - 3} آخرين` : '';
+            toastError(`لا يمكن إغلاق المودال — يوجد عميل بسعر فارغ أو صفر: «${preview}»${more}. يرجى إدخال السعر أو مسح الكمية.`);
+            return;
+        }
+
+        // ✅ 2. التحقق من الكميات الفارغة
         const emptyNames = getEmptyCustomersForItem(itemId);
         if (emptyNames.length === 0) return;
 
@@ -508,7 +559,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!ok) {
             document.querySelectorAll('#allocationTableBody .alloc-input').forEach(inp => {
                 inp.classList.remove('is-invalid');
-                const row = state.allocation[itemId] || {};
                 const qty = num(row[inp.dataset.customer]);
                 if (qty <= 0 && !inp.readOnly) inp.classList.add('is-invalid');
             });
@@ -565,185 +615,296 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderAllocationModal() {
-        const itemId = state.modalItemId;
-        const item   = findItem(itemId);
-        const inv    = state.modalInvoiceId ? state.invoices[state.modalInvoiceId] : null;
-        if (!item || !inv) return;
+    const itemId = state.modalItemId;
+    const item   = findItem(itemId);
+    const inv    = state.modalInvoiceId ? state.invoices[state.modalInvoiceId] : null;
+    if (!item || !inv) return;
 
-        const alloc       = getAllocatedQty(itemId);
-        const remaining   = Math.max(0, num(item.available) - alloc);
-        const noRemaining = remaining <= 0;
+    const alloc       = getAllocatedQty(itemId);
+    const remaining   = Math.max(0, num(item.available) - alloc);
+    const noRemaining = remaining <= 0;
 
-        if ($('allocItemName'))      $('allocItemName').textContent      = item.item_name;
-        if ($('allocInvoiceNumber')) $('allocInvoiceNumber').textContent = inv.number;
-        if ($('allocAvailable'))     $('allocAvailable').textContent     = fmt(item.available, 3);
-        if ($('allocAllocated'))     $('allocAllocated').textContent     = fmt(alloc, 3);
-        if ($('allocRemaining'))     $('allocRemaining').textContent     = fmt(remaining, 3);
+    if ($('allocItemName'))      $('allocItemName').textContent      = item.item_name;
+    if ($('allocInvoiceNumber')) $('allocInvoiceNumber').textContent = inv.number;
+    if ($('allocAvailable'))     $('allocAvailable').textContent     = fmt(item.available, 3);
+    if ($('allocAllocated'))     $('allocAllocated').textContent     = fmt(alloc, 3);
+    if ($('allocRemaining'))     $('allocRemaining').textContent     = fmt(remaining, 3);
+    if ($('allocUnitCost'))      $('allocUnitCost').textContent      = fmt(item.unit_cost);
 
-        const idx   = inv.items.findIndex(it => it.id == itemId);
-        const total = inv.items.length;
-        if ($('allocItemCounter')) $('allocItemCounter').textContent = `${idx + 1} من ${total}`;
-        if ($('btnPrevItem'))      $('btnPrevItem').disabled = idx <= 0;
-        if ($('btnNextItem'))      $('btnNextItem').disabled = idx >= total - 1;
+    const idx   = inv.items.findIndex(it => it.id == itemId);
+    const total = inv.items.length;
+    if ($('allocItemCounter')) $('allocItemCounter').textContent = `${idx + 1} من ${total}`;
+    if ($('btnPrevItem'))      $('btnPrevItem').disabled = idx <= 0;
+    if ($('btnNextItem'))      $('btnNextItem').disabled = idx >= total - 1;
 
-        const tbody = $('allocationTableBody');
-        if (!tbody) return;
-        tbody.innerHTML = '';
+    const tbody = $('allocationTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
 
-        const row = state.allocation[itemId] || {};
-        const customerIds = Object.keys(row);
+    const row = state.allocation[itemId] || {};
+    const priceRow = state.prices[itemId] || {};
+    const customerIds = Object.keys(row);
 
-        if (!customerIds.length) {
-            tbody.innerHTML = `
-                <tr><td colspan="3" class="text-center text-muted py-3 small">
-                    <i class="bi bi-person-plus fs-4 d-block mb-1 opacity-50"></i>
-                    أضف عميلًا لتوزيع الكميات.
-                </td></tr>`;
-            return;
+    if (!customerIds.length) {
+        tbody.innerHTML = `
+            <tr><td colspan="5" class="text-center text-muted py-3 small">
+                <i class="bi bi-person-plus fs-4 d-block mb-1 opacity-50"></i>
+                أضف عميلًا لتوزيع الكميات.
+            </td></tr>`;
+        return;
+    }
+
+    customerIds.forEach(cid => {
+        const info     = state.customerInfo[cid] || { name: '—', phone: '' };
+        const curQty   = num(row[cid]);
+        const curPrice = priceRow[cid] !== undefined ? num(priceRow[cid]) : num(item.sale_price);
+        const curTotal = curQty * curPrice;
+        
+        const isEmpty  = curQty <= 0;
+        const editable = !isEmpty || !noRemaining;
+
+        const isPriceInvalid = curPrice <= 0;
+        const priceWarningClass = (curPrice > 0 && curPrice < num(item.unit_cost)) ? 'border-warning bg-warning-subtle' : '';
+        const priceInvalidClass = isPriceInvalid ? 'border-danger' : '';
+        
+        const showPrice = curQty > 0;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>
+                <div class="fw-semibold small">
+                    ${escapeHtml(info.name)}
+                    ${isEmpty ? '<i class="bi bi-exclamation-circle-fill text-danger ms-1" title="لم تُدخل كمية"></i>' : ''}
+                </div>
+                ${info.phone ? `<div class="text-muted" style="font-size:0.7rem;">${escapeHtml(info.phone)}</div>` : ''}
+            </td>
+            <td>
+                <input type="text"
+                       inputmode="decimal"
+                       autocomplete="off"
+                       dir="ltr"
+                       class="form-control form-control-sm text-center alloc-input ${editable ? '' : 'bg-body-secondary'} ${isEmpty && editable ? 'border-danger' : ''}"
+                       data-customer="${cid}"
+                       value="${curQty || ''}"
+                       ${editable ? '' : 'readonly'}
+                       placeholder="${editable ? 'الكمية' : 'لا يوجد'}">
+            </td>
+            <td class="text-center">
+                <span class="price-placeholder text-muted small ${showPrice ? 'd-none' : ''}">أدخل الكمية</span>
+                <input type="text"
+                       inputmode="decimal"
+                       autocomplete="off"
+                       dir="ltr"
+                       class="form-control form-control-sm text-center alloc-price-input ${showPrice ? '' : 'd-none'} ${editable ? '' : 'bg-body-secondary'} ${priceWarningClass} ${priceInvalidClass}"
+                       data-customer="${cid}"
+                       value="${curPrice || ''}"
+                       ${editable ? '' : 'readonly'}
+                       placeholder="">
+            </td>
+            <td class="text-center">
+                <input type="text"
+                       class="form-control form-control-sm text-center bg-light fw-bold text-success alloc-total-input ${showPrice ? '' : 'd-none'}"
+                       value="${curTotal > 0 ? fmt(curTotal) : ''}"
+                       readonly
+                       tabindex="-1"
+                       dir="ltr">
+            </td>
+            <td class="text-center">
+                <button type="button" class="btn btn-sm btn-link text-danger p-0 alloc-remove"
+                        data-customer="${cid}" title="إزالة العميل">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    // ============================================================
+    // إعداد مستمعي أحداث الكمية
+    // ============================================================
+    tbody.querySelectorAll('.alloc-input').forEach(inp => {
+        if (inp.readOnly) {
+            inp.addEventListener('click', (e) => {
+                e.preventDefault();
+                toastWarning('لا توجد كمية متبقية من هذا الصنف');
+                inp.blur();
+            });
+            inp.addEventListener('focus', () => inp.blur());
+        } else {
+            inp.addEventListener('keydown', (e) => {
+                const ch = e.key;
+                if (ch === 'Enter') { e.preventDefault(); inp.blur(); return; }
+                if (['Backspace','Delete','Tab','Escape','ArrowLeft','ArrowRight','Home','End'].includes(ch)) return;
+                if ((e.ctrlKey || e.metaKey) && ['a','c','v','x','z','y'].includes(String(ch).toLowerCase())) return;
+                if (/[0-9]/.test(ch)) return;
+                if (ch === '.') {
+                    if (inp.value.includes('.')) e.preventDefault();
+                    return;
+                }
+                e.preventDefault();
+            });
+
+            inp.addEventListener('paste', (e) => {
+                const txt = (e.clipboardData || window.clipboardData).getData('text');
+                if (!/^\d*\.?\d*$/.test(txt.trim())) {
+                    e.preventDefault();
+                    toastWarning('يُسمح فقط بالأرقام والنقطة العشرية.');
+                }
+            });
+
+            inp.addEventListener('drop', (e) => {
+                e.preventDefault();
+                toastWarning('لا يمكن إفلات نص هنا.');
+            });
+
+            inp.addEventListener('input', () => handleModalAllocLiveInput(inp));
+            inp.addEventListener('blur', () => handleModalAllocInput(inp));
         }
+    });
 
-        customerIds.forEach(cid => {
-            const info     = state.customerInfo[cid] || { name: '—', phone: '' };
-            const curQty   = num(row[cid]);
-            const isEmpty  = curQty <= 0;
-            const editable = !isEmpty || !noRemaining;
+    // ============================================================
+    // إعداد مستمعي أحداث السعر
+    // ============================================================
+    tbody.querySelectorAll('.alloc-price-input').forEach(inp => {
+        if (inp.readOnly) return;
 
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>
-                    <div class="fw-semibold small">
-                        ${escapeHtml(info.name)}
-                        ${isEmpty ? '<i class="bi bi-exclamation-circle-fill text-danger ms-1" title="لم تُدخل كمية"></i>' : ''}
-                    </div>
-                    ${info.phone ? `<div class="text-muted" style="font-size:0.7rem;">${escapeHtml(info.phone)}</div>` : ''}
-                </td>
-                <td>
-                    <input type="text"
-                           inputmode="decimal"
-                           autocomplete="off"
-                           dir="ltr"
-                           class="form-control form-control-sm text-center alloc-input ${editable ? '' : 'bg-body-secondary'} ${isEmpty && editable ? 'border-danger' : ''}"
-                           data-customer="${cid}"
-                           value="${curQty || ''}"
-                           ${editable ? '' : 'readonly'}
-                           placeholder="${editable ? 'أدخل كمية' : 'لا توجد كمية متبقية'}">
-                </td>
-                <td class="text-center">
-                    <button type="button" class="btn btn-sm btn-link text-danger p-0 alloc-remove"
-                            data-customer="${cid}" title="إزالة العميل">
-                        <i class="bi bi-x-lg"></i>
-                    </button>
-                </td>
-            `;
-            tbody.appendChild(tr);
+        inp.addEventListener('keydown', (e) => {
+            const ch = e.key;
+            if (ch === 'Enter') { e.preventDefault(); inp.blur(); return; }
+            if (['Backspace','Delete','Tab','Escape','ArrowLeft','ArrowRight','Home','End'].includes(ch)) return;
+            if ((e.ctrlKey || e.metaKey) && ['a','c','v','x','z','y'].includes(String(ch).toLowerCase())) return;
+            if (/[0-9]/.test(ch)) return;
+            if (ch === '.') {
+                if (inp.value.includes('.')) e.preventDefault();
+                return;
+            }
+            e.preventDefault();
         });
 
-        tbody.querySelectorAll('.alloc-input').forEach(inp => {
-            if (inp.readOnly) {
-                inp.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    toastWarning('لا توجد كمية متبقية من هذا الصنف');
-                    inp.blur();
-                });
-                inp.addEventListener('focus', () => inp.blur());
-            } else {
-                inp.addEventListener('keydown', (e) => {
-                    const ch = e.key;
+        // 1. أثناء الكتابة: تحديث الإجمالي واللون فقط (بدون رسالة)
+        inp.addEventListener('input', () => handleModalPriceInput(inp));
+        
+        // 2. عند الخروج من الحقل: إظهار الرسالة إذا كان السعر أقل من التكلفة
+        inp.addEventListener('blur', () => {
+            const currentItemId = state.modalItemId;
+            const currentItem = findItem(currentItemId);
+            if (!currentItem) return;
 
-                    if (ch === 'Enter') {
-                        e.preventDefault();
-                        inp.blur();
-                        return;
-                    }
-
-                    if (['Backspace','Delete','Tab','Escape','ArrowLeft','ArrowRight','Home','End'].includes(ch)) {
-                        return;
-                    }
-
-                    if ((e.ctrlKey || e.metaKey) && ['a','c','v','x','z','y'].includes(String(ch).toLowerCase())) {
-                        return;
-                    }
-
-                    if (/[0-9]/.test(ch)) return;
-
-                    if (ch === '.') {
-                        if (inp.value.includes('.')) e.preventDefault();
-                        return;
-                    }
-
-                    e.preventDefault();
-                });
-
-                inp.addEventListener('paste', (e) => {
-                    const txt = (e.clipboardData || window.clipboardData).getData('text');
-                    if (!/^\d*\.?\d*$/.test(txt.trim())) {
-                        e.preventDefault();
-                        toastWarning('يُسمح فقط بالأرقام والنقطة العشرية.');
-                    }
-                });
-
-                inp.addEventListener('drop', (e) => {
-                    e.preventDefault();
-                    toastWarning('لا يمكن إفلات نص هنا.');
-                });
-
-                inp.addEventListener('input', () => handleModalAllocLiveInput(inp));
-                inp.addEventListener('blur', () => handleModalAllocInput(inp));
+            const price = num(inp.value);
+            if (price > 0 && price < num(currentItem.unit_cost)) {
+                toastWarning(`السعر (${price}) أقل من سعر التكلفة (${currentItem.unit_cost})`);
             }
         });
+    });
 
-        tbody.querySelectorAll('.alloc-remove').forEach(btn =>
-            btn.addEventListener('click', async () => {
-                const cid  = btn.dataset.customer;
-                const info = state.customerInfo[cid];
-                const qty  = num(state.allocation[itemId]?.[cid] || 0);
+    // ============================================================
+    // إعداد زر الحذف
+    // ============================================================
+    tbody.querySelectorAll('.alloc-remove').forEach(btn =>
+        btn.addEventListener('click', async () => {
+            const cid  = btn.dataset.customer;
+            const info = state.customerInfo[cid];
+            const qty  = num(state.allocation[itemId]?.[cid] || 0);
 
-                if (qty > 0) {
-                    const ok = await confirmDialog(
-                        `العميل «${info?.name || ''}» لديه كمية ${fmt(qty, 3)}. إزالة العميل ستحذف هذه الكمية. متابعة؟`,
-                        { title: 'إزالة عميل', okText: 'إزالة', danger: true }
-                    );
-                    if (!ok) return;
-                }
+            if (qty > 0) {
+                const ok = await confirmDialog(
+                    `العميل «${info?.name || ''}» لديه كمية ${fmt(qty, 3)}. إزالة العميل ستحذف هذه الكمية. متابعة؟`,
+                    { title: 'إزالة عميل', okText: 'إزالة', danger: true }
+                );
+                if (!ok) return;
+            }
 
-                if (state.allocation[itemId]) delete state.allocation[itemId][cid];
-                if (Object.keys(state.allocation[itemId] || {}).length === 0) {
-                    delete state.allocation[itemId];
-                }
+            if (state.allocation[itemId]) delete state.allocation[itemId][cid];
+            if (state.prices[itemId]) delete state.prices[itemId][cid];
+            
+            if (Object.keys(state.allocation[itemId] || {}).length === 0) {
+                delete state.allocation[itemId];
+                delete state.prices[itemId];
+            }
 
-                pruneOrphanCustomers();
-                renderAllocationModal();
-                renderItems();
-                renderSummary();
-                renderTabs();
-            }));
-    }
+            pruneOrphanCustomers();
+            renderAllocationModal();
+            renderItems();
+            renderSummary();
+            renderTabs();
+        }));
+}
 
-    function handleModalAllocLiveInput(input) {
-        const itemId = state.modalItemId;
-        const custId = input.dataset.customer;
-        const item   = findItem(itemId);
-        if (!item) return;
+function handleModalAllocLiveInput(input) {
+    const itemId = state.modalItemId;
+    const custId = input.dataset.customer;
+    const item   = findItem(itemId);
+    if (!item) return;
 
-        let qty = num(input.value);
-        if (qty < 0) qty = 0;
+    let qty = num(input.value);
+    if (qty < 0) qty = 0;
 
-        const others = Object.entries(state.allocation[itemId] || {})
-            .filter(([cid]) => cid != custId)
-            .reduce((s, [, q]) => s + num(q), 0);
+    const others = Object.entries(state.allocation[itemId] || {})
+        .filter(([cid]) => cid != custId)
+        .reduce((s, [, q]) => s + num(q), 0);
 
-        const maxForField = num(item.available) - others;
-        if (qty > maxForField) {
-            qty = Math.max(0, maxForField);
+    const maxForField = num(item.available) - others;
+    
+    if (qty > maxForField) {
+        qty = Math.max(0, maxForField);
+        // ✅ هذا السطر يضمن أن الحقل سيتم تصحيحه بصرياً إلى 0.2 بعد أن ينتهي المتصفح من معالجة الكتابة
+        setTimeout(() => {
             input.value = qty;
-        }
-
-        state.allocation[itemId] = state.allocation[itemId] || {};
-        state.allocation[itemId][custId] = qty;
-
-        renderSummary();
-        renderTabs();
+        }, 0);
     }
+    
+    state.allocation[itemId] = state.allocation[itemId] || {};
+    state.allocation[itemId][custId] = qty;
+
+    // ✅ تحديث البطاقات العلوية (متاح / موزع / متبقي) لحظياً
+    const totalAlloc = getAllocatedQty(itemId);
+    const remaining  = Math.max(0, num(item.available) - totalAlloc);
+    if ($('allocAllocated')) $('allocAllocated').textContent = fmt(totalAlloc, 3);
+    if ($('allocRemaining')) $('allocRemaining').textContent = fmt(remaining, 3);
+
+    // ✅ إظهار/إخفاء حقل السعر بناءً على الكمية
+    const tr = input.closest('tr');
+    if (tr) {
+        const priceInput = tr.querySelector('.alloc-price-input');
+        const totalInput = tr.querySelector('.alloc-total-input');
+        const placeholder = tr.querySelector('.price-placeholder');
+        
+        if (qty > 0) {
+            if (priceInput) priceInput.classList.remove('d-none');
+            if (totalInput) totalInput.classList.remove('d-none');
+            if (placeholder) placeholder.classList.add('d-none');
+
+            // ✅ إذا كانت الكمية أكبر من صفر، والسعر صفر أو فارغ، نعيده للقيمة الافتراضية
+            let currentPrice = state.prices[itemId]?.[custId];
+            if (currentPrice === undefined || currentPrice <= 0) {
+                state.prices[itemId] = state.prices[itemId] || {};
+                state.prices[itemId][custId] = num(item.sale_price);
+                if (priceInput) {
+                    priceInput.value = num(item.sale_price);
+                    priceInput.classList.remove('border-warning', 'bg-warning-subtle', 'border-danger');
+                }
+            }
+            
+            const price = num(priceInput?.value);
+            if (totalInput) totalInput.value = (qty * price) > 0 ? fmt(qty * price) : '';
+        } else {
+            if (priceInput) priceInput.classList.add('d-none');
+            if (totalInput) totalInput.classList.add('d-none');
+            if (placeholder) placeholder.classList.remove('d-none');
+
+            // ✅ إعادة تعيين السعر للقيمة الافتراضية عند مسح الكمية
+            state.prices[itemId] = state.prices[itemId] || {};
+            state.prices[itemId][custId] = num(item.sale_price);
+            if (priceInput) {
+                priceInput.value = num(item.sale_price);
+                priceInput.classList.remove('border-warning', 'bg-warning-subtle', 'border-danger');
+            }
+        }
+    }
+
+    renderSummary();
+    renderTabs();
+}
 
     function handleModalAllocInput(input) {
         const itemId = state.modalItemId;
@@ -753,21 +914,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const raw = String(input.value ?? '').trim();
 
-        if (raw === '') {
+        if (raw === '' || num(raw) === 0) {
             state.allocation[itemId] = state.allocation[itemId] || {};
             state.allocation[itemId][custId] = 0;
-            renderAllocationModal();
-            renderItems();
-            renderSummary();
-            renderTabs();
-            return;
-        }
+            
+            // ✅ إعادة تعيين السعر عند مسح الكمية
+            state.prices[itemId] = state.prices[itemId] || {};
+            state.prices[itemId][custId] = num(item.sale_price);
 
-        if (num(raw) === 0) {
-            toastError('الكمية يجب أن تكون أكبر من صفر — أدخل قيمة موجبة أو امسح الحقل لترك العميل بدون كمية.');
-            input.value = '';
-            state.allocation[itemId] = state.allocation[itemId] || {};
-            state.allocation[itemId][custId] = 0;
             renderAllocationModal();
             renderItems();
             renderSummary();
@@ -777,10 +931,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let qty = num(raw);
         if (qty < 0) {
-            toastError('الكمية لا يمكن أن تكون سالبة.');
             input.value = '';
             state.allocation[itemId] = state.allocation[itemId] || {};
             state.allocation[itemId][custId] = 0;
+            
+            // ✅ إعادة تعيين السعر
+            state.prices[itemId] = state.prices[itemId] || {};
+            state.prices[itemId][custId] = num(item.sale_price);
+            
             renderAllocationModal();
             renderItems();
             renderSummary();
@@ -810,6 +968,40 @@ document.addEventListener('DOMContentLoaded', () => {
         renderItems();
         renderSummary();
         renderTabs();
+    }
+
+    function handleModalPriceInput(input) {
+        const itemId = state.modalItemId;
+        const custId = input.dataset.customer;
+        const item   = findItem(itemId);
+        if (!item) return;
+
+        let price = num(input.value);
+        if (price < 0) price = 0;
+
+        state.prices[itemId] = state.prices[itemId] || {};
+        state.prices[itemId][custId] = price;
+
+        input.classList.remove('border-warning', 'bg-warning-subtle', 'border-danger');
+
+        if (price <= 0) {
+            // السعر صفر أو فارغ (تنبيه بصري أحمر)
+            input.classList.add('border-danger');
+        } else if (price < num(item.unit_cost)) {
+            // السعر أقل من التكلفة (تنبيه بصري أصفر فقط، بدون رسالة)
+            input.classList.add('border-warning', 'bg-warning-subtle');
+        }
+
+        // ✅ تحديث الإجمالي
+        const tr = input.closest('tr');
+        if (tr) {
+            const qtyInput = tr.querySelector('.alloc-input');
+            const totalInput = tr.querySelector('.alloc-total-input');
+            const qty = num(qtyInput?.value);
+            if (totalInput) totalInput.value = (qty * price) > 0 ? fmt(qty * price) : '';
+        }
+
+        renderSummary();
     }
 
     function navigateItem(direction) {
@@ -914,7 +1106,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const modalEl = $('AccountPickerModal');
         if (!modalEl) { toastError('مودال الحسابات غير محمّل.'); return; }
 
-        // ✅ علّم السياق لمنع التعارض مع customer-invoices.js
         window.__accountPickerOwner = 'allocation';
 
         const Modal = await ensureBootstrap();
@@ -961,7 +1152,6 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
         }
 
-        // ✅ صفّر السياق
         window.__accountPickerOwner = null;
     }
 
@@ -969,13 +1159,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('#AccountPickerModal [data-bs-dismiss="modal"]').forEach(btn =>
         btn.addEventListener('click', closeAccountPicker));
 
-    // ✅ مستمع البحث — احترم السياق
     $('AccountPickerSearch')?.addEventListener('input', debounce(() => {
         if (window.__accountPickerOwner !== 'allocation') return;
         loadAccounts();
     }, 400));
 
-    // ✅ زر التفريغ — احترم السياق
     $('AccountPickerClearBtn')?.addEventListener('click', () => {
         if (window.__accountPickerOwner !== 'allocation') return;
         if ($('AccountPickerSearch')) $('AccountPickerSearch').value = '';
@@ -1075,6 +1263,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function addCustomersToItem(customers) {
         const itemId = state.modalItemId;
         if (!itemId) return;
+        
+        const item = findItem(itemId);
+        if (!item) return;
 
         const added   = [];
         const skipped = [];
@@ -1087,8 +1278,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             state.allocation[itemId] = state.allocation[itemId] || {};
+            state.prices[itemId] = state.prices[itemId] || {};
+
             if (state.allocation[itemId][c.id] === undefined) {
                 state.allocation[itemId][c.id] = 0;
+                state.prices[itemId][c.id] = num(item.sale_price);
                 added.push(c);
             } else {
                 skipped.push(c);
@@ -1100,8 +1294,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderSummary();
         renderTabs();
 
-        const item = findItem(itemId);
-        const itemName = item?.item_name || '';
+        const itemName = item.item_name || '';
 
         if (added.length === 1) {
             toastSuccess(`أضيف العميل «${added[0].name}» إلى الصنف «${itemName}». أدخل الكمية الآن.`);
@@ -1127,10 +1320,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (alloc > 0) {
                     itemsCount++;
                     cost += alloc * num(item.unit_cost);
-                    sale += alloc * num(item.sale_price);
 
                     Object.entries(state.allocation[item.id] || {}).forEach(([cid, q]) => {
-                        if (num(q) > 0) customersSet.add(cid);
+                        if (num(q) > 0) {
+                            customersSet.add(cid);
+                            const price = state.prices[item.id]?.[cid] ?? num(item.sale_price);
+                            sale += num(q) * price;
+                        }
                     });
                 }
             });
@@ -1185,18 +1381,61 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        let invalidPrice = null;
+        for (const [mdId, row] of Object.entries(state.allocation)) {
+            const item = findItem(mdId);
+            if (!item) continue;
+
+            for (const [custId, qty] of Object.entries(row)) {
+                if (num(qty) > 0) {
+                    const price = state.prices[mdId]?.[custId];
+                    if (price === undefined || num(price) <= 0) {
+                        invalidPrice = { mdId, custId, item, cust: state.customerInfo[custId] };
+                        break;
+                    }
+                }
+            }
+            if (invalidPrice) break;
+        }
+
+        if (invalidPrice) {
+            toastError(`لا يمكن الحفظ — السعر فارغ أو صفر للعميل «${invalidPrice.cust?.name || ''}» على الصنف «${invalidPrice.item.item_name}».`);
+            
+            const invOfItem = findInvoiceOfItem(invalidPrice.mdId);
+            if (invOfItem) {
+                state.activeInvoiceId = invOfItem.id;
+                renderTabs();
+                renderItems();
+
+                state.modalItemId    = invalidPrice.mdId;
+                state.modalInvoiceId = invOfItem.id;
+                allowAllocationModalClose = false;
+                renderAllocationModal();
+
+                const Modal = await ensureBootstrap();
+                const modalEl = $('allocationModal');
+                if (Modal && modalEl) {
+                    if (!allocationModalInstance) allocationModalInstance = new Modal(modalEl);
+                    allocationModalInstance.show();
+                }
+            }
+            return;
+        }
+
         const details = [];
         Object.entries(state.allocation).forEach(([mdId, row]) => {
             const item = findItem(mdId);
             if (!item) return;
             Object.entries(row).forEach(([custId, qty]) => {
                 if (num(qty) > 0) {
+                    const price = state.prices[mdId]?.[custId] ?? num(item.sale_price);
                     details.push({
                         movement_detail_id:  parseInt(mdId),
                         purchase_invoice_id: parseInt(item.purchase_invoice_id),
                         movement_id:         parseInt(item.movement_id),
                         customer_id:         parseInt(custId),
                         quantity:            num(qty),
+                        sale_price:          num(price),
                     });
                 }
             });
@@ -1238,52 +1477,53 @@ document.addEventListener('DOMContentLoaded', () => {
     // تحميل توزيع للتعديل
     // ============================================================
     async function loadExisting(id) {
-    try {
-        const res = await api(ROUTES.show(id));
-        if (!res.success) return;
+        try {
+            const res = await api(ROUTES.show(id));
+            if (!res.success) return;
 
-        state.distributionId = res.header.id;
-        updateModeBadge();
-        if ($('distributionDate'))  $('distributionDate').value  = res.header.distribution_date || '';
-        if ($('distributionNotes')) $('distributionNotes').value = res.header.notes || '';
+            state.distributionId = res.header.id;
+            updateModeBadge();
+            if ($('distributionDate'))  $('distributionDate').value  = res.header.distribution_date || '';
+            if ($('distributionNotes')) $('distributionNotes').value = res.header.notes || '';
 
-        const invoiceIds = [...new Set(res.details.map(d => d.purchase_invoice_id))];
-        for (const invId of invoiceIds) {
-            try {
-                // ✅ نمرر معرف التوزيع الحالي لكي يرجع الـ API كل الأصناف بما فيها الموزعة بالكامل
-                const invRes = await api(ROUTES.items(invId) + `?exclude_distribution_id=${id}`);
-                if (invRes.success) {
-                    state.invoices[invId] = {
-                        id: invId,
-                        number: invRes.invoice.invoice_number,
-                        date: invRes.invoice.invoice_date,
-                        supplier: invRes.invoice.supplier,
-                        // ✅ الـ API صار يرجع available صحيحة، لا داعي لإعادة حسابها هنا
-                        items: invRes.data || [],
-                    };
-                }
-            } catch (e) { /* تخطي */ }
+            const invoiceIds = [...new Set(res.details.map(d => d.purchase_invoice_id))];
+            for (const invId of invoiceIds) {
+                try {
+                    const invRes = await api(ROUTES.items(invId) + `?exclude_distribution_id=${id}`);
+                    if (invRes.success) {
+                        state.invoices[invId] = {
+                            id: invId,
+                            number: invRes.invoice.invoice_number,
+                            date: invRes.invoice.invoice_date,
+                            supplier: invRes.invoice.supplier,
+                            items: invRes.data || [],
+                        };
+                    }
+                } catch (e) { /* تخطي */ }
+            }
+
+            res.details.forEach(d => {
+                state.customerInfo[d.customer_id] = {
+                    id: d.customer_id, name: d.customer_name, phone: '', code: '',
+                };
+                state.allocation[d.movement_detail_id] = state.allocation[d.movement_detail_id] || {};
+                state.allocation[d.movement_detail_id][d.customer_id] = num(d.quantity);
+
+                state.prices[d.movement_detail_id] = state.prices[d.movement_detail_id] || {};
+                state.prices[d.movement_detail_id][d.customer_id] = num(d.sale_price);
+            });
+
+            const firstInvId = Object.keys(state.invoices)[0];
+            state.activeInvoiceId = firstInvId ? parseInt(firstInvId) : null;
+
+            renderTabs();
+            renderItems();
+            renderSummary();
+            toastInfo(`تم تحميل التوزيع ${res.header.code} — وضع التعديل.`);
+        } catch (e) {
+            toastError('فشل تحميل التوزيع: ' + e.message);
         }
-
-        res.details.forEach(d => {
-            state.customerInfo[d.customer_id] = {
-                id: d.customer_id, name: d.customer_name, phone: '', code: '',
-            };
-            state.allocation[d.movement_detail_id] = state.allocation[d.movement_detail_id] || {};
-            state.allocation[d.movement_detail_id][d.customer_id] = num(d.quantity);
-        });
-
-        const firstInvId = Object.keys(state.invoices)[0];
-        state.activeInvoiceId = firstInvId ? parseInt(firstInvId) : null;
-
-        renderTabs();
-        renderItems();
-        renderSummary();
-        toastInfo(`تم تحميل التوزيع ${res.header.code} — وضع التعديل.`);
-    } catch (e) {
-        toastError('فشل تحميل التوزيع: ' + e.message);
     }
-}
 
     // ============================================================
     // إجراءات
@@ -1308,6 +1548,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.activeInvoiceId = null;
         state.customerInfo    = {};
         state.allocation      = {};
+        state.prices          = {};
         state.modalItemId     = null;
         state.modalInvoiceId  = null;
         updateModeBadge();

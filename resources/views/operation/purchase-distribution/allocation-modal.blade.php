@@ -1,11 +1,14 @@
 <style>
     /* إخفاء أسهم input[type=number] داخل المودال فقط */
     #allocationModal input.alloc-input::-webkit-outer-spin-button,
-    #allocationModal input.alloc-input::-webkit-inner-spin-button {
+    #allocationModal input.alloc-input::-webkit-inner-spin-button,
+    #allocationModal input.alloc-price-input::-webkit-outer-spin-button,
+    #allocationModal input.alloc-price-input::-webkit-inner-spin-button {
         -webkit-appearance: none;
         margin: 0;
     }
-    #allocationModal input.alloc-input {
+    #allocationModal input.alloc-input,
+    #allocationModal input.alloc-price-input {
         -moz-appearance: textfield;
         appearance: textfield;
     }
@@ -30,6 +33,7 @@
 
             <div class="modal-body">
 
+                <!-- ✅ بطاقات الإحصائيات (تمت إضافة سعر التكلفة) -->
                 <div class="row g-2 mb-3 text-center">
                     <div class="col">
                         <div class="bg-light rounded-3 p-2">
@@ -49,6 +53,12 @@
                             <div class="fw-bold text-danger" id="allocRemaining">—</div>
                         </div>
                     </div>
+                    <div class="col">
+                        <div class="bg-light rounded-3 p-2">
+                            <div class="text-muted" style="font-size:0.72rem;">سعر التكلفة</div>
+                            <div class="fw-bold text-secondary" id="allocUnitCost">—</div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -58,12 +68,15 @@
                     </button>
                 </div>
 
+                <!-- ✅ الجدول (تمت إضافة عمود الإجمالي) -->
                 <div class="table-responsive border rounded-3" style="max-height:300px; overflow-y:auto;">
                     <table class="table table-sm table-borderless align-middle mb-0">
                         <thead class="table-light sticky-top">
                             <tr class="small text-muted">
                                 <th>العميل</th>
-                                <th style="width:140px">الكمية</th>
+                                <th style="width:100px" class="text-center">الكمية</th>
+                                <th style="width:110px" class="text-center">السعر للوحدة</th>
+                                <th style="width:110px" class="text-center">الإجمالي</th>
                                 <th style="width:44px"></th>
                             </tr>
                         </thead>

@@ -70,12 +70,14 @@ class PurchaseDistributionController extends Controller
         return response()->json(['success' => true, 'data' => $rows]);
     }
 
-    // ============================================================
-    // أصناف فاتورة محددة + المفرزات
+     // ============================================================
+    // أصناف فاتورة محددة + المفرزات + المتبقي الفعلي للتوزيع
     // ============================================================
     public function items(Request $request, int $id)
     {
-        $excludeId = $request->input('exclude_distribution_id');
+        $excludeId = $request->filled('exclude_distribution_id')
+            ? (int) $request->input('exclude_distribution_id')
+            : null;
 
         $invoice = PurchaseInvoice::query()
             ->with('supplierAccount')
@@ -142,36 +144,43 @@ class PurchaseDistributionController extends Controller
 
         // 4) دمج الدفعات الأصلية + المفرزات
         $allDetails = $originalDetails->merge($sortedDetails);
+        $detailIds  = $allDetails->pluck('movement_detail_id')->all();
 
-        // 5) الموزّع من كل دفعة (مع استثناء التوزيع الحالي إن وجد)
+        // 5) الموزّع الفعلي من كل دفعة (مع استثناء التوزيع الحالي إن وجد)
         $distributedQuery = DistributionDetail::query()
             ->select('movement_detail_id', DB::raw('SUM(quantity) as total'))
-            ->whereIn('movement_detail_id', $allDetails->pluck('movement_detail_id'))
+            ->whereIn('movement_detail_id', $detailIds)
+            ->whereNotNull('distribution_id')
             ->whereHas('distribution');
 
-        if ($excludeId) {
+        if ($excludeId !== null) {
             $distributedQuery->where('distribution_id', '!=', $excludeId);
         }
 
-        $distributed = $distributedQuery->groupBy('movement_detail_id')->pluck('total', 'movement_detail_id');
+        $distributed = $distributedQuery
+            ->groupBy('movement_detail_id')
+            ->pluck('total', 'movement_detail_id');
 
         // 6) المصروف من كل دفعة (sorting_out)
-        $sortedOut = DB::table('inventory_movement_details as imd')
-            ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
-            ->whereIn('imd.lot_source_detail_id', $allDetails->pluck('movement_detail_id'))
-            ->where('im.movement_type', InventoryMovement::TYPE_SORTING_OUT)
-            ->select('imd.lot_source_detail_id', DB::raw('SUM(imd.quantity) as total'))
-            ->groupBy('imd.lot_source_detail_id')
-            ->pluck('total', 'lot_source_detail_id');
+        $sortedOut = !empty($detailIds)
+            ? DB::table('inventory_movement_details as imd')
+                ->join('inventory_movements as im', 'im.movement_id', '=', 'imd.movement_id')
+                ->whereIn('imd.lot_source_detail_id', $detailIds)
+                ->where('im.movement_type', InventoryMovement::TYPE_SORTING_OUT)
+                ->select('imd.lot_source_detail_id', DB::raw('SUM(imd.quantity) as total'))
+                ->groupBy('imd.lot_source_detail_id')
+                ->pluck('total', 'lot_source_detail_id')
+            : collect();
 
         // 7) بناء الصفوف
         $rows = $allDetails->map(function ($d) use ($distributed, $sortedOut, $invoice, $sortedIds) {
-            $dist = (float) ($distributed[$d->movement_detail_id] ?? 0);
-            $sort = (float) ($sortedOut[$d->movement_detail_id] ?? 0);
-            $avail = max(0, (float) $d->quantity - $dist - $sort);
+            $mdId  = $d->movement_detail_id;
+            $dist  = (float) ($distributed[$mdId] ?? 0);
+            $sort  = (float) ($sortedOut[$mdId] ?? 0);
+            $avail = max(0.0, (float) $d->quantity - $dist - $sort);
 
             return [
-                'id'                  => $d->movement_detail_id,
+                'id'                  => $mdId,
                 'movement_id'         => $d->movement_id,
                 'purchase_invoice_id' => $invoice->purchase_invoice_id,
                 'item_name'           => $d->item?->itemName2 ?? '—',
@@ -184,7 +193,7 @@ class PurchaseDistributionController extends Controller
                 'available'           => $avail,
                 'unit_cost'           => (float) $d->unit_cost,
                 'sale_price'          => (float) $d->sale_price,
-                'is_sorted'           => in_array($d->movement_detail_id, $sortedIds, true),
+                'is_sorted'           => in_array($mdId, $sortedIds, true),
             ];
         })->filter(fn($r) => $r['available'] > 0.000001)->values();
 
@@ -199,6 +208,7 @@ class PurchaseDistributionController extends Controller
             'data' => $rows,
         ]);
     }
+
 
     // ============================================================
     // بحث العملاء

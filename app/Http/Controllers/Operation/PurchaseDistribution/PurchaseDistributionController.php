@@ -289,7 +289,6 @@ class PurchaseDistributionController extends Controller
             'notes'             => ['nullable', 'string', 'max:2000'],
             'units'             => ['nullable', 'array'],
             'piece_meta'        => ['nullable', 'array'],
-            'units_meta'        => ['nullable', 'array'],
             'details'           => ['required', 'array', 'min:1'],
             'details.*.movement_detail_id' => ['required', 'integer', 'exists:inventory_movement_details,movement_detail_id'],
             'details.*.customer_id'        => ['required', 'integer', 'exists:customers,CustomersID'],
@@ -324,17 +323,15 @@ class PurchaseDistributionController extends Controller
 
             // تشفير وحدات القياس ووزن الحبة داخل حقل notes لتفادي إضافة أعمدة لقاعدة البيانات
             $userNotes    = $validated['notes'] ?? null;
-            $unitsMetaOld = $request->input('units');
-            $pieceMetaOld = $request->input('piece_meta');
-            $richDetails  = $request->input('units_meta');
+            $unitsMeta    = $request->input('units');
+            $pieceMeta    = $request->input('piece_meta');
             $notesToStore = $userNotes;
-            if (!empty($unitsMetaOld) || !empty($pieceMetaOld) || !empty($richDetails)) {
+            if (!empty($unitsMeta) || !empty($pieceMeta)) {
                 $notesToStore = json_encode([
                     'text'       => $userNotes,
                     '_unit_meta' => [
-                        'units'      => $unitsMetaOld ?: [],
-                        'piece_meta' => $pieceMetaOld ?: [],
-                        'details'    => $richDetails ?: [],
+                        'units'      => $unitsMeta ?: [],
+                        'piece_meta' => $pieceMeta ?: [],
                     ],
                 ], JSON_UNESCAPED_UNICODE);
             }
@@ -499,128 +496,6 @@ class PurchaseDistributionController extends Controller
         return null;
     }
 
-    /**
-     * استخراج بيانات تحويل الوحدات المشفرة في حقل notes
-     */
-    private function extractUnitMeta(?string $notes): array
-    {
-        if (empty($notes) || !str_starts_with(trim($notes), '{')) {
-            return [];
-        }
-        $decoded = json_decode($notes, true);
-        if (!is_array($decoded) || !isset($decoded['_unit_meta'])) {
-            return [];
-        }
-        return (array) $decoded['_unit_meta'];
-    }
-
-    /**
-     * حل وتطبيق وحدة التوزيع والكمية والسعر المدخل من قبل المستخدم
-     */
-    private function resolveDetailMeta(
-        array $unitMeta,
-        int $mdId,
-        int $customerId,
-        ?int $defaultUnitId,
-        ?string $defaultUnitName,
-        float $defaultQty,
-        float $defaultPrice,
-        float $defaultCost
-    ): array {
-        // 1) فحص تفاصيل الوحدات الغنية المخزنة في details
-        $detailMeta = $unitMeta['details'][$mdId][$customerId] ?? null;
-        if ($detailMeta && !empty($detailMeta['unit_id'])) {
-            $enteredQty   = (float) ($detailMeta['entered_qty'] ?? $defaultQty);
-            $enteredPrice = (float) ($detailMeta['entered_price'] ?? $defaultPrice);
-            $totalCost    = $defaultQty * $defaultCost;
-            $unitCost     = $enteredQty > 0 ? ($totalCost / $enteredQty) : $defaultCost;
-
-            return [
-                'unit_id'      => (int) $detailMeta['unit_id'],
-                'unit_name'    => (string) ($detailMeta['unit_name'] ?? $defaultUnitName),
-                'quantity'     => $enteredQty,
-                'sale_price'   => $enteredPrice,
-                'unit_cost'    => $unitCost,
-                'total_cost'   => $totalCost,
-                'total_sale'   => $enteredQty * $enteredPrice,
-                'is_custom'    => true,
-                'piece_meta'   => $detailMeta['piece_meta'] ?? null,
-            ];
-        }
-
-        // 2) فحص البنية القديمة (units + piece_meta) للتوافقية
-        $chosenUnitId = $unitMeta['units'][$mdId][$customerId] ?? null;
-        if ($chosenUnitId && (int)$chosenUnitId !== (int)$defaultUnitId) {
-            $unit = \App\Models\Unit::find($chosenUnitId);
-            $unitName = $unit?->UnitName ?? $defaultUnitName;
-
-            $isPiece = in_array(trim($unitName), ['الحبة', 'حبة', 'حبه', 'حب', 'قطعة', 'قطعه'], true);
-            if ($isPiece) {
-                $pm = $unitMeta['piece_meta'][$mdId][$customerId] ?? null;
-                $count = (float) ($pm['count'] ?? 0);
-                $totalW = (float) ($pm['total_weight'] ?? ($count * (float)($pm['weight'] ?? 0)));
-                $enteredQty = $count > 0 ? $count : $defaultQty;
-                $enteredPrice = $count > 0 && $totalW > 0 ? ($defaultPrice * ($totalW / $count)) : $defaultPrice;
-                $totalCost = $defaultQty * $defaultCost;
-                $unitCost = $enteredQty > 0 ? ($totalCost / $enteredQty) : $defaultCost;
-
-                return [
-                    'unit_id'    => (int) $chosenUnitId,
-                    'unit_name'  => $unitName,
-                    'quantity'   => $enteredQty,
-                    'sale_price' => $enteredPrice,
-                    'unit_cost'  => $unitCost,
-                    'total_cost' => $totalCost,
-                    'total_sale' => $enteredQty * $enteredPrice,
-                    'is_custom'  => true,
-                    'piece_meta' => $pm,
-                ];
-            }
-
-            // تحويل كيلو <-> جرام
-            $isDefKilo = str_contains(mb_strtolower($defaultUnitName), 'كيلو') || str_contains(mb_strtolower($defaultUnitName), 'كجم');
-            $isDefGram = str_contains(mb_strtolower($defaultUnitName), 'جرام') || str_contains(mb_strtolower($defaultUnitName), 'جم');
-            $isNewKilo = str_contains(mb_strtolower($unitName), 'كيلو') || str_contains(mb_strtolower($unitName), 'كجم');
-            $isNewGram = str_contains(mb_strtolower($unitName), 'جرام') || str_contains(mb_strtolower($unitName), 'جم');
-
-            $factor = 1.0;
-            if ($isDefKilo && $isNewGram) $factor = 1000.0;
-            elseif ($isDefGram && $isNewKilo) $factor = 0.001;
-
-            if ($factor !== 1.0) {
-                $enteredQty = $defaultQty * $factor;
-                $enteredPrice = $defaultPrice / $factor;
-                $totalCost = $defaultQty * $defaultCost;
-                $unitCost = $enteredQty > 0 ? ($totalCost / $enteredQty) : $defaultCost;
-
-                return [
-                    'unit_id'    => (int) $chosenUnitId,
-                    'unit_name'  => $unitName,
-                    'quantity'   => $enteredQty,
-                    'sale_price' => $enteredPrice,
-                    'unit_cost'  => $unitCost,
-                    'total_cost' => $totalCost,
-                    'total_sale' => $enteredQty * $enteredPrice,
-                    'is_custom'  => true,
-                    'piece_meta' => null,
-                ];
-            }
-        }
-
-        // الافتراضي: وحدة الدفعة الأصلية
-        return [
-            'unit_id'      => $defaultUnitId,
-            'unit_name'    => $defaultUnitName,
-            'quantity'     => $defaultQty,
-            'sale_price'   => $defaultPrice,
-            'unit_cost'    => $defaultCost,
-            'total_cost'   => $defaultQty * $defaultCost,
-            'total_sale'   => $defaultQty * $defaultPrice,
-            'is_custom'    => false,
-            'piece_meta'   => null,
-        ];
-    }
-
     // ============================================================
     // عرض توزيع (كامل)
     // ============================================================
@@ -634,57 +509,28 @@ class PurchaseDistributionController extends Controller
             'details.movementDetail.unit',
         ])->findOrFail($id);
 
-        $cleanNotes = $dist->notes;
-        $unitMeta   = null;
-        if (!empty($cleanNotes) && str_starts_with(trim($cleanNotes), '{')) {
-            $decoded = json_decode($cleanNotes, true);
-            if (is_array($decoded) && isset($decoded['_unit_meta'])) {
-                $cleanNotes = $decoded['text'] ?? null;
-                $unitMeta   = $decoded['_unit_meta'] ?? null;
-            }
-        }
-
-        $rows = $dist->details->map(function ($d) use ($unitMeta) {
-            $md = $d->movementDetail;
-            $resolved = $this->resolveDetailMeta(
-                $unitMeta ?: [],
-                (int) $d->movement_detail_id,
-                (int) $d->customer_id,
-                $md?->unit_id ? (int) $md->unit_id : null,
-                $md?->unit?->UnitName ?? '—',
-                (float) $d->quantity,
-                (float) $d->sale_price,
-                (float) $d->unit_cost
-            );
-
-            return [
-                'id'                  => $d->id,
-                'movement_detail_id'  => $d->movement_detail_id,
-                'movement_id'         => $d->movement_id,
-                'purchase_invoice_id' => $d->purchase_invoice_id,
-                'invoice_number'      => $d->purchaseInvoice?->invoice_number,
-                'customer_id'         => $d->customer_id,
-                'customer_name'       => $d->customer?->CustomersName2,
-                'customer_phone'      => $d->customer?->CusPhone,
-                'item_name'           => $md?->item?->itemName2 ?? '—',
-                'type_name'           => $md?->type?->name ?? '—',
-                'unit_id'             => $resolved['unit_id'],
-                'unit_name'           => $resolved['unit_name'],
-                'batch_unit_name'     => $md?->unit?->UnitName ?? '—',
-                'code'                => $md?->code ?? '—',
-                'quantity'            => $resolved['quantity'],
-                'batch_quantity'      => (float) $d->quantity,
-                'unit_cost'           => $resolved['unit_cost'],
-                'sale_price'          => $resolved['sale_price'],
-                'batch_sale_price'    => (float) $d->sale_price,
-                'total_cost'          => $resolved['total_cost'],
-                'total_sale'          => $resolved['total_sale'],
-                'sales_invoice_id'    => $d->sales_invoice_id,
-                'invoiced_at'         => optional($d->invoiced_at)->format('Y-m-d H:i'),
-                'is_invoiced'         => $d->invoiced_at !== null || $d->sales_invoice_id !== null,
-                'is_custom_unit'      => $resolved['is_custom'],
-            ];
-        });
+        $rows = $dist->details->map(fn($d) => [
+            'id'                  => $d->id,
+            'movement_detail_id'  => $d->movement_detail_id,
+            'movement_id'         => $d->movement_id,
+            'purchase_invoice_id' => $d->purchase_invoice_id,
+            'invoice_number'      => $d->purchaseInvoice?->invoice_number,
+            'customer_id'         => $d->customer_id,
+            'customer_name'       => $d->customer?->CustomersName2,
+            'customer_phone'      => $d->customer?->CusPhone,
+            'item_name'           => $d->movementDetail?->item?->itemName2 ?? '—',
+            'type_name'           => $d->movementDetail?->type?->name ?? '—',
+            'unit_name'           => $d->movementDetail?->unit?->UnitName ?? '—',
+            'code'                => $d->movementDetail?->code ?? '—',
+            'quantity'            => (float) $d->quantity,
+            'unit_cost'           => (float) $d->unit_cost,
+            'sale_price'          => (float) $d->sale_price,
+            'total_cost'          => (float) $d->quantity * (float) $d->unit_cost,
+            'total_sale'          => (float) $d->quantity * (float) $d->sale_price,
+            'sales_invoice_id'    => $d->sales_invoice_id,
+            'invoiced_at'         => optional($d->invoiced_at)->format('Y-m-d H:i'),
+            'is_invoiced'         => $d->invoiced_at !== null || $d->sales_invoice_id !== null,
+        ]);
 
         $customersSet = $rows->pluck('customer_id')->unique()->count();
         $qtyByUnit    = [];
@@ -695,6 +541,16 @@ class PurchaseDistributionController extends Controller
             $qtyByUnit[$u] = ($qtyByUnit[$u] ?? 0) + $r['quantity'];
             $totalCost += $r['total_cost'];
             $totalSale += $r['total_sale'];
+        }
+
+        $cleanNotes = $dist->notes;
+        $unitMeta   = null;
+        if (!empty($cleanNotes) && str_starts_with(trim($cleanNotes), '{')) {
+            $decoded = json_decode($cleanNotes, true);
+            if (is_array($decoded) && isset($decoded['_unit_meta'])) {
+                $cleanNotes = $decoded['text'] ?? null;
+                $unitMeta   = $decoded['_unit_meta'] ?? null;
+            }
         }
 
         return response()->json([
@@ -1214,49 +1070,18 @@ class PurchaseDistributionController extends Controller
                 $coinId       = (int) $firstInvoice->coin_id;
                 $exchangeRate = (float) ($firstInvoice->exchange_rate ?: 1);
 
-                // تحميل بيانات _unit_meta من التوزيعات المعنية
-                $allDistNotesMap = Distribution::whereIn('id', $distributionIds)
-                    ->pluck('notes', 'id');
-                $mergedUnitMeta = [];
-                foreach ($allDistNotesMap as $distId => $notesRaw) {
-                    $meta = $this->extractUnitMeta($notesRaw);
-                    if (!empty($meta)) {
-                        // دمج التفاصيل من كل توزيع
-                        foreach (['details', 'units', 'piece_meta'] as $key) {
-                            if (!empty($meta[$key])) {
-                                $mergedUnitMeta[$key] = array_replace_recursive(
-                                    $mergedUnitMeta[$key] ?? [],
-                                    $meta[$key]
-                                );
-                            }
-                        }
-                    }
-                }
-
-                $items = $details->map(function ($d) use ($mergedUnitMeta) {
+                $items = $details->map(function ($d) {
                     $md = $d->movementDetail;
-
-                    $resolved = $this->resolveDetailMeta(
-                        $mergedUnitMeta,
-                        (int) $d->movement_detail_id,
-                        (int) $d->customer_id,
-                        $md->unit_id ? (int) $md->unit_id : null,
-                        $md->unit?->UnitName ?? '—',
-                        (float) $d->quantity,
-                        (float) $d->sale_price,
-                        (float) $d->unit_cost
-                    );
-
                     return [
                         'item_id'             => (int) $md->item_id,
                         'type_id'             => $md->type_id ? (int) $md->type_id : null,
-                        'unit_id'             => $resolved['unit_id'],
+                        'unit_id'             => $md->unit_id ? (int) $md->unit_id : null,
                         'warehouse_id'        => (int) $md->warehouse_id,
                         'supplier_account_id' => $md->supplier_account_id ? (int) $md->supplier_account_id : null,
                         'code'                => $md->code ?? null,
-                        'quantity'            => $resolved['quantity'],
-                        'price'               => $resolved['sale_price'],
-                        'cost_price'          => $resolved['unit_cost'],
+                        'quantity'            => (float) $d->quantity,
+                        'price'               => (float) $d->sale_price,
+                        'cost_price'          => (float) $d->unit_cost,
                         'discount'            => 0,
                     ];
                 })->all();
@@ -1632,11 +1457,6 @@ class PurchaseDistributionController extends Controller
     // ============================================================
     public function distributionCustomerDetails(int $distributionId, int $customerId)
     {
-        $dist = Distribution::findOrFail($distributionId);
-
-        // استخراج بيانات الوحدات من notes
-        $unitMeta = $this->extractUnitMeta($dist->notes);
-
         $details = DistributionDetail::query()
             ->where('distribution_id', $distributionId)
             ->where('customer_id', $customerId)
@@ -1685,7 +1505,7 @@ class PurchaseDistributionController extends Controller
             ->groupBy('inventory_movement_details.lot_source_detail_id')
             ->pluck('total', 'lot_source_detail_id');
 
-        $rows = $details->map(function ($d) use ($otherDistByMD, $sortedOutByMD, $convertedByMD, $unitMeta) {
+        $rows = $details->map(function ($d) use ($otherDistByMD, $sortedOutByMD, $convertedByMD) {
             $md = $d->movementDetail;
 
             $batchQty     = (float) ($md?->quantity ?? 0);
@@ -1697,18 +1517,6 @@ class PurchaseDistributionController extends Controller
             $extraAvailableInBatch = max(0.0, $batchQty - $otherDistQty - $sortedOutQty - (float) $d->quantity);
             $isInvoiced = $d->sales_invoice_id !== null || $d->invoiced_at !== null;
 
-            // تطبيق وحدة التوزيع والكمية والسعر المدخل من _unit_meta
-            $resolved = $this->resolveDetailMeta(
-                $unitMeta,
-                (int) $d->movement_detail_id,
-                (int) $d->customer_id,
-                $md?->unit_id ? (int) $md->unit_id : null,
-                $md?->unit?->UnitName ?? '—',
-                (float) $d->quantity,
-                (float) $d->sale_price,
-                (float) $d->unit_cost
-            );
-
             return [
                 'id'                 => $d->id,
                 'movement_detail_id' => $d->movement_detail_id,
@@ -1717,22 +1525,18 @@ class PurchaseDistributionController extends Controller
                 'coin_code'          => $d->purchaseInvoice?->coin?->coinsCode ?? 'ر.ي',
                 'item_name'          => $md?->item?->itemName2 ?? '—',
                 'type_name'          => $md?->type?->name ?? '—',
-                'unit_id'            => $resolved['unit_id'],
-                'unit_name'          => $resolved['unit_name'],
-                'batch_unit_name'    => $md?->unit?->UnitName ?? '—',
+                'unit_name'          => $md?->unit?->UnitName ?? '—',
                 'code'               => $md?->code ?? '—',
                 'batch_quantity'     => $batchQty,
                 'sorted_out_qty'     => $sortedOutQty,
                 'converted_quantity' => $convertedQty,
                 'remaining_quantity' => $extraAvailableInBatch,
-                'quantity'           => $resolved['quantity'],
-                'unit_cost'          => $resolved['unit_cost'],
-                'sale_price'         => $resolved['sale_price'],
-                'batch_sale_price'   => (float) $d->sale_price,
-                'total_cost'         => $resolved['total_cost'],
-                'total_sale'         => $resolved['total_sale'],
+                'quantity'           => (float) $d->quantity,
+                'unit_cost'          => (float) $d->unit_cost,
+                'sale_price'         => (float) $d->sale_price,
+                'total_cost'         => (float) $d->quantity * (float) $d->unit_cost,
+                'total_sale'         => (float) $d->quantity * (float) $d->sale_price,
                 'is_invoiced'        => $isInvoiced,
-                'is_custom_unit'     => $resolved['is_custom'],
             ];
         });
 

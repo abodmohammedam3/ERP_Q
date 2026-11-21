@@ -48,10 +48,8 @@ class SalesInvoiceService
 
                 $this->lockStockRows($details);
                 
-                $isFromDistribution = !empty($data['skip_stock_validation']);
-
                 // ✅ تخطي التحقق من المخزون إذا كان الطلب قادماً من توزيع
-                if (!$isFromDistribution) {
+                if (empty($data['skip_stock_validation'])) {
                     $this->validateStockAvailability($details);
                 }
 
@@ -63,7 +61,7 @@ class SalesInvoiceService
 
                 $invoice = SalesInvoice::create($header);
 
-                $this->saveDetails($invoice, $details, $isFromDistribution);
+                $this->saveDetails($invoice, $details);
                 $this->recalculateTotals($invoice);
 
                 // ✅ ترحيل تلقائي
@@ -706,7 +704,7 @@ public function update(int $id, array $data): SalesInvoice
         ];
     }
 
-    protected function saveDetails(SalesInvoice $invoice, array $details, bool $isFromDistribution = false): void
+    protected function saveDetails(SalesInvoice $invoice, array $details): void
     {
         foreach ($details as $row) {
             $itemId      = (int) $row['item_id'];
@@ -733,9 +731,7 @@ public function update(int $id, array $data): SalesInvoice
 
             $uiCost = (float) ($row['cost_price'] ?? 0);
 
-            if ($isFromDistribution && $uiCost > 0) {
-                $costPrice = $uiCost;
-            } elseif ($uiCost <= 0) {
+            if ($uiCost <= 0) {
                 $costPrice = $serverCost;
             } elseif ($serverCost <= 0) {
                 $costPrice = $uiCost;

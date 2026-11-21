@@ -762,15 +762,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const pieceUnitSelected = curUnit !== null && isPieceUnitId(curUnit);
 
-            // في وضع الحبة: نستخدم حقل .alloc-input لإدخال عدد الحبات،
-            // ونضيف فقط حقل "الوزن الإجمالي (كجم)" بدون تكرار حقل العدد
+            // إصلاح التصميم المضغوط: استخدام flex-column
             const pieceBlock = pieceUnitSelected ? `
                 <div class="piece-weight-block mt-1" data-piece-for="${escapeHtml(String(cid))}">
-                    <input type="text" inputmode="decimal" dir="ltr" autocomplete="off"
-                           class="form-control form-control-sm text-center piece-total-weight-input ${editable ? '' : 'bg-body-secondary'}"
-                           data-customer="${cid}" placeholder="الوزن الإجمالي (كجم)"
-                           value="${curPiece ? (curPiece.total_weight != null ? curPiece.total_weight : (curPiece.count && curPiece.weight ? (num(curPiece.count)*num(curPiece.weight)).toFixed(3) : '')) : ''}" ${editable ? '' : 'readonly'}>
-                    <div class="small text-primary mt-1 piece-weight-total">${curPiece && num(curPiece.total_weight) > 0 ? `${fmt(num(curPiece.total_weight), 3)} كجم إجمالي` : (curPiece && num(curPiece.count) > 0 && num(curPiece.weight) > 0 ? `${fmt(num(curPiece.count) * num(curPiece.weight), 3)} كجم إجمالي` : '')}</div>
+                    <div class="d-flex flex-column gap-1">
+                        <input type="text" inputmode="decimal" dir="ltr" autocomplete="off"
+                               class="form-control form-control-sm text-center piece-count-input ${editable ? '' : 'bg-body-secondary'}"
+                               data-customer="${cid}" placeholder="عدد الحبات"
+                               value="${curPiece ? (curPiece.count || '') : ''}" ${editable ? '' : 'readonly'}>
+                        <input type="text" inputmode="decimal" dir="ltr" autocomplete="off"
+                               class="form-control form-control-sm text-center piece-weight-input ${editable ? '' : 'bg-body-secondary'}"
+                               data-customer="${cid}" placeholder="وزن الحبة (كجم)"
+                               value="${curPiece ? (curPiece.weight || '') : ''}" ${editable ? '' : 'readonly'}>
+                    </div>
+                    <div class="small text-primary mt-1 piece-weight-total">${curPiece && num(curPiece.count) > 0 && num(curPiece.weight) > 0 ? `${fmt(num(curPiece.count) * num(curPiece.weight), 3)} كجم إجمالي` : ''}</div>
                 </div>` : '';
 
             const tr = document.createElement('tr');
@@ -797,7 +802,7 @@ document.addEventListener('DOMContentLoaded', () => {
                            data-customer="${cid}"
                            value="${curQty || ''}"
                            ${editable ? '' : 'readonly'}
-                           placeholder="${editable ? (pieceUnitSelected ? 'عدد الحبات' : 'الكمية') : 'لا يوجد'}">
+                           placeholder="${editable ? 'الكمية' : 'لا يوجد'}">
                 </td>
                 <td class="text-center">
                     <span class="price-placeholder text-muted small ${showPrice ? 'd-none' : ''}">أدخل الكمية</span>
@@ -914,11 +919,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (inp.readOnly) return;
             inp.addEventListener('input', () => handlePieceInput(inp, 'weight'));
         });
-        // ربط حقل الوزن الإجمالي (للحبة)
-        tbody.querySelectorAll('.piece-total-weight-input').forEach(inp => {
-            if (inp.readOnly) return;
-            inp.addEventListener('input', () => handlePieceInput(inp, 'total_weight'));
-        });
 
         tbody.querySelectorAll('.alloc-remove').forEach(btn =>
             btn.addEventListener('click', async () => {
@@ -959,71 +959,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const custId = input.dataset.customer;
         const item = findItem(itemId);
         if (!item) return;
-
-        // في وضع الحبة: alloc-input يمثل عدد الحبات — ندفع للدالة المختصة
-        const unitId = chosenUnitId(itemId, custId, item);
-        if (unitId !== null && isPieceUnitId(unitId)) {
-            // تخزين العدد في pieceMeta وإعادة حساب الكمية
-            state.pieceMeta[itemId] = state.pieceMeta[itemId] || {};
-            const meta = state.pieceMeta[itemId][custId] || { count: '', weight: '', total_weight: '' };
-            meta.count = input.value;
-            state.pieceMeta[itemId][custId] = meta;
-
-            // إذا كان هناك وزن إجمالي، احسب qtyBatch
-            const kgTotal = num(meta.total_weight) > 0 ? num(meta.total_weight) : num(meta.count) * num(meta.weight);
-            const count = num(input.value);
-            const qtyBatch = kgToBatchUnit(kgTotal, batchUnitId(item), item);
-
-            const others = Object.entries(state.allocation[itemId] || {})
-                .filter(([cid]) => cid != custId)
-                .reduce((s, [, q]) => s + num(q), 0);
-            const maxForField = num(item.available) - others;
-
-            state.allocation[itemId] = state.allocation[itemId] || {};
-            state.allocation[itemId][custId] = Math.min(qtyBatch, Math.max(0, maxForField));
-
-            const tr = input.closest('tr');
-            if (tr) {
-                const totalWeightInput = tr.querySelector('.piece-total-weight-input');
-                const priceInput = tr.querySelector('.alloc-price-input');
-                const totalInput = tr.querySelector('.alloc-total-input');
-                const block = tr.querySelector('.piece-weight-block');
-
-                if (block) {
-                    const info = block.querySelector('.piece-weight-total');
-                    if (info) info.textContent = kgTotal > 0 ? `${fmt(kgTotal, 3)} كجم إجمالي` : '';
-                }
-
-                if (count > 0 && kgTotal > 0) {
-                    if (priceInput) priceInput.classList.remove('d-none');
-                    if (totalInput) totalInput.classList.remove('d-none');
-                    tr.querySelector('.price-placeholder')?.classList.add('d-none');
-
-                    // حساب سعر الحبة
-                    const wPerPiece = kgTotal / count;
-                    const batchName = item.unit_name || '';
-                    let w = wPerPiece;
-                    if (isGramUnitName(batchName)) w = wPerPiece * 1000;
-                    if (!state.prices[itemId]?.[custId]) {
-                        const storedPrice = num(item.sale_price);
-                        const piecePrice = w > 0 ? storedPrice * w : 0;
-                        state.prices[itemId] = state.prices[itemId] || {};
-                        state.prices[itemId][custId] = num(item.sale_price);
-                        if (priceInput) priceInput.value = piecePrice > 0 ? fmt(piecePrice) : '';
-                    }
-                    const priceShown = num(priceInput?.value);
-                    if (totalInput) totalInput.value = (count * priceShown) > 0 ? fmt(count * priceShown) : '';
-                }
-            }
-
-            const totalAlloc = getAllocatedQty(itemId);
-            const remaining = Math.max(0, num(item.available) - totalAlloc);
-            if ($('allocAllocated')) $('allocAllocated').textContent = fmt(totalAlloc, 3);
-            if ($('allocRemaining')) $('allocRemaining').textContent = fmt(remaining, 3);
-            renderSummary();
-            renderTabs();
-            return;
-        }
 
         const qtyEntered = Math.max(0, num(input.value));
         const qty = qtyToBatchUnit(itemId, custId, qtyEntered, item);
@@ -1211,7 +1146,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /**
      * تحويل الكمية المدخلة (بالوحدة المختارة) إلى وحدة الدفعة.
-     * في وضع الحبة: qtyEntered = عدد الحبات، والوزن الإجمالي محسوب من pieceMeta.
      */
     function qtyToBatchUnit(itemId, custId, qtyEntered, item) {
         const unitId = chosenUnitId(itemId, custId, item);
@@ -1221,11 +1155,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isPieceUnitId(unitId)) {
             const meta = state.pieceMeta[itemId]?.[custId] || {};
-            // استخدم total_weight إذا كان موجوداً، وإلا count * weight
-            const kgTotal = num(meta.total_weight) > 0
-                ? num(meta.total_weight)
-                : num(qtyEntered) * num(meta.weight);
-            return kgToBatchUnit(kgTotal, batch, item);
+            const kg = num(qtyEntered) * num(meta.weight);
+            return kgToBatchUnit(kg, batch, item);
         }
 
         const f = unitFactor(unitId, batch);
@@ -1249,10 +1180,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isPieceUnitId(unitId)) {
             const meta = state.pieceMeta[itemId]?.[custId] || {};
-            // وزن الحبة الواحدة: total_weight / count أو weight مباشرة
-            const count = num(meta.count);
-            const totalW = num(meta.total_weight);
-            const wKg = totalW > 0 && count > 0 ? totalW / count : num(meta.weight);
+            const wKg = num(meta.weight);
             if (wKg > 0) {
                 const batchName = item.unit_name || '';
                 let weightInBatch = wKg;
@@ -1278,9 +1206,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isPieceUnitId(unitId)) {
             const meta = state.pieceMeta[itemId]?.[custId] || {};
-            const count = num(meta.count);
-            const totalW = num(meta.total_weight);
-            const wKg = totalW > 0 && count > 0 ? totalW / count : num(meta.weight);
+            const wKg = num(meta.weight);
             if (wKg <= 0) return 0;
             const batchName = item.unit_name || '';
             let w = wKg;
@@ -1356,30 +1282,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!item) return;
 
         state.pieceMeta[itemId] = state.pieceMeta[itemId] || {};
-        const meta = state.pieceMeta[itemId][custId] || { count: '', weight: '', total_weight: '' };
+        const meta = state.pieceMeta[itemId][custId] || { count: '', weight: '' };
 
         if (kind === 'count') meta.count = input.value;
         if (kind === 'weight') meta.weight = input.value;
-        if (kind === 'total_weight') meta.total_weight = input.value;
-
-        // احسب الوزن الإجمالي وعدد الحبات
-        // إذا تم إدخال total_weight مباشرة + count من alloc-input
-        const tr = input.closest('tr');
-        const allocInput = tr ? tr.querySelector('.alloc-input') : null;
-        const count = num(meta.count) || num(allocInput?.value) || 0;
-
-        // الوزن الإجمالي: إما من total_weight مباشرة أو count * weight
-        let kgTotal = 0;
-        if (num(meta.total_weight) > 0) {
-            kgTotal = num(meta.total_weight);
-            // احسب وزن الحبة الواحدة للتخزين
-            if (count > 0) meta.weight = String(kgTotal / count);
-        } else if (num(meta.count) > 0 && num(meta.weight) > 0) {
-            kgTotal = num(meta.count) * num(meta.weight);
-            meta.total_weight = String(kgTotal);
-        }
 
         state.pieceMeta[itemId][custId] = meta;
+
+        const count = num(meta.count);
+        const wKg = num(meta.weight);
+        const kgTotal = count * wKg;
 
         const qtyBatch = kgToBatchUnit(kgTotal, batchUnitId(item), item);
 
@@ -1395,32 +1307,25 @@ document.addEventListener('DOMContentLoaded', () => {
         state.allocation[itemId] = state.allocation[itemId] || {};
         state.allocation[itemId][custId] = Math.min(qtyBatch, Math.max(0, maxForField));
 
-        // تحديث حقل عدد الحبات (alloc-input) إذا كان التعديل من total_weight
-        if (kind === 'total_weight' && allocInput && count <= 0) {
-            // لا نعدل alloc-input إذا لم يدخل المستخدم عدداً بعد
-        }
-
+        const tr = input.closest('tr');
         if (tr) {
             const priceInput = tr.querySelector('.alloc-price-input');
             const totalInput = tr.querySelector('.alloc-total-input');
-            const displayCount = count > 0 ? count : (kgTotal > 0 ? 1 : 0);
 
             if (priceInput) {
                 if (document.activeElement !== priceInput) {
                     const batchName = item.unit_name || '';
-                    // سعر الحبة = سعر الكيلو بالوحدة المرجعية × وزن الحبة الواحدة
-                    const wPerPiece = count > 0 ? kgTotal / count : 0;
-                    let w = wPerPiece;
-                    if (isGramUnitName(batchName)) w = wPerPiece * 1000;
+                    let w = wKg;
+                    if (isGramUnitName(batchName)) w = wKg * 1000;
                     const storedPrice = state.prices[itemId]?.[custId] !== undefined
                         ? num(state.prices[itemId][custId]) : num(item.sale_price);
-                    const piecePrice = w > 0 ? storedPrice * w : 0;
+                    const piecePrice = storedPrice * w;
                     priceInput.value = piecePrice > 0 ? fmt(piecePrice) : '';
                 }
             }
             if (totalInput && kgTotal > 0) {
                 const piecePrice = num(priceInput?.value) || 0;
-                totalInput.value = (displayCount * piecePrice) > 0 ? fmt(displayCount * piecePrice) : '';
+                totalInput.value = (count * piecePrice) > 0 ? fmt(count * piecePrice) : '';
             }
             const block = tr.querySelector('.piece-weight-block');
             if (block) {
@@ -1873,64 +1778,12 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // بناء units_meta الغنية: تخزن الوحدة المختارة + الكمية + السعر المدخل لكل (صنف، عميل)
-        const unitsMeta = {};
-        Object.entries(state.allocation).forEach(([mdId, row]) => {
-            const item = findItem(mdId);
-            if (!item) return;
-            Object.entries(row).forEach(([custId, batchQty]) => {
-                if (num(batchQty) <= 0) return;
-                const chosenUnit = state.units[mdId]?.[custId];
-                const batchUnit = item.unit_id;
-                if (!chosenUnit || String(chosenUnit) === String(batchUnit)) return;
-
-                // هذا العميل لديه وحدة مختلفة عن الدفعة
-                const unitName = unitNameById(chosenUnit);
-                const isPiece = isPieceUnitId(chosenUnit);
-                const pieceMeta = state.pieceMeta[mdId]?.[custId] || null;
-
-                // حساب الكمية المدخلة بالوحدة المختارة
-                let enteredQty = 0;
-                let enteredPrice = num(state.prices[mdId]?.[custId] ?? item.sale_price);
-
-                if (isPiece && pieceMeta) {
-                    const count = num(pieceMeta.count);
-                    const totalW = num(pieceMeta.total_weight) > 0 ? num(pieceMeta.total_weight) : count * num(pieceMeta.weight);
-                    enteredQty = count;
-                    // السعر لكل حبة = price × وزن الحبة الواحدة بوحدة الدفعة
-                    const wPerPiece = count > 0 && totalW > 0 ? totalW / count : num(pieceMeta.weight);
-                    const batchName = item.unit_name || '';
-                    let w = wPerPiece;
-                    if (isGramUnitName(batchName)) w = wPerPiece * 1000;
-                    enteredPrice = w > 0 ? num(state.prices[mdId]?.[custId] ?? item.sale_price) * w : 0;
-                } else {
-                    // تحويل بالعامل (كيلو ↔ جرام)
-                    const f = unitFactor(batchUnit, chosenUnit);
-                    enteredQty = f !== null && f > 0 ? num(batchQty) * f : num(batchQty);
-                    const fInv = unitFactor(chosenUnit, batchUnit);
-                    enteredPrice = fInv !== null && fInv > 0
-                        ? num(state.prices[mdId]?.[custId] ?? item.sale_price) * fInv
-                        : num(state.prices[mdId]?.[custId] ?? item.sale_price);
-                }
-
-                unitsMeta[mdId] = unitsMeta[mdId] || {};
-                unitsMeta[mdId][custId] = {
-                    unit_id:       parseInt(chosenUnit, 10),
-                    unit_name:     unitName,
-                    entered_qty:   enteredQty,
-                    entered_price: enteredPrice,
-                    piece_meta:    pieceMeta,
-                };
-            });
-        });
-
         const payload = {
             id:                state.distributionId,
             distribution_date: $('distributionDate')?.value,
             notes:             $('distributionNotes')?.value || null,
             units:             state.units,
             piece_meta:        state.pieceMeta,
-            units_meta:        Object.keys(unitsMeta).length ? unitsMeta : null,
             details,
         };
 

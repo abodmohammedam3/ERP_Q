@@ -12,6 +12,11 @@
         -moz-appearance: textfield;
         appearance: textfield;
     }
+    
+    /* تحسين مظهر حقول الوزن عند تراكمها فوق بعضها */
+    .piece-weight-block input {
+        font-size: 0.75rem;
+    }
 </style>
 
 <div class="modal fade" id="allocationModal" tabindex="-1" aria-hidden="true">
@@ -33,7 +38,7 @@
 
             <div class="modal-body">
 
-                <!-- ✅ بطاقات الإحصائيات (تمت إضافة سعر التكلفة) -->
+                <!-- بطاقات الإحصائيات -->
                 <div class="row g-2 mb-3 text-center">
                     <div class="col">
                         <div class="bg-light rounded-3 p-2">
@@ -68,15 +73,17 @@
                     </button>
                 </div>
 
-                <!-- ✅ الجدول (تمت إضافة عمود الإجمالي) -->
+                <!-- الجدول -->
                 <div class="table-responsive border rounded-3" style="max-height:300px; overflow-y:auto;">
                     <table class="table table-sm table-borderless align-middle mb-0">
                         <thead class="table-light sticky-top">
                             <tr class="small text-muted">
                                 <th>العميل</th>
-                                <th style="width:100px" class="text-center">الكمية</th>
-                                <th style="width:110px" class="text-center">السعر للوحدة</th>
-                                <th style="width:110px" class="text-center">الإجمالي</th>
+                                <!-- تم توسيع عمود الوحدة من 92px إلى 150px لاستيعاب الحقول المتراصة -->
+                                <th style="width:150px" class="text-center">الوحدة</th>
+                                <th style="width:88px" class="text-center">الكمية</th>
+                                <th style="width:96px" class="text-center">السعر للوحدة</th>
+                                <th style="width:104px" class="text-center">الإجمالي</th>
                                 <th style="width:44px"></th>
                             </tr>
                         </thead>

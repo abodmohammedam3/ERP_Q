@@ -185,6 +185,7 @@ class PurchaseDistributionController extends Controller
                 'purchase_invoice_id' => $invoice->purchase_invoice_id,
                 'item_name'           => $d->item?->itemName2 ?? '—',
                 'type_name'           => $d->type?->name ?? '—',
+                'unit_id'             => $d->unit_id,
                 'unit_name'           => $d->unit?->UnitName ?? '—',
                 'code'                => $d->code ?? '—',
                 'quantity'            => (float) $d->quantity,

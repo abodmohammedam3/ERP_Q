@@ -10,6 +10,9 @@
             <table class="table table-sm table-hover align-middle mb-0">
                 <thead class="table-light sticky-top">
                     <tr class="small text-muted">
+                        <th style="width:38px" class="text-center">
+                            <input type="checkbox" class="form-check-input" id="checkAllInvDetails" checked title="تحديد الكل">
+                        </th>
                         <th class="fw-semibold">الصنف</th>
                         <th class="fw-semibold">النوع</th>
                         <th class="fw-semibold">الرمز</th>
@@ -21,7 +24,7 @@
                 </thead>
                 <tbody id="invDetailsTbody">
                     <tr>
-                        <td colspan="7" class="text-center text-muted py-4">
+                        <td colspan="8" class="text-center text-muted py-4">
                             اختر توزيعًا ثم عميلًا لعرض التفاصيل.
                         </td>
                     </tr>

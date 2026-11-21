@@ -93,6 +93,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         thead.innerHTML = `
             <tr class="small text-muted">
+                <th style="width:38px" class="text-center">
+                    <input type="checkbox" class="form-check-input" id="checkAllInvDetails" checked title="تحديد الكل">
+                </th>
                 <th class="fw-semibold">الصنف</th>
                 <th class="fw-semibold">النوع</th>
                 <th class="fw-semibold">الرمز</th>
@@ -102,6 +105,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 <th class="text-end fw-semibold">الإجمالي</th>
             </tr>
         `;
+
+        $('checkAllInvDetails')?.addEventListener('change', (e) => {
+            const checked = e.target.checked;
+            document.querySelectorAll('#invDetailsTbody .inv-detail-check').forEach(cb => {
+                cb.checked = checked;
+            });
+            updateSummaryAndIssueButton();
+        });
     }
 
     // ============================================================
@@ -411,7 +422,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ============================================================
-    // 3. رسم التفاصيل (7 أعمدة: الصنف، النوع، الرمز، الكمية، الوحدة، سعر البيع، الإجمالي)
+    // 3. رسم التفاصيل (8 أعمدة تشمل التحديد والعملة)
     // ============================================================
     function renderDetails(summary = {}) {
         ensureDetailsTableHeader();
@@ -422,59 +433,81 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!state.details.length) {
             tbody.innerHTML = `
-                <tr><td colspan="7" class="text-center text-muted py-4">
+                <tr><td colspan="8" class="text-center text-muted py-4">
                     <i class="bi bi-inbox fs-3 d-block mb-1 opacity-50"></i>
                     لا توجد تفاصيل غير مفوترة.
                 </td></tr>`;
-            updateSummaryValues(summary, 0);
+            updateSummaryAndIssueButton();
             return;
         }
 
-        let computedSaleSum = 0;
+        // كشف العملات المتعددة لتنبيه المستخدم
+        const coinCodes = [...new Set(state.details.map(d => d.coin_code || 'ر.ي'))];
+        const hasMultipleCurrencies = coinCodes.length > 1;
 
         state.details.forEach(d => {
             const qty = num(d?.quantity);
             const salePrice = num(d?.sale_price);
             const hasExplicitTotal = d?.total_sale !== undefined && d?.total_sale !== null && d?.total_sale !== '';
             const rowTotal = hasExplicitTotal ? num(d.total_sale) : (qty * salePrice);
-            computedSaleSum += rowTotal;
-
             const codeVal = d?.code || d?.item_code || '—';
+            const coinLabel = d?.coin_code || 'ر.ي';
 
             const tr = document.createElement('tr');
             tr.innerHTML = `
+                <td class="text-center">
+                    <input type="checkbox" class="form-check-input inv-detail-check" data-id="${d?.id}" data-coin="${escapeHtml(coinLabel)}" checked>
+                </td>
                 <td class="fw-semibold small">${escapeHtml(d?.item_name || '—')}</td>
                 <td class="small text-muted">${escapeHtml(d?.type_name || '—')}</td>
                 <td class="text-muted small">${escapeHtml(codeVal)}</td>
                 <td class="text-end fw-semibold text-success">${fmt(qty, 3)}</td>
                 <td class="text-center small text-muted">${escapeHtml(d?.unit_name || '—')}</td>
                 <td class="text-end text-muted">${fmt(salePrice)}</td>
-                <td class="text-end fw-semibold">${fmt(rowTotal)} ر.ي</td>
+                <td class="text-end fw-semibold">${fmt(rowTotal)} ${escapeHtml(coinLabel)}</td>
             `;
             tbody.appendChild(tr);
         });
 
-        const totalSaleVal = (summary?.total_sale !== undefined && summary?.total_sale !== null)
-            ? num(summary.total_sale)
-            : computedSaleSum;
+        tbody.querySelectorAll('.inv-detail-check').forEach(cb => {
+            cb.addEventListener('change', () => {
+                updateSummaryAndIssueButton();
+            });
+        });
 
-        updateSummaryValues(summary, totalSaleVal);
-    }
+        if (hasMultipleCurrencies) {
+            toastWarning(`تنبيه: توجد أصناف بعملات شراء مختلفة (${coinCodes.join(' و ')}). حدد أصناف عملة واحدة لإصدار فاتورة لها.`);
+        }
 
-    function updateSummaryValues(summary = {}, totalSaleVal = 0) {
-        if ($('invItemsCount')) $('invItemsCount').textContent = summary?.rows_count ?? state.details.length;
-
-        const qtyParts = Object.entries(summary?.qty_by_unit || {})
-            .filter(([, q]) => num(q) > 0)
-            .map(([u, q]) => `${fmt(q, 3)} ${escapeHtml(u)}`);
-        if ($('invQty')) $('invQty').textContent = qtyParts.length ? qtyParts.join(' + ') : '—';
-
-        if ($('invTotalSale')) $('invTotalSale').textContent = `${fmt(totalSaleVal)} ر.ي`;
+        updateSummaryAndIssueButton();
     }
 
     function updateSummaryAndIssueButton() {
-        const hasDetails = Array.isArray(state.details) && state.details.length > 0;
-        if ($('btnIssue')) $('btnIssue').disabled = !hasDetails;
+        const checkedBoxes = Array.from(document.querySelectorAll('#invDetailsTbody .inv-detail-check:checked'));
+        const checkedIds = new Set(checkedBoxes.map(cb => parseInt(cb.dataset.id, 10)));
+        const selectedDetails = (state.details || []).filter(d => checkedIds.has(parseInt(d.id, 10)));
+
+        const selectedCount = selectedDetails.length;
+        if ($('btnIssue')) $('btnIssue').disabled = selectedCount === 0;
+
+        let totalSale = 0;
+        const qtyByUnit = {};
+        selectedDetails.forEach(d => {
+            const qty = num(d.quantity);
+            const price = num(d.sale_price);
+            const rowTotal = (d.total_sale !== undefined && d.total_sale !== null) ? num(d.total_sale) : (qty * price);
+            totalSale += rowTotal;
+            const u = d.unit_name || '—';
+            qtyByUnit[u] = (qtyByUnit[u] || 0) + qty;
+        });
+
+        if ($('invItemsCount')) $('invItemsCount').textContent = selectedCount;
+
+        const qtyParts = Object.entries(qtyByUnit)
+            .filter(([, q]) => num(q) > 0)
+            .map(([u, q]) => `${fmt(q, 3)} ${escapeHtml(u)}`);
+        if ($('invQty')) $('invQty').textContent = qtyParts.length ? qtyParts.join(' + ') : '—';
+        if ($('invTotalSale')) $('invTotalSale').textContent = `${fmt(totalSale)} ر.ي`;
     }
 
     function resetCustomerSection() {
@@ -589,8 +622,15 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const checkedBoxes = Array.from(document.querySelectorAll('#invDetailsTbody .inv-detail-check:checked'));
+        const selectedDetailIds = checkedBoxes.map(cb => parseInt(cb.dataset.id, 10)).filter(Boolean);
+        if (!selectedDetailIds.length) {
+            toastError('يرجى تحديد بند واحد على الأقل للفوترة.');
+            return;
+        }
+
         const ok = await confirmDialog(
-            `سيتم إصدار فاتورة للعميل «${state.customer.customer_name}» من التوزيع «${state.distribution.code}» تشمل ${state.details.length} صف. متابعة؟`,
+            `سيتم إصدار فاتورة للعميل «${state.customer.customer_name}» من التوزيع «${state.distribution.code}» تشمل ${selectedDetailIds.length} بند محدد. متابعة؟`,
             { title: 'إصدار فاتورة', okText: 'إصدار', cancelText: 'إلغاء' }
         );
         if (!ok) return;
@@ -601,6 +641,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const payload = {
                 customer_id:        state.customer.customer_id,
                 distribution_ids:   [state.distribution.id],
+                detail_ids:         selectedDetailIds,
                 payment_method:     state.paymentMethod,
                 payment_account_id: state.paymentMethod === 1 ? null : state.paymentAccountId,
             };

@@ -432,10 +432,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            loadDistLogs(id);
+
             setParentModalDimmed(false);
             distModalInstance = await showModalById('distDetailsModal', distModalInstance);
         } catch (e) {
             toastError('فشل التحميل: ' + e.message);
+        }
+    }
+
+    async function loadDistLogs(id) {
+        const body = $('ddLogsBody');
+        if (!body) return;
+        body.innerHTML = '<div class="spinner-border spinner-border-sm text-primary"></div> <span class="ms-1 small">جارٍ تحميل السجل...</span>';
+        try {
+            const res = await api(`${ROUTES.distributionPage}/${id}/logs`);
+            const logs = res?.data || [];
+            if (!logs.length) {
+                body.innerHTML = '<span class="text-muted small">لا توجد حركات مسجلة لهذا التوزيع حتى الآن.</span>';
+                return;
+            }
+            body.innerHTML = logs.map(l => `
+                <div class="d-flex justify-content-between align-items-center border-bottom py-1 text-start">
+                    <div>
+                        <span class="badge bg-secondary-subtle text-secondary me-1">${escapeHtml(l.action)}</span>
+                        <span class="small">${escapeHtml(l.description || '—')}</span>
+                        <span class="text-muted small">(${escapeHtml(l.user)})</span>
+                    </div>
+                    <div class="text-muted small" style="font-size:0.75rem;">${escapeHtml(l.created_at)}</div>
+                </div>
+            `).join('');
+        } catch (e) {
+            body.innerHTML = `<span class="text-danger small">تعذر تحميل السجل: ${escapeHtml(e.message)}</span>`;
         }
     }
 
@@ -508,7 +536,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // ترتيب الأعمدة: الفاتورة، الرمز، الصنف والنوع، الكمية، الوحدة، سعر البيع، إجمالي البيع، الحالة، حذف
         activeRows.forEach(r => {
             const rowTotal = num(r._qty) * num(r._price);
-            const statusBadge = r.is_invoiced
+            const isRowInvoiced = !!r.is_invoiced;
+            const statusBadge = isRowInvoiced
                 ? '<span class="badge bg-success-subtle text-success">مفوتر</span>'
                 : '<span class="badge bg-warning-subtle text-warning">غير مفوتر</span>';
 
@@ -524,10 +553,11 @@ document.addEventListener('DOMContentLoaded', () => {
                            dir="ltr"
                            inputmode="decimal"
                            autocomplete="off"
-                           class="form-control form-control-sm text-center edc-qty"
+                           class="form-control form-control-sm text-center edc-qty ${isRowInvoiced ? 'bg-body-secondary' : ''}"
                            data-row-id="${r.id}"
                            value="${escapeHtml(String(r._qty))}"
-                           title="الحد الأقصى المتاح: ${fmt(r._maxAllowed, 3)}">
+                           ${isRowInvoiced ? 'readonly disabled' : ''}
+                           title="${isRowInvoiced ? 'بند مفوتر لا يمكن تعديل كميته' : `الحد الأقصى المتاح: ${fmt(r._maxAllowed, 3)}`}">
                 </td>
                 <td class="text-center small text-muted">${escapeHtml(r.unit_name || '—')}</td>
                 <td>
@@ -535,18 +565,25 @@ document.addEventListener('DOMContentLoaded', () => {
                            dir="ltr"
                            inputmode="decimal"
                            autocomplete="off"
-                           class="form-control form-control-sm text-center edc-price"
+                           class="form-control form-control-sm text-center edc-price ${isRowInvoiced ? 'bg-body-secondary' : ''}"
                            data-row-id="${r.id}"
                            value="${escapeHtml(String(r._price))}"
-                           title="سعر البيع للوحدة">
+                           ${isRowInvoiced ? 'readonly disabled' : ''}
+                           title="${isRowInvoiced ? 'بند مفوتر لا يمكن تعديل سعره' : 'سعر البيع للوحدة'}">
                 </td>
                 <td class="text-end fw-semibold text-success edc-row-total">${fmt(rowTotal)} ر.ي</td>
                 <td class="text-center">${statusBadge}</td>
                 <td class="text-center">
-                    <button type="button" class="btn btn-sm btn-outline-danger edc-del-row"
-                            data-row-id="${r.id}" title="حذف الصف">
-                        <i class="bi bi-trash"></i>
-                    </button>
+                    ${isRowInvoiced ? `
+                        <button type="button" class="btn btn-sm btn-outline-secondary disabled" disabled title="لا يمكن حذف بند مفوتر">
+                            <i class="bi bi-lock"></i>
+                        </button>
+                    ` : `
+                        <button type="button" class="btn btn-sm btn-outline-danger edc-del-row"
+                                data-row-id="${r.id}" title="حذف الصف">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    `}
                 </td>
             `;
 
@@ -606,7 +643,12 @@ document.addEventListener('DOMContentLoaded', () => {
     $('edcSaveBtn')?.addEventListener('click', async () => {
         if (isSavingCustomer) return;
 
-        const activeRows = editCustState.rows.filter(r => !editCustState.deletedIds.has(r.id));
+        // استبعاد البنود المفوترة من التعديل أو الحذف
+        const activeRows = editCustState.rows.filter(r => !editCustState.deletedIds.has(r.id) && !r.is_invoiced);
+        const safeDeletedIds = Array.from(editCustState.deletedIds).filter(id => {
+            const row = editCustState.rows.find(r => r.id == id);
+            return !row?.is_invoiced;
+        });
 
         for (const r of activeRows) {
             if (num(r._qty) <= 0) {
@@ -629,7 +671,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 quantity: num(r._qty),
                 sale_price: num(r._price),
             })),
-            deleted_ids: Array.from(editCustState.deletedIds),
+            deleted_ids: safeDeletedIds,
         };
 
         isSavingCustomer = true;
